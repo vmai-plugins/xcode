@@ -1,0 +1,209 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes an in-flight run on the same ref; the older result is
+  # about code nobody is looking at any more.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 17, not the latest available. Gradle 8.14.3 cannot run on Java 25 --
+      # its embedded Kotlin DSL compiler fails to parse the version string. See
+      # DEVELOPMENT.md.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Assemble debug
+        run: ./gradlew assembleDebug --stacktrace
+
+      # The release variant is built on every run because it is the one that broke
+      # silently: R8 shrinking and lintVital only execute here, and a debug-only
+      # pipeline would not have caught the missing eddsa keep rule.
+      - name: Assemble release
+        run: ./gradlew assembleRelease --stacktrace
+        env:
+          VMSTUDIO_KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+          VMSTUDIO_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          VMSTUDIO_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          VMSTUDIO_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Android Lint
+        run: ./gradlew lintDebug --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/**'
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload lint reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: '**/build/reports/lint-results-*.html'
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
+
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - name: Detekt
+        run: ./gradlew detekt --stacktrace
+
+      - name: Upload detekt report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detekt-report
+          path: build/reports/detekt/**
+          retention-days: 7
+          if-no-files-found: ignore
+
+  instrumented-tests:
+    name: Instrumented tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      # KVM is required for a usable x86_64 emulator; without it the run takes
+      # hours rather than minutes.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # These cover the parts that cannot be unit tested and that the whole
+      # credential story depends on: the real Android Keystore and the real Room
+      # schema with foreign keys enforced.
+      - name: Keystore and database tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./gradlew :core:security:connectedDebugAndroidTest :core:database:connectedDebugAndroidTest
+
+      - name: Upload instrumented test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumented-test-reports
+          path: '**/build/reports/androidTests/**'
+          retention-days: 7
+          if-no-files-found: ignore
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app's whole security posture rests on credentials never being committed.
+      # A grep is not a substitute for a real scanner, but it catches the specific
+      # mistakes this codebase is exposed to: a pasted keystore, an API key in a
+      # properties file, a private key in a test fixture.
+      - name: Check for committed secrets
+        run: |
+          set -e
+          fail=0
+
+          if git ls-files | grep -E '\.(jks|keystore|p12|pfx)$' | grep -v debug.keystore; then
+            echo "::error::A keystore is tracked in the repository"
+            fail=1
+          fi
+
+          if git ls-files | grep -qx 'keystore.properties'; then
+            echo "::error::keystore.properties is tracked; it must stay local"
+            fail=1
+          fi
+
+          if git ls-files | grep -qx 'local.properties'; then
+            echo "::error::local.properties is tracked"
+            fail=1
+          fi
+
+          # PEM private keys anywhere outside the redaction tests, which contain a
+          # deliberately fake one to prove the redactor removes it.
+          if git grep -lE 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY' -- \
+              ':!*SecretRedactorTest.kt' ':!*ServerValidatorTest.kt' | grep .; then
+            echo "::error::A private key block appears in tracked files"
+            fail=1
+          fi
+
+          exit $fail

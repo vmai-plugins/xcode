@@ -1,0 +1,14 @@
+# Normalise line endings: the repo stores LF, CI runs on Linux, developers are on
+# mixed platforms. Without this, a Windows checkout re-writes every file to CRLF
+# and CI sees the whole tree as modified.
+* text=auto eol=lf
+
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+*.jar   binary
+*.png   binary
+*.jpg   binary
+*.webp  binary
+*.keystore binary
+gradlew text eol=lf

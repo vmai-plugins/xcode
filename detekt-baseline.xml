@@ -1,0 +1,185 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:AppScannerParser.kt$AppScannerParser$key == KEY_PATH || key == KEY_NAME || key == KEY_FRAMEWORK || key == KEY_BRANCH || key == KEY_REMOTE</ID>
+    <ID>CyclomaticComplexMethod:AnsiParser.kt$AnsiParser$private fun dispatchCsi(final: Char)</ID>
+    <ID>CyclomaticComplexMethod:ClaudeCodeStreamParser.kt$ToolSummary$fun describe(name: String, input: JsonObject): String</ID>
+    <ID>CyclomaticComplexMethod:CommandSafety.kt$CommandSafety$internal fun splitSegments(command: String): List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:CommandSafety.kt$CommandSafety$private fun analyseRemove(segment: String): List&lt;CommandFinding&gt;</ID>
+    <ID>CyclomaticComplexMethod:FilesScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun FilesScreen( onNavigateBack: () -&gt; Unit, onOpenEditor: (serverId: String, filePath: String) -&gt; Unit = { _, _ -&gt; }, modifier: Modifier = Modifier, viewModel: FilesViewModel = hiltViewModel(), )</ID>
+    <ID>CyclomaticComplexMethod:GitParsers.kt$GitParsers$fun parseStatus(output: String, branch: String): GitStatus</ID>
+    <ID>CyclomaticComplexMethod:RegexSyntaxHighlighter.kt$RegexSyntaxHighlighter$override fun tokenize(source: String, scheme: ColorScheme): List&lt;SyntaxToken&gt;</ID>
+    <ID>CyclomaticComplexMethod:TerminalEmulator.kt$TerminalEmulator$internal fun applyGraphicRendition(params: IntArray)</ID>
+    <ID>CyclomaticComplexMethod:TerminalKeys.kt$TerminalKeyEncoder$fun encode(key: TerminalKey): String</ID>
+    <ID>CyclomaticComplexMethod:UserPreferencesRepository.kt$UserPreferencesRepository$private fun Preferences.toUserPreferences(): UserPreferences</ID>
+    <ID>FunctionNaming:VmNavHost.kt$@Composable fun VmNavHost( navController: NavHostController, isOnline: Boolean, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:VmNavHost.kt$@Composable fun VmNavHost( navController: NavHostController, isOnline: Boolean, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:ClaudeCodeCommandBuilderTest.kt$ClaudeCodeCommandBuilderTest$( prompt: String = "add rate limiting", workingDirectory: String = "/srv/app", permissionMode: AgentPermissionMode = AgentPermissionMode.PLAN, resumeSessionId: String? = null, allowedTools: List&lt;String&gt; = emptyList(), disallowedTools: List&lt;String&gt; = emptyList(), restricted: Boolean = false, model: String? = null, )</ID>
+    <ID>LongParameterList:TerminalSession.kt$TerminalScreen$( val columns: Int, val rows: Int, val lines: List&lt;TerminalRowSnapshot&gt;, val cursorRow: Int, val cursorColumn: Int, val cursorVisible: Boolean, val scrollbackSize: Int, /** True while a full-screen program (vim, less, top) owns the screen. */ val alternateScreenActive: Boolean, val title: String?, val revision: Long, )</ID>
+    <ID>LoopWithTooManyJumpStatements:DiffParser.kt$DiffParser$while</ID>
+    <ID>LoopWithTooManyJumpStatements:GitParsers.kt$GitParsers$for</ID>
+    <ID>LoopWithTooManyJumpStatements:RegexSyntaxHighlighter.kt$RegexSyntaxHighlighter$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SshSession.kt$SshSession$while</ID>
+    <ID>LoopWithTooManyJumpStatements:VmHttpClient.kt$VmHttpClient$while</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x07</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x08</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x09</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x0A</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x0B</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x0C</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x10000</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x20</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x30</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x3F</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x3FF</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x40</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x7E</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x80</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0x9C</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xC0</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xD800</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xDC00</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xE0</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xF0</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xF8</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xFF</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$0xFFFF</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$10</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$3</ID>
+    <ID>MagicNumber:AnsiParser.kt$AnsiParser$6</ID>
+    <ID>MagicNumber:AppScannerParser.kt$AppScannerParser$3</ID>
+    <ID>MagicNumber:AppScannerParser.kt$AppScannerParser$4</ID>
+    <ID>MagicNumber:CommandGuard.kt$DefaultCommandGuard$120</ID>
+    <ID>MagicNumber:CommandResult.kt$CommandLimits$20</ID>
+    <ID>MagicNumber:CommandSafety.kt$CommandSafety$120</ID>
+    <ID>MagicNumber:CommandSafety.kt$CommandSafety$80</ID>
+    <ID>MagicNumber:DiffParser.kt$DiffParser$3</ID>
+    <ID>MagicNumber:FilesScreen.kt$10</ID>
+    <ID>MagicNumber:FilesScreen.kt$20</ID>
+    <ID>MagicNumber:FilesScreen.kt$30</ID>
+    <ID>MagicNumber:GitParsers.kt$GitParsers$3</ID>
+    <ID>MagicNumber:GitParsers.kt$GitParsers$4</ID>
+    <ID>MagicNumber:GitParsers.kt$GitParsers$6</ID>
+    <ID>MagicNumber:GitParsers.kt$GitParsers$7</ID>
+    <ID>MagicNumber:KeystoreCrypto.kt$AndroidKeystoreCrypto$8</ID>
+    <ID>MagicNumber:OmniRouteProvider.kt$OmniRouteProvider$404</ID>
+    <ID>MagicNumber:RemoteFileEntry.kt$RemotePermissions$0xFFF</ID>
+    <ID>MagicNumber:RemoteFileEntry.kt$RemotePermissions$3</ID>
+    <ID>MagicNumber:RemoteFileEntry.kt$RemotePermissions$8</ID>
+    <ID>MagicNumber:RemoteFileEntry.kt$RemotePermissions.Companion$8</ID>
+    <ID>MagicNumber:SecretRedactor.kt$SecretRedactor$12</ID>
+    <ID>MagicNumber:SecretRedactor.kt$SecretRedactor$5</ID>
+    <ID>MagicNumber:ServerValidator.kt$ServerValidator$64</ID>
+    <ID>MagicNumber:SftpRemoteFileSystem.kt$SftpRemoteFileSystem$10</ID>
+    <ID>MagicNumber:SftpRemoteFileSystem.kt$SftpRemoteFileSystem$20</ID>
+    <ID>MagicNumber:SftpRemoteFileSystem.kt$SftpRemoteFileSystem$30</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$1047</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$1049</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$107</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$21</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$22</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$23</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$24</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$25</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$255</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$27</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$28</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$29</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$3</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$30</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$37</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$38</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$39</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$4</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$40</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$47</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$48</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$49</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$5</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$6</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$7</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$8</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$9</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$90</ID>
+    <ID>MagicNumber:TerminalEmulator.kt$TerminalEmulator$97</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeyEncoder$0x1B</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeyEncoder$0x1C</ID>
+    <ID>MagicNumber:TerminalKeys.kt$TerminalKeyEncoder$0x1E</ID>
+    <ID>MagicNumber:TerminalPalette.kt$TerminalPalette$10</ID>
+    <ID>MagicNumber:TerminalPalette.kt$TerminalPalette$16</ID>
+    <ID>MagicNumber:TerminalPalette.kt$TerminalPalette$232</ID>
+    <ID>MagicNumber:TerminalPalette.kt$TerminalPalette$256</ID>
+    <ID>MagicNumber:TerminalPalette.kt$TerminalPalette$8</ID>
+    <ID>MagicNumber:TerminalStyle.kt$TerminalStyle$0xFF</ID>
+    <ID>MagicNumber:TerminalStyle.kt$TerminalStyle$0xFFFFFF</ID>
+    <ID>MagicNumber:TerminalStyle.kt$TerminalStyle$16</ID>
+    <ID>MagicNumber:TerminalStyle.kt$TerminalStyle$8</ID>
+    <ID>MagicNumber:UserPreferences.kt$UserPreferences$1024</ID>
+    <ID>MagicNumber:UserPreferences.kt$UserPreferences$256L</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$1024</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$16L</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$32f</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$500</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$50_000</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$8</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$8f</ID>
+    <ID>MagicNumber:VmHttpClient.kt$443</ID>
+    <ID>MagicNumber:VmHttpClient.kt$80</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$4</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$400</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$401</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$403</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$404</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$408</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$429</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$500</ID>
+    <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$599</ID>
+    <ID>MagicNumber:VmLog.kt$DiagnosticsLogSink$72</ID>
+    <ID>MaxLineLength:AiDao.kt$ConversationDao$"SELECT * FROM conversation WHERE projectId = :projectId AND isArchived = 0 ORDER BY updatedAtMillis DESC"</ID>
+    <ID>MaxLineLength:AiDao.kt$MessageDao$"UPDATE message SET status = :status, errorText = :errorText, tokenCount = :tokenCount WHERE id = :id"</ID>
+    <ID>MaxLineLength:AnsiParser.kt$AnsiParser$if (params.isEmpty()) IntArray(0) else params.map { if (it == NO_PARAM) 0 else it }.toIntArray()</ID>
+    <ID>MaxLineLength:AppProcessManager.kt$AppProcessManager$suspend</ID>
+    <ID>MaxLineLength:AppScanner.kt$AppScanner.Companion$" elif [ -f \"\$dir/docker-compose.yml\" ] || [ -f \"\$dir/docker-compose.yaml\" ] || [ -f \"\$dir/Dockerfile\" ]; then echo \"FRAMEWORK=docker\""</ID>
+    <ID>MaxLineLength:AppScanner.kt$AppScanner.Companion$" elif [ -f \"\$dir/requirements.txt\" ] || [ -f \"\$dir/pyproject.toml\" ] || [ -f \"\$dir/Pipfile\" ]; then echo \"FRAMEWORK=python\""</ID>
+    <ID>MaxLineLength:AppScanner.kt$AppScanner.Companion$"find \"\$APPS_ROOT\" -mindepth 1 -maxdepth 1 -type d 2&gt;/dev/null | sort | while IFS= read -r dir; do"</ID>
+    <ID>MaxLineLength:CommandSafety.kt$CommandSafety$pattern = "\\b(cat|less|more|head|tail|strings)\\b[^|;]*(\\.env\\b|id_rsa\\b|id_ed25519\\b|\\.pem\\b|credentials\\b|\\.netrc\\b)"</ID>
+    <ID>MaxLineLength:DiffParser.kt$DiffParser$files += FileDiff(oldPath, newPath, isNew, isDeleted, isRename, calculateLineNumbers(diffLines))</ID>
+    <ID>MaxLineLength:DiffParser.kt$DiffParser$line.startsWith(" ") -&gt; { output += DiffLine(text = line.drop(1), type = DiffLineType.UNCHANGED); i++ }</ID>
+    <ID>MaxLineLength:DiffParser.kt$DiffParser$line.startsWith("+") -&gt; { output += DiffLine(text = line.drop(1), type = DiffLineType.ADDED); i++ }</ID>
+    <ID>MaxLineLength:DiffParser.kt$DiffParser$line.startsWith("-") -&gt; { output += DiffLine(text = line.drop(1), type = DiffLineType.REMOVED); i++ }</ID>
+    <ID>MaxLineLength:ProjectDao.kt$RecentFileDao$"SELECT * FROM recent_file WHERE projectId = :projectId ORDER BY isPinned DESC, lastOpenedAtMillis DESC LIMIT :limit"</ID>
+    <ID>MaxLineLength:RecipeRegistry.kt$RecipeRegistry$command</ID>
+    <ID>MaxLineLength:RegexSyntaxHighlighter.kt$RegexSyntaxHighlighter$tokens += SyntaxToken(numberMatch.range.first, numberMatch.range.last + 1, SpanStyle(color = scheme.number))</ID>
+    <ID>MaxLineLength:ServerAppsScreen.kt$onConfirm(url.trim(), appName.trim().takeIf { it.isNotBlank() }, branch.trim().takeIf { it.isNotBlank() })</ID>
+    <ID>MaxLineLength:ServerValidator.kt$ServerValidator$"^(?=.{1,253}$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"</ID>
+    <ID>MaxLineLength:ServerValidatorTest.kt$ServerValidatorTest$ServerValidator.validate(validDraft().copy(connectTimeoutSeconds = "0"))[ServerField.CONNECT_TIMEOUT]</ID>
+    <ID>MaxLineLength:TerminalViewModel.kt$TerminalViewModel$launch { session.screen.collect { screen -&gt; _uiState.value = _uiState.value.copy(screen = screen) } }</ID>
+    <ID>MaxLineLength:TerminalViewModel.kt$TerminalViewModel$launch { session.state.collect { state -&gt; _uiState.value = _uiState.value.copy(sessionState = state) } }</ID>
+    <ID>MaxLineLength:UserPreferencesRepository.kt$UserPreferencesRepository$confirmDestructiveCommands = this[Keys.CONFIRM_DESTRUCTIVE] ?: defaults.confirmDestructiveCommands</ID>
+    <ID>MaxLineLength:VmDestination.kt$VmDestination.ServerDiff$data</ID>
+    <ID>MaxLineLength:VmDestination.kt$VmDestination.ServerEditor$data</ID>
+    <ID>MaxLineLength:VmNavHost.kt$val agentServerId = backStackEntry.arguments?.getString(VmDestination.ServerAgent.ARG_SERVER_ID) ?: ""</ID>
+    <ID>MissingPackageDeclaration:VmNavHost.kt$.VmNavHost.kt</ID>
+    <ID>NestedBlockDepth:AppScannerParser.kt$AppScannerParser$private fun splitSections(output: String): Sections</ID>
+    <ID>NewLineAtEndOfFile:AppProcessManager.kt$digital.vmstudio.code.core.ssh.apps.AppProcessManager.kt</ID>
+    <ID>NewLineAtEndOfFile:AppProject.kt$digital.vmstudio.code.core.ssh.apps.AppProject.kt</ID>
+    <ID>NewLineAtEndOfFile:AppScanner.kt$digital.vmstudio.code.core.ssh.apps.AppScanner.kt</ID>
+    <ID>NewLineAtEndOfFile:AppScannerParser.kt$digital.vmstudio.code.core.ssh.apps.AppScannerParser.kt</ID>
+    <ID>NewLineAtEndOfFile:AppScannerParserTest.kt$digital.vmstudio.code.core.ssh.apps.AppScannerParserTest.kt</ID>
+    <ID>NewLineAtEndOfFile:ServerAppsScreen.kt$digital.vmstudio.code.feature.servers.ServerAppsScreen.kt</ID>
+    <ID>NewLineAtEndOfFile:ServerAppsViewModel.kt$digital.vmstudio.code.feature.servers.ServerAppsViewModel.kt</ID>
+    <ID>TooManyFunctions:DatabaseModule.kt$DatabaseModule</ID>
+    <ID>TooManyFunctions:RemotePath.kt$RemotePath</ID>
+    <ID>TooManyFunctions:TerminalEmulator.kt$TerminalEmulator</ID>
+    <ID>TooManyFunctions:TerminalStyle.kt$TerminalStyle</ID>
+    <ID>TooManyFunctions:UserPreferencesRepository.kt$UserPreferencesRepository : UserPreferencesSource</ID>
+    <ID>UnusedImports:RecipeExecutor.kt$import digital.vmstudio.code.core.common.error.VmError</ID>
+    <ID>UnusedImports:SyntaxHighlighter.kt$import androidx.compose.ui.text.font.FontWeight</ID>
+    <ID>UnusedParameter:RecipeScreen.kt$onDismissError: () -&gt; Unit</ID>
+    <ID>UnusedParameter:TerminalView.kt$foregroundColor: Color</ID>
+    <ID>UnusedParameter:VmNavHost.kt$isOnline: Boolean</ID>
+    <ID>VariableNaming:TerminalEmulatorTest.kt$TerminalEmulatorTest$/** Control characters built from code points so the source stays plain ASCII. */ private val ESC = Char(27).toString()</ID>
+    <ID>VariableNaming:TerminalEmulatorTest.kt$TerminalEmulatorTest$private val BEL = Char(7).toString()</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup is disabled at the application level. These rules are declared anyway
+     so that if backup is ever enabled, encrypted credentials and the Keystore-bound
+     database can never be included: the master key cannot leave the device, so a
+     restored copy would be undecryptable at best and a leak vector at worst. -->
+<full-backup-content>
+    <exclude domain="file" path="credentials/" />
+    <exclude domain="database" path="vmstudio.db" />
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>

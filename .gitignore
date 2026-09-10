@@ -1,0 +1,23 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# Signing material. The keystore and its passwords never enter the repository;
+# see DEVELOPMENT.md for how release builds pick them up.
+keystore.properties
+*.jks
+.kotlin/
+
+# Local build scratch
+build_output.txt
+gradle_build_log.txt

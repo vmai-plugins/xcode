@@ -1,0 +1,170 @@
+# Detekt configuration.
+#
+# Tuned rather than adopted wholesale. The default ruleset flags a great deal that
+# is idiomatic in a Compose + coroutines codebase, and a static-analysis gate that
+# cries wolf gets disabled within a week. What is enabled here is what would
+# actually indicate a defect in this project.
+
+build:
+  maxIssues: 0
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+comments:
+  active: true
+  # Documentation is required on the interfaces that define subsystem boundaries,
+  # not on every function. Enforcing it everywhere produces restatements of the
+  # signature, which are worse than nothing.
+  UndocumentedPublicClass:
+    active: false
+  UndocumentedPublicFunction:
+    active: false
+  UndocumentedPublicProperty:
+    active: false
+
+complexity:
+  active: true
+  LongMethod:
+    active: true
+    # Composables legitimately run long: a screen is one declarative expression and
+    # splitting it purely to satisfy a counter makes it harder to read.
+    threshold: 120
+    ignoreAnnotated: ['Composable']
+  LongParameterList:
+    active: true
+    functionThreshold: 8
+    constructorThreshold: 10
+    ignoreAnnotated: ['Composable', 'Inject']
+  TooManyFunctions:
+    active: true
+    thresholdInClasses: 25
+    thresholdInInterfaces: 25
+    thresholdInFiles: 40
+    ignoreAnnotatedFunctions: ['Composable']
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 20
+  NestedBlockDepth:
+    active: true
+    threshold: 5
+  LargeClass:
+    active: true
+    threshold: 700
+
+coroutines:
+  active: true
+  # The rules that matter most here: the app's structured-concurrency guarantees
+  # depend on cancellation propagating and on nothing blocking a dispatcher.
+  GlobalCoroutineUsage:
+    active: true
+  RedundantSuspendModifier:
+    active: true
+  SuspendFunWithFlowReturnType:
+    active: true
+  InjectDispatcher:
+    active: true
+
+empty-blocks:
+  active: true
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+
+exceptions:
+  active: true
+  # Catching Throwable is correct at a subsystem boundary that maps failures into
+  # VmError, and every such site rethrows CancellationException first.
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: true
+    ignoredExceptionTypes:
+      - 'InterruptedException'
+      - 'NumberFormatException'
+      - 'ParseException'
+      - 'MalformedURLException'
+      - 'IOException'
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: true
+  PrintStackTrace:
+    active: true
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    # Composables are PascalCase by convention.
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    active: true
+    constantPattern: '[A-Z][_A-Z0-9]*'
+    privatePropertyPattern: '_?[A-Za-z][_A-Za-z0-9]*'
+  MatchingDeclarationName:
+    active: false
+
+performance:
+  active: true
+  SpreadOperator:
+    active: false
+
+potential-bugs:
+  active: true
+  UnsafeCallOnNullableType:
+    active: true
+  UnsafeCast:
+    active: true
+  ImplicitDefaultLocale:
+    active: true
+  # Equality on a float or double is a real defect, and the codebase compares
+  # transfer progress and latencies.
+  EqualsAlwaysReturnsTrueOrFalse:
+    active: true
+  IgnoredReturnValue:
+    active: true
+  MissingPackageDeclaration:
+    active: true
+
+style:
+  active: true
+  MagicNumber:
+    active: true
+    ignoreNumbers: ['-1', '0', '1', '2', '100', '1000']
+    ignoreAnnotated: ['Composable', 'Preview']
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignorePropertyDeclaration: true
+    ignoreConstantDeclaration: true
+    ignoreEnums: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 110
+    excludeCommentStatements: false
+  ReturnCount:
+    active: true
+    max: 6
+  ThrowsCount:
+    active: true
+    max: 4
+  UnusedPrivateMember:
+    active: true
+  UnusedImports:
+    active: true
+  WildcardImport:
+    active: true
+  ForbiddenComment:
+    active: true
+    # A TODO in this codebase means an unfinished path that the audit would later
+    # find as "built but not wired". They are not allowed to accumulate silently.
+    comments:
+      - reason: 'Unfinished work must be tracked, not left in a comment'
+        value: 'TODO:'
+      - reason: 'Unfinished work must be tracked, not left in a comment'
+        value: 'FIXME:'
+  # Explicit `it` naming in nested lambdas is clearer than shadowing.
+  ExplicitItLambdaParameter:
+    active: false
+  UseCheckOrError:
+    active: true
+  UnnecessaryAbstractClass:
+    active: false
