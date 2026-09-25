@@ -208,7 +208,7 @@ private fun UpdateDownloadingBanner(progress: Float) {
     VmCard {
         VmProgress(
             progress = progress,
-            label = "Downloading update…",
+            label = "Downloading update...",
             trailingLabel = "${(progress * 100).toInt()}%",
         )
     }

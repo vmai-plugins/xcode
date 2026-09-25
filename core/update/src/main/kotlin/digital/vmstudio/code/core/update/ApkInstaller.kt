@@ -12,7 +12,7 @@ import javax.inject.Singleton
  * Launches the system package installer for a downloaded APK.
  *
  * If the user has not yet allowed "install unknown apps" for this app, the
- * installer itself shows that system prompt before proceeding — nothing here
+ * installer itself shows that system prompt before proceeding - nothing here
  * needs to pre-check or request it.
  */
 @Singleton

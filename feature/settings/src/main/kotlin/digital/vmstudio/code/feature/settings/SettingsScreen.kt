@@ -247,7 +247,7 @@ private fun UpdateSection(state: SettingsUiState, viewModel: SettingsViewModel) 
 
         when (val update = state.updateState) {
             is UpdateState.Checking -> VmButton(
-                text = "Checking…",
+                text = "Checking...",
                 onClick = {},
                 enabled = false,
                 loading = true,
@@ -271,7 +271,7 @@ private fun UpdateSection(state: SettingsUiState, viewModel: SettingsViewModel) 
 
             is UpdateState.Downloading -> VmProgress(
                 progress = update.progress,
-                label = "Downloading update…",
+                label = "Downloading update...",
                 trailingLabel = "${(update.progress * 100).toInt()}%",
             )
 
