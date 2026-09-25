@@ -43,6 +43,7 @@ include(":core:workspace")
 include(":core:ai")
 include(":core:agent")
 include(":core:connectors")
+include(":core:update")
 
 // Feature layer — flat; features never depend on each other.
 include(":feature:dashboard")
