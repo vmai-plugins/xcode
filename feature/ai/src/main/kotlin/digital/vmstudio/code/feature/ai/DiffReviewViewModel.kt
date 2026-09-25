@@ -82,16 +82,24 @@ class DiffReviewViewModel @Inject constructor(
     }
 
     fun accept() {
-        // Accept the changes - in a full implementation, this might commit or mark as reviewed
-        // For now, just navigate back
+        // The reviewed changes are already the file's current content on the
+        // server, so accepting requires no server-side action.
     }
 
     fun reject() {
-        // Reject the changes - restore the original file
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true)
-            // In a full implementation, this would restore the file from Git HEAD
-            _uiState.value = _uiState.value.copy(isSaving = false)
+            val repoPath = filePath.substringBeforeLast('/')
+            when (val result = gitService.restoreFile(serverId, repoPath, filePath)) {
+                is GitResult.Success -> _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    diff = GitDiff(),
+                )
+                is GitResult.Failure -> _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    error = mapGitError(result.error),
+                )
+            }
         }
     }
 
