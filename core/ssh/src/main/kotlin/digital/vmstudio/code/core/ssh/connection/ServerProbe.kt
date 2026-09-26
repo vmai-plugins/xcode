@@ -4,9 +4,13 @@ import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.ssh.model.Server
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.connection.channel.direct.Session
 import java.util.concurrent.TimeUnit
 
 /**
@@ -64,23 +68,43 @@ internal object ServerProbe {
         )
     }
 
-    private suspend fun runProbe(client: SSHClient): Map<String, String> = runInterruptible {
-        client.startSession().use { session ->
-            val command = session.exec(PROBE_SCRIPT)
-            val text = command.inputStream.bufferedReader().readText()
-            command.join(PROBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-            text.lineSequence()
-                .mapNotNull { line ->
-                    val index = line.indexOf('=')
-                    if (index <= 0 || !line.startsWith("VM")) {
-                        null
-                    } else {
-                        line.substring(0, index) to line.substring(index + 1).trim()
-                    }
+    /**
+     * stdout and stderr are drained concurrently, and the whole round trip is
+     * bounded by [PROBE_TIMEOUT_MILLIS] via [withTimeoutOrNull]: reading stdout to
+     * EOF before touching stderr deadlocks the moment a chatty login shell (motd,
+     * profile scripts outside this script's own `2>/dev/null`) fills the stderr
+     * pipe, since the remote process then blocks writing it and stdout never
+     * reaches EOF either - the same pattern [SshSession.execute] guards against.
+     * `command.join`'s own timeout ran too late to help here since it only started
+     * after a blocking `readText()` had already returned.
+     */
+    private suspend fun runProbe(client: SSHClient): Map<String, String> =
+        withTimeoutOrNull(PROBE_TIMEOUT_MILLIS) {
+            var session: Session? = null
+            try {
+                val opened = client.startSession()
+                session = opened
+                val command = opened.exec(PROBE_SCRIPT)
+                val (stdout, _) = coroutineScope {
+                    val out = async { runInterruptible { command.inputStream.bufferedReader().readText() } }
+                    val err = async { runInterruptible { command.errorStream.bufferedReader().readText() } }
+                    out.await() to err.await()
                 }
-                .toMap()
-        }
-    }
+                runInterruptible { command.join(PROBE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
+                stdout.lineSequence()
+                    .mapNotNull { line ->
+                        val index = line.indexOf('=')
+                        if (index <= 0 || !line.startsWith("VM")) {
+                            null
+                        } else {
+                            line.substring(0, index) to line.substring(index + 1).trim()
+                        }
+                    }
+                    .toMap()
+            } finally {
+                runCatching { session?.close() }
+            }
+        }.orEmpty()
 
     /**
      * `/bin/sh` is required by POSIX and is the one shell that can be assumed to

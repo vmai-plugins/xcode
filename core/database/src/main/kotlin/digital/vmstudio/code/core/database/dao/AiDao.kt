@@ -81,6 +81,20 @@ interface MessageDao {
     @Upsert
     suspend fun upsert(message: MessageEntity)
 
+    /**
+     * Assigns the next sequence number and inserts in one transaction.
+     *
+     * [maxSequence] followed by a separate [upsert] would race under concurrent
+     * writers to the same conversation: two callers could read the same max before
+     * either writes, and both assign the same sequence, breaking the monotonic,
+     * deterministic ordering messages otherwise rely on (several messages can share
+     * a millisecond, so timestamp order alone is not enough).
+     */
+    @Transaction
+    suspend fun insertWithNextSequence(message: MessageEntity) {
+        upsert(message.copy(sequence = maxSequence(message.conversationId) + 1))
+    }
+
     @Query("UPDATE message SET content = :content, status = :status WHERE id = :id")
     suspend fun updateContent(id: String, content: String, status: MessageStatus)
 
