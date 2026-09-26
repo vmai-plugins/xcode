@@ -616,21 +616,34 @@ private fun BackgroundRunsSection(
 
         runs.forEach { run ->
             val id = run.id ?: return@forEach
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = spacing.xs),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(top = spacing.sm),
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = run.name ?: id,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                Text(
+                    text = run.name ?: id,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = spacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Scrolls rather than squeezing: the id and status chips have no
+                    // fixed budget, and a long status ("Needs attention") must never
+                    // fight the Output/Stop controls for space on a narrow screen.
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    ) {
                         VmChip(text = id, monospace = true)
                         // A blocked run looks identical to a slow one unless it is
                         // named; an expired login on the server produces exactly this.
@@ -640,20 +653,20 @@ private fun BackgroundRunsSection(
                             run.status?.let { VmChip(text = it) }
                         }
                     }
-                }
 
-                VmButton(
-                    text = "Output",
-                    onClick = { onOpenLogs(id) },
-                    style = VmButtonStyle.Tertiary,
-                )
-                IconButton(onClick = { onStop(id) }) {
-                    Icon(
-                        imageVector = Icons.Default.Stop,
-                        contentDescription = "Stop this run",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp),
+                    VmButton(
+                        text = "Output",
+                        onClick = { onOpenLogs(id) },
+                        style = VmButtonStyle.Tertiary,
                     )
+                    IconButton(onClick = { onStop(id) }) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = "Stop this run",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }
