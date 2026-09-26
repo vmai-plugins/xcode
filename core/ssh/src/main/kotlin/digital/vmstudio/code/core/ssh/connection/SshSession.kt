@@ -171,6 +171,22 @@ class SshSession internal constructor(
                     ),
                 )
             }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            // Mirrors execute()'s catch: a channel-open failure or a connection drop
+            // mid-handshake must reach the collector as a terminal chunk, not escape
+            // this channelFlow as a thrown exception - callers such as
+            // ClaudeCodeCliProvider have no exception handling around collect(), so
+            // an uncaught throw here crashes the whole app rather than failing the run.
+            VmLog.w(LogCategory.SSH, TAG, "executeStreaming failed on ${server.name}: ${throwable.message}")
+            send(
+                CommandOutputChunk.Exited(
+                    exitCode = null,
+                    signal = "ERROR: ${throwable.message ?: throwable::class.simpleName}",
+                    durationMillis = System.currentTimeMillis() - startedAt,
+                ),
+            )
         } finally {
             // NonCancellable: on cancellation this still has to run, or the remote
             // process survives the coroutine that owned it.

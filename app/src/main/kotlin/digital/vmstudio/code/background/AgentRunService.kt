@@ -40,23 +40,55 @@ class AgentRunService : Service() {
     private val scope = CoroutineScope(SupervisorJob())
     private var pollJob: Job? = null
 
-    /** Servers with runs worth watching; a run can be started on more than one. */
+    /**
+     * Servers with runs worth watching; a run can be started on more than one.
+     *
+     * Mutated from two different threads with no coordination otherwise:
+     * [onStartCommand] runs on the main thread, while [pollLoop] runs on this
+     * service's own [scope] (a bare [SupervisorJob] with no dispatcher, so its
+     * children default to [kotlinx.coroutines.Dispatchers.Default]'s thread pool).
+     * A plain [LinkedHashSet] is not thread-safe, so every access - not just the
+     * mutations - is guarded by [watchedServersLock].
+     */
+    private val watchedServersLock = Any()
     private val watchedServers = linkedSetOf<String>()
+
+    private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // START_STICKY redelivers with a null intent after a system-initiated kill,
+        // so the server id from the original start would otherwise be lost with the
+        // killed instance - pollLoop would then find watchedServers empty on its very
+        // first iteration and stop itself immediately, never re-reading live state as
+        // intended. Restoring the last-known set here is what makes restart actually
+        // resume watching rather than silently give up.
+        synchronized(watchedServersLock) {
+            watchedServers += prefs.getStringSet(KEY_WATCHED_SERVERS, emptySet()).orEmpty()
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val serverId = intent?.getStringExtra(EXTRA_SERVER_ID)
-        if (serverId != null) watchedServers += serverId
+        val watchedCount = synchronized(watchedServersLock) {
+            if (serverId != null) watchedServers += serverId
+            watchedServers.size
+        }
+        persistWatchedServers()
 
         notifications.ensureChannels()
-        startForegroundSafely(runningCount = watchedServers.size)
+        startForegroundSafely(runningCount = watchedCount)
 
         if (pollJob == null) pollJob = scope.launch { pollLoop() }
 
-        // Redelivery would re-run the last intent after a kill; the watcher re-reads
-        // live state on every poll, so restarting plainly is enough.
         return START_STICKY
+    }
+
+    private fun persistWatchedServers() {
+        val snapshot = synchronized(watchedServersLock) { watchedServers.toSet() }
+        prefs.edit().putStringSet(KEY_WATCHED_SERVERS, snapshot).apply()
     }
 
     private suspend fun pollLoop() {
@@ -65,7 +97,8 @@ class AgentRunService : Service() {
         while (true) {
             var running = 0
 
-            watchedServers.toList().forEach { serverId ->
+            val snapshot = synchronized(watchedServersLock) { watchedServers.toList() }
+            snapshot.forEach { serverId ->
                 val result = watcher.poll(serverId)
 
                 result.newlyFinished.forEach(notifications::notifyFinished)
@@ -76,8 +109,11 @@ class AgentRunService : Service() {
 
                 running += result.stillRunning.size
                 // Nothing left on this server, so stop asking it.
-                if (!result.hasWork && !result.hasAnnouncements) watchedServers -= serverId
+                if (!result.hasWork && !result.hasAnnouncements) {
+                    synchronized(watchedServersLock) { watchedServers -= serverId }
+                }
             }
+            persistWatchedServers()
 
             if (running > 0) {
                 idleRounds = 0
@@ -89,7 +125,8 @@ class AgentRunService : Service() {
             // A couple of empty rounds before quitting, so a run that is briefly
             // between states does not cause the service to stop and immediately
             // need restarting.
-            if (watchedServers.isEmpty() || idleRounds >= MAX_IDLE_ROUNDS) {
+            val stillWatching = synchronized(watchedServersLock) { watchedServers.isNotEmpty() }
+            if (!stillWatching || idleRounds >= MAX_IDLE_ROUNDS) {
                 VmLog.i(LogCategory.AI, TAG, "No agent runs left to watch; stopping")
                 stopSelf()
                 return
@@ -133,6 +170,8 @@ class AgentRunService : Service() {
     companion object {
         private const val TAG = "AgentRunService"
         private const val EXTRA_SERVER_ID = "serverId"
+        private const val PREFS_NAME = "agent_run_service"
+        private const val KEY_WATCHED_SERVERS = "watched_servers"
 
         /**
          * Frequent enough that a short task is announced promptly, sparse enough not

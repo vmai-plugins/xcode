@@ -10,6 +10,7 @@ import digital.vmstudio.code.core.common.log.LogcatSink
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.onFailure
 import digital.vmstudio.code.core.database.StartupReconciler
+import digital.vmstudio.code.core.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -21,12 +22,15 @@ class VmApplication : Application() {
 
     @Inject lateinit var startupReconciler: StartupReconciler
 
+    @Inject lateinit var updateManager: UpdateManager
+
     @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
     override fun onCreate() {
         super.onCreate()
         installLogging()
         reconcileInterruptedWork()
+        updateManager.checkForUpdate()
     }
 
     private fun installLogging() {

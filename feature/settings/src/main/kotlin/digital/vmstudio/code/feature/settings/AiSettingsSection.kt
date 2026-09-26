@@ -19,6 +19,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -148,6 +149,30 @@ fun AiSettingsSection(
                     current = state.preferences.aiSelectedModelId,
                     onSelect = viewModel::selectModel,
                 )
+            }
+
+            VmCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Tool use", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = "Lets this model read, write and run commands on the " +
+                                "server, the same category of thing Claude Code CLI does " +
+                                "- off by default because reliability depends entirely on " +
+                                "the selected model's own tool-calling ability.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = state.preferences.aiToolsEnabled,
+                        onCheckedChange = viewModel::setToolsEnabled,
+                    )
+                }
             }
         }
 

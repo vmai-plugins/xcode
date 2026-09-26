@@ -2,6 +2,7 @@ package digital.vmstudio.code.core.ai.omniroute
 
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
+import digital.vmstudio.code.core.ai.omniroute.agent.OmniRouteAgentLoop
 import digital.vmstudio.code.core.ai.provider.AiProvider
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
 import digital.vmstudio.code.core.ai.provider.AiProviderKind
@@ -16,6 +17,7 @@ import digital.vmstudio.code.core.network.http.VmHttpException
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
@@ -32,21 +34,22 @@ import kotlin.coroutines.cancellation.CancellationException
 /**
  * Talks to an OmniRoute-style HTTP gateway directly from the device.
  *
- * **This is an assistant, not an agent.** It streams model replies; it has no tools,
- * cannot read or write files, and cannot run commands. Agentic work is the Claude
- * Code provider's job, because implementing a competing tool loop on a phone would
- * duplicate it at a fraction of the quality. This provider exists for the cases the
- * CLI cannot serve: no SSH server configured, a server that is down, or a quick
+ * By default this is a plain assistant: it streams model replies and cannot touch
+ * files or run commands. When the user explicitly turns on tool use in Settings
+ * (off by default - reliability depends entirely on which model the gateway routes
+ * to) and a working directory is set, [run] instead delegates to [OmniRouteAgentLoop],
+ * which gives it the same four tools (read/list/write a file, run a command) Claude
+ * Code CLI's own tools reach, gated by the same command-safety and file-edit approval
+ * the rest of the app uses. Chat mode remains the fallback whenever tool use is off
+ * or there is nowhere for a tool to act - no SSH server configured, or a quick
  * question that does not warrant starting a run.
- *
- * The distinction is surfaced in the UI rather than left for the user to discover by
- * asking it to edit a file.
  */
 @Singleton
 class OmniRouteProvider @Inject constructor(
     private val httpClient: VmHttpClient,
     private val credentialStore: SecureCredentialStore,
     private val preferences: UserPreferencesSource,
+    private val agentLoop: OmniRouteAgentLoop,
 ) : AiProvider {
 
     override val kind: AiProviderKind = AiProviderKind.OMNIROUTE
@@ -152,6 +155,18 @@ class OmniRouteProvider @Inject constructor(
         val dialect = detectedDialect.takeIf { it != OmniRouteDialect.UNKNOWN }
             ?: detectDialect(baseUrl, key).also { detectedDialect = it }
 
+        // Tool use is opt-in and needs somewhere to act: without a working directory
+        // there is no project for read_file/write_file/run_command to act on, so this
+        // falls back to plain chat exactly as it would if the toggle were off.
+        if (settings.aiToolsEnabled && config.workingDirectory.isNotBlank()) {
+            try {
+                emitAll(agentLoop.run(baseUrl, key, dialect, model, config))
+            } finally {
+                key.wipe()
+            }
+            return@flow
+        }
+
         try {
             val request = buildChatRequest(baseUrl, key, dialect, model, config.prompt)
             val text = StringBuilder()
@@ -219,7 +234,7 @@ class OmniRouteProvider @Inject constructor(
         fun request(dialect: OmniRouteDialect) = Request.Builder()
             .url("$baseUrl/v1/models")
             .get()
-            .applyAuth(key, dialect)
+            .applyOmniRouteAuth(key, dialect)
             .build()
 
         val bearer = httpClient.execute(request(OmniRouteDialect.OPENAI_CHAT), RetryPolicy(maxAttempts = 2))
@@ -257,7 +272,7 @@ class OmniRouteProvider @Inject constructor(
             val request = Request.Builder()
                 .url("$baseUrl/${dialect.chatPath}")
                 .post(body.toRequestBody(JSON_MEDIA_TYPE))
-                .applyAuth(key, dialect)
+                .applyOmniRouteAuth(key, dialect)
                 .build()
 
             return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 1))) {
@@ -306,39 +321,13 @@ class OmniRouteProvider @Inject constructor(
         return Request.Builder()
             .url("$baseUrl/${dialect.chatPath}")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
-            .applyAuth(key, dialect)
+            .applyOmniRouteAuth(key, dialect)
             .header("Accept", "text/event-stream")
             .build()
     }
 
-    /**
-     * Applies credentials for the dialect.
-     *
-     * Both header styles are sent when the dialect is not yet known: gateways ignore
-     * the one they do not use, and this avoids a failed probe purely because the
-     * wrong header was chosen. The key is read inside the scoped accessor and never
-     * held as a String field.
-     */
-    private fun Request.Builder.applyAuth(key: Secret, dialect: OmniRouteDialect): Request.Builder =
-        key.useAsString { value ->
-            when (dialect) {
-                OmniRouteDialect.ANTHROPIC_MESSAGES -> this
-                    .header("x-api-key", value)
-                    .header("anthropic-version", ANTHROPIC_VERSION)
-
-                OmniRouteDialect.OPENAI_CHAT -> this
-                    .header("Authorization", "Bearer $value")
-
-                OmniRouteDialect.UNKNOWN -> this
-                    .header("Authorization", "Bearer $value")
-                    .header("x-api-key", value)
-                    .header("anthropic-version", ANTHROPIC_VERSION)
-            }.header("Content-Type", "application/json")
-        }
-
     private companion object {
         const val TAG = "OmniRouteProvider"
-        const val ANTHROPIC_VERSION = "2023-06-01"
         const val DEFAULT_MAX_TOKENS = 4096
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }

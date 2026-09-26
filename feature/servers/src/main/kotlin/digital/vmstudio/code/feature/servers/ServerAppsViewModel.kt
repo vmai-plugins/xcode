@@ -111,24 +111,24 @@ class ServerAppsViewModel @Inject constructor(
         initialValue = ServerAppsUiState(),
     )
 
-    /** Scans once on scroll-in, then again on every explicit refresh. */
-    fun refresh() = viewModelScope.launch {
-        scan()
+    init {
+        viewModelScope.launch { scan() }
     }
 
-    suspend fun scan() {
-        initialLoading.value = true
+    /** Re-scans via the pull-to-refresh / retry path, after the initial load. */
+    fun refresh() = viewModelScope.launch {
+        scan(isRefresh = true)
+    }
+
+    suspend fun scan(isRefresh: Boolean = false) {
+        if (isRefresh) refreshing.value = true else initialLoading.value = true
         error.value = null
         when (val result = scanner.scan(serverId)) {
-            is VmResult.Success -> {
-                initialLoading.value = false
-                apps.value = result.value
-            }
-            is VmResult.Failure -> {
-                initialLoading.value = false
-                error.value = result.error
-            }
+            is VmResult.Success -> apps.value = result.value
+            is VmResult.Failure -> error.value = result.error
         }
+        initialLoading.value = false
+        refreshing.value = false
     }
 
     fun start(app: AppProject) = runAction(app) { processManager.start(serverId, it) }

@@ -137,6 +137,10 @@ class AiSettingsViewModel @Inject constructor(
         }
     }
 
+    fun setToolsEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setAiToolsEnabled(enabled) }
+    }
+
     /**
      * Runs the connection test.
      *

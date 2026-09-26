@@ -1,9 +1,11 @@
 package digital.vmstudio.code.core.ai.omniroute
 
+import digital.vmstudio.code.core.security.model.Secret
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import okhttp3.Request
 
 /**
  * Which wire format a gateway speaks.
@@ -113,3 +115,31 @@ object ChatStreamDecoder {
     private fun JsonObject.long(key: String): Long? =
         (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 }
+
+private const val ANTHROPIC_VERSION = "2023-06-01"
+
+/**
+ * Applies credentials for [dialect].
+ *
+ * Both header styles are sent when the dialect is not yet known: gateways ignore
+ * the one they do not use, and this avoids a failed probe purely because the wrong
+ * header was chosen. The key is read inside the scoped accessor and never held as
+ * a String field. Shared by [OmniRouteProvider][digital.vmstudio.code.core.ai.omniroute.OmniRouteProvider]
+ * and the tool-calling agent loop, which both need to sign requests the same way.
+ */
+internal fun Request.Builder.applyOmniRouteAuth(key: Secret, dialect: OmniRouteDialect): Request.Builder =
+    key.useAsString { value ->
+        when (dialect) {
+            OmniRouteDialect.ANTHROPIC_MESSAGES -> this
+                .header("x-api-key", value)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+
+            OmniRouteDialect.OPENAI_CHAT -> this
+                .header("Authorization", "Bearer $value")
+
+            OmniRouteDialect.UNKNOWN -> this
+                .header("Authorization", "Bearer $value")
+                .header("x-api-key", value)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+        }.header("Content-Type", "application/json")
+    }

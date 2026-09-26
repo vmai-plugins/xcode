@@ -1,5 +1,6 @@
 package digital.vmstudio.code.core.ssh.apps
 
+import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.command.CommandLimits
@@ -21,19 +22,24 @@ class AppProcessManager @Inject constructor(
 ) {
 
     suspend fun start(serverId: String, app: AppProject): VmResult<CommandResult> =
-        guard.run(serverId, startCommand(app), CommandLimits.LONG_RUNNING)
+        runChecked(serverId, startCommand(app), CommandLimits.LONG_RUNNING)
 
+    // Deliberately not exit-code checked: stopCommand's "|| true" fallback (and the
+    // Docker branch's own semantics) mean a non-running app is not a failure to stop.
     suspend fun stop(serverId: String, app: AppProject): VmResult<CommandResult> =
         guard.run(serverId, stopCommand(app))
 
     suspend fun restart(serverId: String, app: AppProject): VmResult<CommandResult> =
-        guard.run(serverId, restartCommand(app))
+        runChecked(serverId, restartCommand(app))
 
+    // Not exit-code checked: pm2/docker can exit non-zero while still having written
+    // useful output (an app that crashed on its last run), which the log viewer
+    // should still show rather than replacing with a bare error panel.
     suspend fun logs(serverId: String, app: AppProject, lines: Int = DEFAULT_LOG_LINES): VmResult<CommandResult> =
         guard.run(serverId, logsCommand(app, lines))
 
     suspend fun gitPull(serverId: String, app: AppProject): VmResult<CommandResult> =
-        guard.run(serverId, "cd ${sh(app.path)} && git pull", CommandLimits.LONG_RUNNING)
+        runChecked(serverId, "cd ${sh(app.path)} && git pull", CommandLimits.LONG_RUNNING)
 
     suspend fun cloneFromGitHub(
         serverId: String,
@@ -49,7 +55,40 @@ class AppProcessManager @Inject constructor(
             ?: FALLBACK_FOLDER_NAME
         val branchFlag = branch?.trim()?.takeIf { it.isNotBlank() }?.let { "-b ${sh(it)} "}.orEmpty()
         val command = "git clone $branchFlag${sh(url)} ${sh("$appsRoot/$folder")}"
-        return guard.run(serverId, command, CommandLimits.LONG_RUNNING)
+        return runChecked(serverId, command, CommandLimits.LONG_RUNNING)
+    }
+
+    /**
+     * Runs [command] and turns a non-zero exit into a [VmResult.Failure].
+     *
+     * `guard.run` succeeding only means the SSH round trip completed; the remote
+     * shell command can still have failed (no start script found, pm2 missing, a
+     * merge conflict on pull). Without this, the caller sees a bare "success" and
+     * shows no error for an action that visibly did nothing.
+     */
+    private suspend fun runChecked(
+        serverId: String,
+        command: String,
+        limits: CommandLimits = CommandLimits(),
+    ): VmResult<CommandResult> {
+        val result = guard.run(serverId, command, limits)
+        return when (result) {
+            is VmResult.Failure -> result
+            is VmResult.Success -> if (result.value.isSuccess) {
+                result
+            } else {
+                VmResult.Failure(
+                    VmError.Command(
+                        summary = "Command failed",
+                        reason = result.value.stderr.ifBlank { result.value.stdout }
+                            .takeLast(MAX_ERROR_EXCERPT)
+                            .ifBlank { null },
+                        command = command,
+                        exitCode = result.value.exitCode,
+                    ),
+                )
+            }
+        }
     }
 
     // --- command builders ---------------------------------------------------------
@@ -115,5 +154,6 @@ class AppProcessManager @Inject constructor(
         const val DEFAULT_LOG_LINES = 100
         const val DEFAULT_STATIC_PORT = 3000
         const val FALLBACK_FOLDER_NAME = "app"
+        const val MAX_ERROR_EXCERPT = 400
     }
 }

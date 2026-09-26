@@ -6,6 +6,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import digital.vmstudio.code.core.ai.claudecode.ClaudeCodeStreamParser
+import digital.vmstudio.code.core.ai.omniroute.agent.DefaultFileEditApprovalGate
+import digital.vmstudio.code.core.ai.omniroute.agent.FileEditApprovalGate
 import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
 import digital.vmstudio.code.core.ai.repository.DefaultAgentConversationRepository
@@ -32,6 +34,12 @@ abstract class AiModule {
     abstract fun bindAgentTaskRepository(
         impl: DefaultAgentTaskRepository,
     ): AgentTaskRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindFileEditApprovalGate(
+        impl: DefaultFileEditApprovalGate,
+    ): FileEditApprovalGate
 
     companion object {
         @Provides

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -304,9 +305,12 @@ private fun AppCard(
 
 @Composable
 private fun MetaRow(app: AppProject) {
+    // Scrolls rather than squeezing: a git branch name is unbounded, and up to five
+    // chips here would otherwise overflow the screen on top of it.
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
             .padding(top = VmTheme.spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(VmTheme.spacing.xs),
     ) {

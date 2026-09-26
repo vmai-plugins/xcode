@@ -258,7 +258,13 @@ internal class AnsiParser(private val emulator: TerminalEmulator) {
 
     private fun string(byte: Int) {
         // DCS/APC/PM payloads are consumed and discarded; only the terminator matters.
-        if (byte == ESC || byte == 0x9C) state = State.GROUND
+        // The two-byte form of ST is ESC \; jumping straight to GROUND here (instead
+        // of ESCAPE, as osc() correctly does) fed that trailing \ to ground() as an
+        // ordinary character, printing a stray backslash after every such sequence.
+        when (byte) {
+            ESC -> state = State.ESCAPE
+            0x9C -> state = State.GROUND
+        }
     }
 
     private companion object {

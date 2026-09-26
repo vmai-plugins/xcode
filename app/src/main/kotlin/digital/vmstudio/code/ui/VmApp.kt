@@ -111,6 +111,7 @@ fun VmApp(
                     // Above the graph so an approval raised by background work
                     // reaches the user wherever they currently are.
                     CommandApprovalHost()
+                    FileEditApprovalHost()
                 }
             }
         }

@@ -58,6 +58,18 @@ class EditorViewModel @Inject constructor(
     private var editor: EditorState? = null
 
     /**
+     * The remote file's modification time as of the last successful load or save.
+     *
+     * save() otherwise writes unconditionally: if the AI agent, another device, or
+     * a second editor tab changes this file between this screen's load and its
+     * save, the user's save would silently clobber those changes with no warning.
+     * Null when unknown (stat failed, or SFTP reported 0 - "unknown" per
+     * RemoteFileEntry's own doc) skips the check rather than blocking a save on an
+     * unrelated stat failure.
+     */
+    private var loadedModifiedAtSeconds: Long? = null
+
+    /**
      * A value-typed view of [editor]. [EditorState] is identity-compared, so it
      * cannot drive a StateFlow; every mutation re-publishes a fresh snapshot here.
      */
@@ -102,6 +114,7 @@ class EditorViewModel @Inject constructor(
                         initialContent = result.value,
                         fileName = filePath.substringAfterLast('/'),
                     )
+                    loadedModifiedAtSeconds = currentModifiedAtSeconds()
                     publishSnapshot()
                     isLoading.value = false
                 }
@@ -138,10 +151,26 @@ class EditorViewModel @Inject constructor(
         viewModelScope.launch {
             isSaving.value = true
             saveError.value = null
+
+            val loadedAt = loadedModifiedAtSeconds
+            val remoteAt = currentModifiedAtSeconds()
+            if (loadedAt != null && remoteAt != null && remoteAt != loadedAt) {
+                saveError.value = VmError.FileSystem(
+                    summary = "This file changed on the server",
+                    reason = "It was modified after this editor last loaded it - " +
+                        "saving now would overwrite those changes.",
+                    suggestedAction = "Reload to see the current version, or save a copy elsewhere first.",
+                    path = filePath,
+                )
+                isSaving.value = false
+                return@launch
+            }
+
             val text = state.snapshot().textFieldValue.text
             when (val result = remoteFileSystem.writeText(serverId, filePath, text)) {
                 is VmResult.Success -> {
                     state.markSaved()
+                    loadedModifiedAtSeconds = currentModifiedAtSeconds()
                     publishSnapshot()
                     isSaving.value = false
                 }
@@ -152,6 +181,13 @@ class EditorViewModel @Inject constructor(
             }
         }
     }
+
+    /** Best-effort; null (not stat's own "unknown" 0) when the stat call itself fails. */
+    private suspend fun currentModifiedAtSeconds(): Long? =
+        when (val result = remoteFileSystem.stat(serverId, filePath)) {
+            is VmResult.Success -> result.value.modifiedAtSeconds.takeIf { it != 0L }
+            is VmResult.Failure -> null
+        }
 
     fun clearSaveError() {
         saveError.value = null

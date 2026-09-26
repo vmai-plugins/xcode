@@ -117,7 +117,7 @@ class ClaudeCodeCommandBuilderTest {
         )
         assertTrue(
             ClaudeCodeCommandBuilder.build(config(permissionMode = AgentPermissionMode.MANUAL))
-                .contains("--permission-mode manual"),
+                .contains("--permission-mode default"),
         )
         assertTrue(
             ClaudeCodeCommandBuilder.build(config(permissionMode = AgentPermissionMode.BYPASS))

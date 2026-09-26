@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
@@ -250,12 +251,7 @@ class SftpRemoteFileSystem @Inject constructor(
                         }
                     }
                 }
-                emit(
-                    TransferEvent.Completed(
-                        totalBytes = transferred,
-                        durationMillis = System.currentTimeMillis() - startedAt,
-                    ),
-                )
+                emitCompletionOrTruncated(remotePath, transferred, total, startedAt)
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -296,7 +292,11 @@ class SftpRemoteFileSystem @Inject constructor(
             val total = source.length()
 
             val alreadyThere = sftp.statExistence(normalised)?.size ?: 0L
-            val startOffset = if (resume && alreadyThere in 1 until total) alreadyThere else 0L
+            // Upper bound is inclusive: a remote file already exactly the right size
+            // (a previous upload that completed but wasn't recorded locally) should
+            // short-circuit to done rather than retransmitting the whole file, which
+            // "1 until total" excluded by construction.
+            val startOffset = if (resume && alreadyThere in 1..total) alreadyThere else 0L
             transferred = startOffset
 
             val modes = if (startOffset > 0) {
@@ -339,12 +339,7 @@ class SftpRemoteFileSystem @Inject constructor(
                     }
                 }
             }
-            emit(
-                TransferEvent.Completed(
-                    totalBytes = transferred,
-                    durationMillis = System.currentTimeMillis() - startedAt,
-                ),
-            )
+            emitCompletionOrTruncated(remotePath, transferred, total, startedAt)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (throwable: Throwable) {
@@ -353,6 +348,44 @@ class SftpRemoteFileSystem @Inject constructor(
             runCatching { sftp.close() }
         }
     }.flowOn(ioDispatcher)
+
+    /**
+     * The read/write loop exits as soon as a single read returns no bytes, which is
+     * also what a stalled channel or a server closing the connection early looks
+     * like - not just a genuinely finished transfer. Reporting [TransferEvent.Completed]
+     * unconditionally there let a truncated transfer look identical to a full one,
+     * with no signal to the user and nothing to make a retry resume rather than
+     * silently accept the short file as correct.
+     */
+    private suspend fun FlowCollector<TransferEvent>.emitCompletionOrTruncated(
+        path: String,
+        transferred: Long,
+        total: Long,
+        startedAt: Long,
+    ) {
+        if (transferred < total) {
+            emit(
+                TransferEvent.Failed(
+                    VmError.FileSystem(
+                        summary = "Transfer stopped early",
+                        reason = "Only $transferred of $total bytes were transferred " +
+                            "before the connection stopped sending data.",
+                        suggestedAction = "Retry the transfer; it will resume from where it left off.",
+                        retryable = true,
+                        path = path,
+                    ),
+                    transferred,
+                ),
+            )
+        } else {
+            emit(
+                TransferEvent.Completed(
+                    totalBytes = transferred,
+                    durationMillis = System.currentTimeMillis() - startedAt,
+                ),
+            )
+        }
+    }
 
     // --- internals -------------------------------------------------------------
 

@@ -31,8 +31,10 @@ import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmCard
 import digital.vmstudio.code.core.ui.component.VmDialog
+import digital.vmstudio.code.core.ui.component.VmProgress
 import digital.vmstudio.code.core.ui.component.VmSectionHeader
 import digital.vmstudio.code.core.ui.theme.VmTheme
+import digital.vmstudio.code.core.update.UpdateState
 import kotlin.math.roundToInt
 
 @Composable
@@ -177,6 +179,10 @@ fun SettingsScreen(
             }
         }
 
+        item { VmSectionHeader(title = "About") }
+
+        item { UpdateSection(state = state, viewModel = viewModel) }
+
         item { VmSectionHeader(title = "Diagnostics") }
 
         item {
@@ -229,6 +235,70 @@ fun SettingsScreen(
                     "configured but you will need to re-enter their credentials. " +
                     "This cannot be undone.",
                 style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateSection(state: SettingsUiState, viewModel: SettingsViewModel) {
+    VmCard {
+        LabelValueRow(label = "Version", value = state.installedVersionName)
+
+        when (val update = state.updateState) {
+            is UpdateState.Checking -> VmButton(
+                text = "Checking...",
+                onClick = {},
+                enabled = false,
+                loading = true,
+            )
+
+            is UpdateState.UpToDate -> Text(
+                text = "You're on the latest version.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            is UpdateState.Available -> Column(
+                verticalArrangement = Arrangement.spacedBy(VmTheme.spacing.sm),
+            ) {
+                Text(
+                    text = "Version ${update.info.versionName} is available.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                VmButton(text = "Download & install", onClick = viewModel::downloadUpdate)
+            }
+
+            is UpdateState.Downloading -> VmProgress(
+                progress = update.progress,
+                label = "Downloading update...",
+                trailingLabel = "${(update.progress * 100).toInt()}%",
+            )
+
+            is UpdateState.ReadyToInstall -> VmButton(
+                text = "Install version ${update.info.versionName}",
+                onClick = viewModel::retryInstall,
+            )
+
+            is UpdateState.Failed -> Column(
+                verticalArrangement = Arrangement.spacedBy(VmTheme.spacing.sm),
+            ) {
+                Text(
+                    text = update.error.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                VmButton(
+                    text = "Check for updates",
+                    style = VmButtonStyle.Secondary,
+                    onClick = viewModel::checkForUpdates,
+                )
+            }
+
+            is UpdateState.Idle -> VmButton(
+                text = "Check for updates",
+                style = VmButtonStyle.Secondary,
+                onClick = viewModel::checkForUpdates,
             )
         }
     }

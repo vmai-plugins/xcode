@@ -66,6 +66,34 @@ class RecipeExecutorTest {
     }
 
     @Test
+    fun `run fails when a step's command exits non-zero, even though the SSH call succeeded`() = runTest {
+        coEvery {
+            commandGuard.run(any(), any(), any(), requestedByAgent = true)
+        } returns VmResult.Success(
+            CommandResult(
+                command = "echo step1",
+                exitCode = 1,
+                stdout = "",
+                stderr = "command not found",
+                durationMillis = 1,
+            ),
+        )
+
+        val progressSteps = mutableListOf<Pair<Double, String>>()
+
+        val result = executor.run(
+            serverId = "server-1",
+            recipe = sampleRecipe,
+            onProgress = { fraction, label -> progressSteps.add(fraction to label) },
+        )
+
+        assert(result is VmResult.Failure)
+        // Stops at the first failing step rather than running the second one.
+        coVerify(exactly = 1) { commandGuard.run(any(), any(), any(), requestedByAgent = true) }
+        assertEquals(0, progressSteps.size)
+    }
+
+    @Test
     fun `run stops when command guard refuses a step`() = runTest {
         coEvery {
             commandGuard.run(any(), any(), any(), requestedByAgent = true)

@@ -47,18 +47,17 @@ class CommandGitService @Inject constructor(
     }
 
     override suspend fun add(serverId: String, repoPath: String, files: List<String>): GitResult<Unit> {
-        val fileArgs = if (files.isEmpty()) "." else files.joinToString(" ") { "\"$it\"" }
+        val fileArgs = if (files.isEmpty()) "." else files.joinToString(" ") { it.shellQuoted() }
         return execute(serverId, repoPath, "git add $fileArgs").map { }
     }
 
     override suspend fun reset(serverId: String, repoPath: String, files: List<String>): GitResult<Unit> {
-        val fileArgs = if (files.isEmpty()) "" else " -- " + files.joinToString(" ") { "\"$it\"" }
+        val fileArgs = if (files.isEmpty()) "" else " -- " + files.joinToString(" ") { it.shellQuoted() }
         return execute(serverId, repoPath, "git reset$fileArgs").map { }
     }
 
     override suspend fun commit(serverId: String, repoPath: String, message: String): GitResult<Unit> {
-        val escapedMessage = message.replace("\"", "\\\"")
-        return execute(serverId, repoPath, "git commit -m \"$escapedMessage\"").map { }
+        return execute(serverId, repoPath, "git commit -m ${message.shellQuoted()}").map { }
     }
 
     override suspend fun log(serverId: String, repoPath: String, maxCount: Int): GitResult<GitLog> {
@@ -83,12 +82,16 @@ class CommandGitService @Inject constructor(
         return execute(serverId, repoPath, "git push").map { }
     }
 
+    override suspend fun restoreFile(serverId: String, repoPath: String, filePath: String): GitResult<Unit> {
+        return execute(serverId, repoPath, "git checkout HEAD -- ${filePath.shellQuoted()}").map { }
+    }
+
     private suspend fun execute(
         serverId: String,
         repoPath: String,
         command: String,
     ): GitResult<SshCommandResult> {
-        val fullCommand = "cd \"$repoPath\" && $command"
+        val fullCommand = "cd ${repoPath.shellQuoted()} && $command"
         // withSession's block returns VmResult by contract; the Git layer then maps
         // that outcome onto GitResult so callers see Git-specific error types.
         return when (val outcome = connectionManager.withSession(serverId) { session ->
@@ -120,3 +123,19 @@ private fun <T, R> GitResult<T>.map(transform: (T) -> R): GitResult<R> = when (t
     is GitResult.Success -> GitResult.Success(transform(value))
     is GitResult.Failure -> this
 }
+
+/**
+ * Quotes a value for safe interpolation into a POSIX shell command line.
+ *
+ * Every command in this file is built by string interpolation rather than an
+ * argv-array exec (the SSH layer only offers a single command string), so a
+ * repo path, filename, or commit message containing `"`, `` ` ``, `$`, or `\`
+ * could otherwise break out of a naive double-quoted wrapper and run arbitrary
+ * shell on the remote server - filenames and commit messages both come from
+ * repository content an attacker can influence (a crafted filename in a
+ * cloned/pulled repo, a crafted commit message), not just the user's own
+ * input. Single-quoting is POSIX-safe for arbitrary bytes: the only character
+ * that needs escaping inside single quotes is a single quote itself, which is
+ * closed, escaped, and reopened (`'\''`).
+ */
+private fun String.shellQuoted(): String = "'" + replace("'", "'\\''") + "'"

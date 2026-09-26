@@ -7,6 +7,7 @@ import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.common.result.flatMap
 import digital.vmstudio.code.core.ssh.command.CommandLimits
 import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import digital.vmstudio.code.core.terminal.emulator.TerminalEmulator
@@ -116,40 +117,72 @@ class BackgroundAgentRunner @Inject constructor(
         }
 
     /** Stops a run. Its conversation is kept, so it can still be resumed. */
-    suspend fun stop(serverId: String, runId: String): VmResult<Unit> =
-        simpleCommand(serverId, ClaudeCodeCommandBuilder.stopCommand(runId), "stopped")
+    suspend fun stop(serverId: String, runId: String): VmResult<Unit> = withContext(ioDispatcher) {
+        issueCommand(serverId, ClaudeCodeCommandBuilder.stopCommand(runId))
+            .flatMap { verifyStopped(serverId, runId) }
+    }
 
     /** Deletes a run and its record. Only meaningful once it has stopped. */
-    suspend fun remove(serverId: String, runId: String): VmResult<Unit> =
-        simpleCommand(serverId, ClaudeCodeCommandBuilder.removeCommand(runId), "removed")
+    suspend fun remove(serverId: String, runId: String): VmResult<Unit> = withContext(ioDispatcher) {
+        issueCommand(serverId, ClaudeCodeCommandBuilder.removeCommand(runId))
+            .flatMap { verifyRemoved(serverId, runId) }
+    }
 
     // --- internals -----------------------------------------------------------------
 
-    private suspend fun simpleCommand(
-        serverId: String,
-        command: String,
-        expected: String,
-    ): VmResult<Unit> = withContext(ioDispatcher) {
+    private suspend fun issueCommand(serverId: String, command: String): VmResult<Unit> =
         connectionManager.withSession(serverId) { session ->
             when (val result = session.execute(command, CommandLimits.QUICK)) {
                 is VmResult.Failure -> result
-                is VmResult.Success -> {
-                    val output = result.value.combinedOutput()
-                    if (output.contains(expected, ignoreCase = true) || output.isBlank()) {
-                        VmResult.Success(Unit)
-                    } else {
-                        VmResult.Failure(
-                            VmError.Ai(
-                                summary = "The agent run did not respond as expected",
-                                reason = output.take(MAX_ERROR_EXCERPT),
-                                provider = "claude-code",
-                            ),
-                        )
-                    }
+                is VmResult.Success -> VmResult.Success(Unit)
+            }
+        }
+
+    /**
+     * Confirms the run actually stopped rather than trusting `claude stop`'s text
+     * output: its exact wording varies by CLI version, and it is blank both on some
+     * successful exits and on some silently-ignored commands (a stale short id after
+     * the CLI restarts, for instance) - treating blank as success let a failed stop
+     * report itself as done while the run kept going on the server.
+     */
+    private suspend fun verifyStopped(serverId: String, runId: String): VmResult<Unit> =
+        when (val after = get(serverId, runId)) {
+            is VmResult.Failure -> after
+            is VmResult.Success -> {
+                val run = after.value
+                if (run == null || !run.isRunning) {
+                    VmResult.Success(Unit)
+                } else {
+                    VmResult.Failure(
+                        VmError.Ai(
+                            summary = "The run did not stop",
+                            reason = "The server still reports it as running after 'claude stop'.",
+                            suggestedAction = "Try again, or check the server directly if this repeats.",
+                            retryable = true,
+                            provider = "claude-code",
+                        ),
+                    )
                 }
             }
         }
-    }
+
+    /** Same reasoning as [verifyStopped]: confirms the run is actually gone. */
+    private suspend fun verifyRemoved(serverId: String, runId: String): VmResult<Unit> =
+        when (val after = get(serverId, runId)) {
+            is VmResult.Failure -> after
+            is VmResult.Success -> if (after.value == null) {
+                VmResult.Success(Unit)
+            } else {
+                VmResult.Failure(
+                    VmError.Ai(
+                        summary = "The run could not be removed",
+                        reason = "The server still lists it after 'claude rm'.",
+                        retryable = true,
+                        provider = "claude-code",
+                    ),
+                )
+            }
+        }
 
     /**
      * Renders ANSI output through the emulator and returns the visible screen.

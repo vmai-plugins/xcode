@@ -151,10 +151,17 @@ internal object ClaudeCodeCommandBuilder {
      */
     fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
+    /**
+     * The CLI's `--permission-mode` only accepts `default`, `plan`, `acceptEdits` and
+     * `bypassPermissions` - "manual" is not one of its values, so every run started
+     * in [AgentPermissionMode.MANUAL] failed at the CLI's own argument parsing before
+     * a single event could be emitted. `default` is its actual name for
+     * ask-before-every-tool-call.
+     */
     private fun AgentPermissionMode.cliValue(): String = when (this) {
         AgentPermissionMode.PLAN -> "plan"
         AgentPermissionMode.ACCEPT_EDITS -> "acceptEdits"
-        AgentPermissionMode.MANUAL -> "manual"
+        AgentPermissionMode.MANUAL -> "default"
         AgentPermissionMode.BYPASS -> "bypassPermissions"
     }
 

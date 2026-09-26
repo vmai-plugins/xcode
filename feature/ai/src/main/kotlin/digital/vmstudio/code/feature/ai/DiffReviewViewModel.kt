@@ -54,8 +54,14 @@ class DiffReviewViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
+            val repoPath = directoryOf(filePath)
+            if (repoPath == null) {
+                _uiState.value = _uiState.value.copy(isLoading = false, error = pathWithoutDirectoryError())
+                return@launch
+            }
+
             // Get the diff for the specific file
-            when (val result = gitService.diffAll(serverId, filePath.substringBeforeLast('/'))) {
+            when (val result = gitService.diffAll(serverId, repoPath)) {
                 is GitResult.Success -> {
                     // Filter to just this file
                     val fileDiff = result.value.files.find {
@@ -82,22 +88,56 @@ class DiffReviewViewModel @Inject constructor(
     }
 
     fun accept() {
-        // Accept the changes - in a full implementation, this might commit or mark as reviewed
-        // For now, just navigate back
+        // The reviewed changes are already the file's current content on the
+        // server, so accepting requires no server-side action.
     }
 
     fun reject() {
-        // Reject the changes - restore the original file
         viewModelScope.launch {
+            val repoPath = directoryOf(filePath)
+            if (repoPath == null) {
+                _uiState.value = _uiState.value.copy(error = pathWithoutDirectoryError())
+                return@launch
+            }
             _uiState.value = _uiState.value.copy(isSaving = true)
-            // In a full implementation, this would restore the file from Git HEAD
-            _uiState.value = _uiState.value.copy(isSaving = false)
+            when (val result = gitService.restoreFile(serverId, repoPath, filePath)) {
+                is GitResult.Success -> _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    diff = GitDiff(),
+                )
+                is GitResult.Failure -> _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    error = mapGitError(result.error),
+                )
+            }
         }
     }
 
     fun retry() {
         loadDiff()
     }
+
+    /**
+     * The directory to run Git in, derived from [filePath]'s dirname.
+     *
+     * Null when [filePath] has no "/" at all: [String.substringBeforeLast] returns
+     * the whole string unchanged when the delimiter is absent, which for a
+     * repo-root file (e.g. a tool call reporting just "README.md" rather than an
+     * absolute path) would silently turn into `cd "README.md"` - failing with a
+     * confusing "not a directory" error instead of a clear one.
+     */
+    private fun directoryOf(path: String): String? {
+        val index = path.lastIndexOf('/')
+        return if (index < 0) null else path.substring(0, index)
+    }
+
+    private fun pathWithoutDirectoryError() = VmError.Git(
+        summary = "Could not determine which directory to check",
+        reason = "\"$filePath\" has no directory component.",
+        suggestedAction = "This usually means the tool reported a bare filename " +
+            "instead of a full path; try again from the transcript.",
+        retryable = false,
+    )
 
     private fun mapGitError(error: GitError): VmError = when (error) {
         is GitError.NotARepository -> VmError.Git(
