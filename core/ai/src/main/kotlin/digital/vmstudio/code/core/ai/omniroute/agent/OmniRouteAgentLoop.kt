@@ -6,7 +6,6 @@ import digital.vmstudio.code.core.ai.model.AgentRunConfig
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteDialect
 import digital.vmstudio.code.core.ai.omniroute.applyOmniRouteAuth
 import digital.vmstudio.code.core.common.error.VmError
-import digital.vmstudio.code.core.common.preferences.AgentAutonomyLevel
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.network.http.RetryPolicy
@@ -58,7 +57,6 @@ class OmniRouteAgentLoop @Inject constructor(
         dialect: OmniRouteDialect,
         model: String,
         config: AgentRunConfig,
-        autonomyLevel: AgentAutonomyLevel,
     ): Flow<AgentEvent> = flow {
         val serverId = config.serverId
         val workingDirectory = config.workingDirectory
@@ -177,7 +175,6 @@ class OmniRouteAgentLoop @Inject constructor(
                                 call = call,
                                 serverId = serverId,
                                 workingDirectory = workingDirectory,
-                                autonomyLevel = autonomyLevel,
                                 permissionMode = config.permissionMode,
                                 allowedTools = allowedTools,
                             )
@@ -236,7 +233,6 @@ class OmniRouteAgentLoop @Inject constructor(
         call: OmniRouteToolCall,
         serverId: String,
         workingDirectory: String,
-        autonomyLevel: AgentAutonomyLevel,
         permissionMode: AgentPermissionMode,
         allowedTools: Set<OmniRouteTool>,
     ): ToolOutcome {
@@ -256,7 +252,7 @@ class OmniRouteAgentLoop @Inject constructor(
         return when (tool) {
             OmniRouteTool.READ_FILE -> readFile(call, serverId, workingDirectory)
             OmniRouteTool.LIST_DIRECTORY -> listDirectory(call, serverId, workingDirectory)
-            OmniRouteTool.WRITE_FILE -> writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
+            OmniRouteTool.WRITE_FILE -> writeFile(call, serverId, workingDirectory, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId)
         }
     }
@@ -296,7 +292,6 @@ class OmniRouteAgentLoop @Inject constructor(
         call: OmniRouteToolCall,
         serverId: String,
         workingDirectory: String,
-        autonomyLevel: AgentAutonomyLevel,
         permissionMode: AgentPermissionMode,
     ): ToolOutcome {
         val path = argument(call.argumentsJson, "path")
@@ -313,15 +308,9 @@ class OmniRouteAgentLoop @Inject constructor(
         // Production always requires a human decision, exactly as UserPreferences
         // documents for AgentAutonomyLevel: "the level raises the floor, never the
         // ceiling." MANUAL asks for everything with an effect, by the user's own
-        // per-run choice, regardless of the standing autonomy level. Everything else
-        // (ACCEPT_EDITS, BYPASS, or DEVELOPER+/FULL_AGENT autonomy) may auto-apply.
+        // per-run choice; ACCEPT_EDITS/BYPASS may auto-apply outside production.
         val autoApply = server.environment != ServerEnvironment.PRODUCTION &&
-            permissionMode != AgentPermissionMode.MANUAL &&
-            (
-                permissionMode == AgentPermissionMode.ACCEPT_EDITS ||
-                    permissionMode == AgentPermissionMode.BYPASS ||
-                    autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)
-                )
+            (permissionMode == AgentPermissionMode.ACCEPT_EDITS || permissionMode == AgentPermissionMode.BYPASS)
 
         if (!autoApply) {
             // Existence is checked directly rather than inferred from whether the

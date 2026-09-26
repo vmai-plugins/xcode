@@ -160,7 +160,7 @@ class OmniRouteProvider @Inject constructor(
         // falls back to plain chat exactly as it would if the toggle were off.
         if (settings.aiToolsEnabled && config.workingDirectory.isNotBlank()) {
             try {
-                emitAll(agentLoop.run(baseUrl, key, dialect, model, config, settings.agentAutonomyLevel))
+                emitAll(agentLoop.run(baseUrl, key, dialect, model, config))
             } finally {
                 key.wipe()
             }
