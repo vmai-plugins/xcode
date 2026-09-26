@@ -15,7 +15,15 @@ import javax.inject.Singleton
 data class FileEditApprovalRequest(
     val id: String = UUID.randomUUID().toString(),
     val path: String,
-    /** Null when the file does not exist yet - this write creates it. */
+    /**
+     * Whether the file exists on the server at all - checked directly, not inferred
+     * from whether [oldContent] could be read. A file that exists but is too large to
+     * preview, or hit a transient read error, is still an overwrite, not a creation;
+     * conflating the two would understate the risk of what is being approved.
+     */
+    val isNewFile: Boolean,
+    /** Best-effort preview of the current content; null whenever it could not be
+     *  read, which does not necessarily mean the file is new. */
     val oldContent: String?,
     val newContent: String,
     val serverId: String,
@@ -23,7 +31,6 @@ data class FileEditApprovalRequest(
     val environment: ServerEnvironment,
 ) {
     val isProduction: Boolean get() = environment == ServerEnvironment.PRODUCTION
-    val isNewFile: Boolean get() = oldContent == null
 }
 
 /**

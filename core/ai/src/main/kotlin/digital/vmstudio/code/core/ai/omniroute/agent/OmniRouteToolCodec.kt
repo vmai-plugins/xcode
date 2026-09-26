@@ -52,10 +52,11 @@ object OmniRouteToolCodec {
         systemPrompt: String,
         history: List<OmniRouteMessage>,
         maxTokens: Int,
+        tools: List<OmniRouteTool> = OmniRouteTool.entries,
     ): String = when (dialect) {
-        OmniRouteDialect.ANTHROPIC_MESSAGES -> buildAnthropicRequest(model, systemPrompt, history, maxTokens)
+        OmniRouteDialect.ANTHROPIC_MESSAGES -> buildAnthropicRequest(model, systemPrompt, history, maxTokens, tools)
         OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN ->
-            buildOpenAiRequest(model, systemPrompt, history, maxTokens)
+            buildOpenAiRequest(model, systemPrompt, history, maxTokens, tools)
     }
 
     fun parseResponse(dialect: OmniRouteDialect, body: String): OmniRouteTurn {
@@ -75,12 +76,13 @@ object OmniRouteToolCodec {
         systemPrompt: String,
         history: List<OmniRouteMessage>,
         maxTokens: Int,
+        tools: List<OmniRouteTool>,
     ): String = buildJsonObject {
         put("model", model)
         put("stream", false)
         put("max_tokens", maxTokens)
         putJsonArray("tools") {
-            OmniRouteTool.entries.forEach { add(it.toOpenAiToolJson()) }
+            tools.forEach { add(it.toOpenAiToolJson()) }
         }
         putJsonArray("messages") {
             add(
@@ -156,13 +158,14 @@ object OmniRouteToolCodec {
         systemPrompt: String,
         history: List<OmniRouteMessage>,
         maxTokens: Int,
+        tools: List<OmniRouteTool>,
     ): String = buildJsonObject {
         put("model", model)
         put("stream", false)
         put("max_tokens", maxTokens)
         put("system", systemPrompt)
         putJsonArray("tools") {
-            OmniRouteTool.entries.forEach { add(it.toAnthropicToolJson()) }
+            tools.forEach { add(it.toAnthropicToolJson()) }
         }
         putJsonArray("messages") {
             // Anthropic has no "tool" role: a tool result is a user-turn content

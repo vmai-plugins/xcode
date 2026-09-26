@@ -1,12 +1,14 @@
 package digital.vmstudio.code.core.ai.omniroute.agent
 
 import digital.vmstudio.code.core.ai.model.AgentEvent
+import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteDialect
 import digital.vmstudio.code.core.ai.omniroute.applyOmniRouteAuth
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.AgentAutonomyLevel
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.security.model.Secret
@@ -62,13 +64,26 @@ class OmniRouteAgentLoop @Inject constructor(
         val workingDirectory = config.workingDirectory
         val startedAt = System.currentTimeMillis()
 
+        // The same permission-mode selector the Claude Code CLI path honors
+        // (--permission-mode plan / --restricted) must mean the same thing here:
+        // PLAN offers no tool that changes anything, and restricted drops the tool
+        // that runs commands, regardless of the user's standing autonomy level.
+        val allowedTools = buildSet {
+            add(OmniRouteTool.READ_FILE)
+            add(OmniRouteTool.LIST_DIRECTORY)
+            if (config.permissionMode != AgentPermissionMode.PLAN) {
+                add(OmniRouteTool.WRITE_FILE)
+                if (!config.restricted) add(OmniRouteTool.RUN_COMMAND)
+            }
+        }
+
         try {
             emit(
                 AgentEvent.SessionStarted(
                     sessionId = SESSION_PREFIX + UUID.randomUUID(),
                     workingDirectory = workingDirectory,
                     model = model,
-                    availableTools = OmniRouteTool.entries.map { it.toolName },
+                    availableTools = allowedTools.map { it.toolName },
                 ),
             )
 
@@ -82,9 +97,10 @@ class OmniRouteAgentLoop @Inject constructor(
                 val requestBody = OmniRouteToolCodec.buildRequestBody(
                     dialect = dialect,
                     model = model,
-                    systemPrompt = systemPrompt(workingDirectory),
+                    systemPrompt = systemPrompt(workingDirectory, allowedTools),
                     history = history,
                     maxTokens = DEFAULT_MAX_TOKENS,
+                    tools = allowedTools.toList(),
                 )
                 val request = Request.Builder()
                     .url("$baseUrl/${dialect.chatPath}")
@@ -156,7 +172,15 @@ class OmniRouteAgentLoop @Inject constructor(
                                 ),
                             )
 
-                            val outcome = dispatch(tool, call, serverId, workingDirectory, autonomyLevel)
+                            val outcome = dispatch(
+                                tool = tool,
+                                call = call,
+                                serverId = serverId,
+                                workingDirectory = workingDirectory,
+                                autonomyLevel = autonomyLevel,
+                                permissionMode = config.permissionMode,
+                                allowedTools = allowedTools,
+                            )
 
                             emit(
                                 AgentEvent.ToolFinished(
@@ -213,15 +237,26 @@ class OmniRouteAgentLoop @Inject constructor(
         serverId: String,
         workingDirectory: String,
         autonomyLevel: AgentAutonomyLevel,
+        permissionMode: AgentPermissionMode,
+        allowedTools: Set<OmniRouteTool>,
     ): ToolOutcome {
         if (tool == null) {
             return ToolOutcome("Unknown tool \"${call.name}\".", isError = true)
+        }
+        // Belt and suspenders: the model was not offered this tool (PLAN mode, or
+        // restricted dropping run_command), but a call naming it anyway must still
+        // be refused rather than trusting the request body kept it out.
+        if (tool !in allowedTools) {
+            return ToolOutcome(
+                "\"${tool.toolName}\" is not available in this run's permission mode.",
+                isError = true,
+            )
         }
 
         return when (tool) {
             OmniRouteTool.READ_FILE -> readFile(call, serverId, workingDirectory)
             OmniRouteTool.LIST_DIRECTORY -> listDirectory(call, serverId, workingDirectory)
-            OmniRouteTool.WRITE_FILE -> writeFile(call, serverId, workingDirectory, autonomyLevel)
+            OmniRouteTool.WRITE_FILE -> writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId)
         }
     }
@@ -262,6 +297,7 @@ class OmniRouteAgentLoop @Inject constructor(
         serverId: String,
         workingDirectory: String,
         autonomyLevel: AgentAutonomyLevel,
+        permissionMode: AgentPermissionMode,
     ): ToolOutcome {
         val path = argument(call.argumentsJson, "path")
             ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
@@ -269,20 +305,43 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"content\".", isError = true)
         val resolved = resolvePath(workingDirectory, path)
 
-        // Read-only tools always auto-run; a write needs at least DEVELOPER autonomy
-        // to apply without asking, mirroring "file edits and approved commands run
-        // automatically" from AgentAutonomyLevel's own documentation.
-        if (!autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)) {
-            val server = when (val result = serverRepository.get(serverId)) {
+        val server = when (val result = serverRepository.get(serverId)) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+
+        // Production always requires a human decision, exactly as UserPreferences
+        // documents for AgentAutonomyLevel: "the level raises the floor, never the
+        // ceiling." MANUAL asks for everything with an effect, by the user's own
+        // per-run choice, regardless of the standing autonomy level. Everything else
+        // (ACCEPT_EDITS, BYPASS, or DEVELOPER+/FULL_AGENT autonomy) may auto-apply.
+        val autoApply = server.environment != ServerEnvironment.PRODUCTION &&
+            permissionMode != AgentPermissionMode.MANUAL &&
+            (
+                permissionMode == AgentPermissionMode.ACCEPT_EDITS ||
+                    permissionMode == AgentPermissionMode.BYPASS ||
+                    autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)
+                )
+
+        if (!autoApply) {
+            // Existence is checked directly rather than inferred from whether the
+            // content could be read: a file that exists but is too large to preview
+            // is still an overwrite, not a creation, and must not be shown as one.
+            val fileExists = when (val result = remoteFileSystem.exists(serverId, resolved)) {
                 is VmResult.Success -> result.value
                 is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
             }
-            val existing = remoteFileSystem.readText(serverId, resolved).let { it as? VmResult.Success }?.value
+            val existingContent = if (fileExists) {
+                (remoteFileSystem.readText(serverId, resolved) as? VmResult.Success)?.value
+            } else {
+                null
+            }
 
             val approved = fileEditApprovalGate.request(
                 FileEditApprovalRequest(
                     path = resolved,
-                    oldContent = existing,
+                    isNewFile = !fileExists,
+                    oldContent = existingContent,
                     newContent = content,
                     serverId = server.id,
                     serverName = server.name,
@@ -338,16 +397,32 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private fun VmError.summaryWithReason(): String = reason?.let { "$summary: $it" } ?: summary
 
-    private fun systemPrompt(workingDirectory: String): String = """
-        You are a coding assistant working inside $workingDirectory on a remote server,
-        reached through tools rather than direct access. Use read_file and
-        list_directory to understand the project before making changes. Use
-        write_file to create or replace a file's entire contents - there is no
-        partial-edit tool, so include the whole file. Use run_command for anything
-        else a shell can do (building, testing, git). Prefer relative paths under
-        $workingDirectory. When you are done, reply with plain text and no further
-        tool calls.
-    """.trimIndent()
+    private fun systemPrompt(workingDirectory: String, allowedTools: Set<OmniRouteTool>): String = buildString {
+        append(
+            "You are a coding assistant working inside $workingDirectory on a remote " +
+                "server, reached through tools rather than direct access. Use read_file " +
+                "and list_directory to understand the project before making changes. ",
+        )
+        if (OmniRouteTool.WRITE_FILE in allowedTools) {
+            append(
+                "Use write_file to create or replace a file's entire contents - there " +
+                    "is no partial-edit tool, so include the whole file. ",
+            )
+        }
+        if (OmniRouteTool.RUN_COMMAND in allowedTools) {
+            append("Use run_command for anything else a shell can do (building, testing, git). ")
+        }
+        if (OmniRouteTool.WRITE_FILE !in allowedTools) {
+            append(
+                "This run only proposes a plan: you cannot write files or run " +
+                    "commands, so describe what you would do instead of attempting it. ",
+            )
+        }
+        append(
+            "Prefer relative paths under $workingDirectory. When you are done, reply " +
+                "with plain text and no further tool calls.",
+        )
+    }
 
     private companion object {
         const val SESSION_PREFIX = "omniroute-"
