@@ -337,6 +337,16 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(isRunning = true, error = null) }
 
         runJob = viewModelScope.launch {
+            // Coroutine cancellation is cooperative: stop() flips isRunning to false
+            // and clears runJob immediately, but this coroutine's collect loop can
+            // still process one more buffered event before it reaches a cancellation
+            // checkpoint. Comparing against runJob on every event (rather than
+            // trusting cancellation alone) stops a cancelled run's tail events from
+            // landing in whatever new run replaced it if the user immediately
+            // re-sends. coroutineContext[Job] is this coroutine's own Job, fetched
+            // from inside itself rather than racing the external `runJob = ...`
+            // assignment below, which only completes after this block starts.
+            val selfJob = coroutineContext[Job]
             val conversationId = state.conversationId ?: createConversation(server, state)
             if (conversationId == null) {
                 _uiState.update { it.copy(isRunning = false) }
@@ -363,6 +373,7 @@ class AgentChatViewModel @Inject constructor(
 
             try {
                 providers.active().run(config).collect { event ->
+                    if (runJob !== selfJob) return@collect
                     conversations.record(conversationId, event)
                     applyTaskEvent(taskId, event)
                     applyEvent(event)
