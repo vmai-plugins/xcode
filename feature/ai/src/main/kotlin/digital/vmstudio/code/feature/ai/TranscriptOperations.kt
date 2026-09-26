@@ -49,14 +49,17 @@ internal fun List<TranscriptItem>.finishToolCall(
     isError: Boolean,
     output: String?,
 ): List<TranscriptItem> {
-    val index = if (toolItemId != null) {
-        indexOfFirst { it.id == toolItemId }
-    } else {
-        indexOfLast { it is TranscriptItem.ToolCall && it.isRunning }
-    }
+    // An id that names something other than the running ToolCall (a stale id, or a
+    // collision if the id scheme ever changes) falls back to the same "last running
+    // call" search used when the provider gives no id at all, rather than silently
+    // dropping the finish event and leaving that call stuck showing "running" forever.
+    val index = toolItemId
+        ?.let { id -> indexOfFirst { it.id == id && it is TranscriptItem.ToolCall } }
+        ?.takeIf { it >= 0 }
+        ?: indexOfLast { it is TranscriptItem.ToolCall && it.isRunning }
     if (index < 0) return this
 
-    val target = this[index] as? TranscriptItem.ToolCall ?: return this
+    val target = this[index] as TranscriptItem.ToolCall
     return toMutableList().also { updated ->
         updated[index] = target.copy(
             isRunning = false,

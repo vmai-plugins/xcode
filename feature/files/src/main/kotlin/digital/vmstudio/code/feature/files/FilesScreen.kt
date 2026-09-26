@@ -360,6 +360,7 @@ private fun FileRow(
                 style = VmTheme.code.mono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 

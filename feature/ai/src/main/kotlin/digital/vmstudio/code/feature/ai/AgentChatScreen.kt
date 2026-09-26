@@ -373,7 +373,9 @@ private fun TranscriptRow(item: TranscriptItem, onOpenDiff: (String) -> Unit) {
         )
 
         is TranscriptItem.RunSummary -> Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {

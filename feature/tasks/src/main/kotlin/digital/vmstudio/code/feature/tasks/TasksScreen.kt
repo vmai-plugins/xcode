@@ -1,6 +1,7 @@
 package digital.vmstudio.code.feature.tasks
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -115,7 +117,9 @@ private fun TaskRow(
                 )
 
                 Row(
-                    modifier = Modifier.padding(top = spacing.xs),
+                    modifier = Modifier
+                        .padding(top = spacing.xs)
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 ) {
                     StatusChip(status = task.status)
