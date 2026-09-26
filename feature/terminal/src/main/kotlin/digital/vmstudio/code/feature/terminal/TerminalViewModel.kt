@@ -9,13 +9,14 @@ import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.terminal.session.TerminalKey
+import digital.vmstudio.code.core.terminal.session.TerminalKeyEncoder
 import digital.vmstudio.code.core.terminal.session.TerminalScreen
 import digital.vmstudio.code.core.terminal.session.TerminalSession
 import digital.vmstudio.code.core.terminal.session.TerminalSessionManager
 import digital.vmstudio.code.core.terminal.session.TerminalSessionState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -60,8 +61,12 @@ class TerminalViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val preferences = preferencesRepository.preferences.first()
-            _uiState.value = _uiState.value.copy(fontSizeSp = preferences.terminalFontSizeSp)
+            // Collected continuously, not just read once: a font-size change made in
+            // Settings while this screen's ViewModel is still alive (backgrounded,
+            // not recreated) would otherwise never reach an already-open terminal.
+            preferencesRepository.preferences.collect { preferences ->
+                _uiState.value = _uiState.value.copy(fontSizeSp = preferences.terminalFontSizeSp)
+            }
         }
         observeSessions()
     }
@@ -139,6 +144,20 @@ class TerminalViewModel @Inject constructor(
     fun send(text: String) {
         activeSession()?.send(text)
         pendingLine.append(text)
+    }
+
+    /**
+     * Deletes [count] characters, as one soft-keyboard edit (predictive-text
+     * correction, select-all-then-delete) can remove more than one character in a
+     * single onValueChange callback. Sending a single BACKSPACE per callback -
+     * regardless of how many characters actually disappeared - would leave stale
+     * characters on the remote prompt and trim [pendingLine] by only one character,
+     * desyncing the safety check's reconstructed line from what is really there.
+     */
+    fun sendBackspaces(count: Int) {
+        if (count <= 0) return
+        pendingLine.setLength((pendingLine.length - count).coerceAtLeast(0))
+        activeSession()?.send(TerminalKeyEncoder.encode(TerminalKey.BACKSPACE).repeat(count))
     }
 
     fun sendKey(key: TerminalKey) {

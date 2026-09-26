@@ -140,6 +140,7 @@ fun TerminalRoute(
             TerminalInputBar(
                 onSendText = viewModel::send,
                 onSendKey = viewModel::sendKey,
+                onSendBackspaces = viewModel::sendBackspaces,
                 onSendControl = viewModel::sendControl,
                 onInterrupt = viewModel::interrupt,
                 onClear = viewModel::clear,
@@ -255,6 +256,7 @@ private fun TerminalTabBar(
 private fun TerminalInputBar(
     onSendText: (String) -> Unit,
     onSendKey: (TerminalKey) -> Unit,
+    onSendBackspaces: (Int) -> Unit,
     onSendControl: (Char) -> Unit,
     onInterrupt: () -> Unit,
     onClear: () -> Unit,
@@ -312,9 +314,13 @@ private fun TerminalInputBar(
                             }
                         }
                         // Text was deleted: the shell owns the line buffer, so send
-                        // a backspace rather than trying to mirror local edits.
+                        // as many backspaces as characters actually disappeared -
+                        // predictive-text corrections and select-all-then-delete can
+                        // remove more than one character in a single callback, and a
+                        // single BACKSPACE regardless of count would leave stale
+                        // characters on the remote prompt.
                         newValue.text.length < value.text.length -> {
-                            onSendKey(TerminalKey.BACKSPACE)
+                            onSendBackspaces(value.text.length - newValue.text.length)
                         }
                     }
                     // The field is a keystroke conduit, not a buffer; clearing it

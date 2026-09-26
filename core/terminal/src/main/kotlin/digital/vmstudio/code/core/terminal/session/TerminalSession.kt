@@ -91,6 +91,17 @@ class TerminalSession internal constructor(
     private val emulator: TerminalEmulator,
     private val scope: CoroutineScope,
     private val emulatorDispatcher: CoroutineDispatcher,
+    /**
+     * Where the reader loop's blocking `read()` call runs - deliberately not
+     * [emulatorDispatcher]. That dispatcher is `limitedParallelism(1)`: a single
+     * execution slot, not thread confinement with preemption. A blocking read on an
+     * idle shell (sitting at a prompt, nothing to read until the user's own input
+     * reaches it) would hold that one slot for as long as there is nothing to read,
+     * starving every [send]/[resize]/[clear]/[scrollBy] queued behind it - typing
+     * into an idle terminal would do nothing until the remote happened to emit
+     * unsolicited output. Only the actual emulator mutation needs to be confined.
+     */
+    private val readerDispatcher: CoroutineDispatcher,
 ) {
 
     private val _state = MutableStateFlow<TerminalSessionState>(TerminalSessionState.Starting)
@@ -106,7 +117,7 @@ class TerminalSession internal constructor(
     val scrollOffset: StateFlow<Int> = _scrollOffset.asStateFlow()
 
     internal fun start() {
-        readerJob = scope.launch(emulatorDispatcher) {
+        readerJob = scope.launch(readerDispatcher) {
             _state.value = TerminalSessionState.Running
             val buffer = ByteArray(READ_BUFFER_BYTES)
             var lastPublish = 0L
@@ -116,23 +127,25 @@ class TerminalSession internal constructor(
                     val read = runInterruptible { readOrEof(buffer) }
                     if (read < 0) break
 
-                    emulator.write(buffer, read)
+                    withContext(emulatorDispatcher) {
+                        emulator.write(buffer, read)
 
-                    val now = System.currentTimeMillis()
-                    if (now - lastPublish >= FRAME_INTERVAL_MILLIS) {
-                        publishSnapshot()
-                        lastPublish = now
+                        val now = System.currentTimeMillis()
+                        if (now - lastPublish >= FRAME_INTERVAL_MILLIS) {
+                            publishSnapshot()
+                            lastPublish = now
+                        }
                     }
                 }
                 // Always publish the tail, or the last line before the shell exited
                 // would never reach the screen.
-                publishSnapshot()
+                withContext(emulatorDispatcher) { publishSnapshot() }
                 _state.value = TerminalSessionState.Closed
                 VmLog.i(LogCategory.TERMINAL, TAG, "Shell session $id ended")
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {
-                publishSnapshot()
+                withContext(emulatorDispatcher) { publishSnapshot() }
                 _state.value = TerminalSessionState.Failed(
                     VmError.Ssh(
                         summary = "Terminal disconnected",
