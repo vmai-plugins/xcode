@@ -159,6 +159,13 @@ class OmniRouteAgentLoop @Inject constructor(
                             currentCoroutineContext().ensureActive()
                             val tool = OmniRouteTool.fromToolName(call.name)
                             val path = argument(call.argumentsJson, "path")
+                            // Resolved to an absolute path, not the raw model argument:
+                            // a model editing a repo-root file may well call this with
+                            // just "README.md", and DiffReviewViewModel derives the
+                            // directory to run git in from this path's dirname - a bare
+                            // filename with no "/" would make it try to cd into the
+                            // filename itself instead of the actual working directory.
+                            val resolvedPath = path?.let { resolvePath(workingDirectory, it) }
 
                             emit(
                                 AgentEvent.ToolStarted(
@@ -166,7 +173,7 @@ class OmniRouteAgentLoop @Inject constructor(
                                     name = call.name,
                                     summary = summarize(tool, call.name, path),
                                     argumentsJson = call.argumentsJson,
-                                    affectedPath = path,
+                                    affectedPath = resolvedPath,
                                 ),
                             )
 
