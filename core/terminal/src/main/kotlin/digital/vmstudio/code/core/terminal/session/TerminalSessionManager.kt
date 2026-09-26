@@ -77,9 +77,14 @@ class TerminalSessionManager @Inject constructor(
                             maxScrollback = scrollbackLines,
                         ),
                         scope = applicationScope,
-                        // One thread per session confines that session's emulator
-                        // without serialising it behind every other tab.
+                        // One slot per session confines that session's emulator
+                        // mutations without serialising them behind every other tab.
+                        // The reader's blocking read runs on the unrestricted
+                        // ioDispatcher instead - see TerminalSession's own doc on
+                        // readerDispatcher for why sharing this slot with it would
+                        // starve input on an idle shell.
                         emulatorDispatcher = ioDispatcher.limitedParallelism(1),
+                        readerDispatcher = ioDispatcher,
                     )
                     session.start()
                     sessionsById[id] = session
