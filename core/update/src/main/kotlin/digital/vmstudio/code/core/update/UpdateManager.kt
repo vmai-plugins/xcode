@@ -1,6 +1,7 @@
 package digital.vmstudio.code.core.update
 
 import digital.vmstudio.code.core.common.dispatcher.ApplicationScope
+import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,8 +60,25 @@ class UpdateManager @Inject constructor(
                 }
             ) {
                 is VmResult.Success -> {
-                    _state.value = UpdateState.ReadyToInstall(info, result.value)
-                    installer.install(result.value)
+                    val apkFile = result.value
+                    // A signature mismatch means a tampered or substituted release
+                    // asset - refusing here gives a clear reason instead of letting
+                    // the system installer fail silently after the user has already
+                    // been prompted to install.
+                    if (!installer.signatureMatchesInstalledApp(apkFile)) {
+                        apkFile.delete()
+                        _state.value = UpdateState.Failed(
+                            VmError.Security(
+                                summary = "Update could not be verified",
+                                reason = "The downloaded update's signature does not match this app's.",
+                                suggestedAction = "Do not install it. Try again later, or download " +
+                                    "the release directly from the project's GitHub page.",
+                            ),
+                        )
+                        return@launch
+                    }
+                    _state.value = UpdateState.ReadyToInstall(info, apkFile)
+                    installer.install(apkFile)
                 }
                 is VmResult.Failure -> _state.value = UpdateState.Failed(result.error)
             }

@@ -336,7 +336,10 @@ class DefaultAgentConversationRepository @Inject constructor(
         errorText: String? = null,
     ) {
         val now = System.currentTimeMillis()
-        messageDao.upsert(
+        // sequence is assigned inside insertWithNextSequence's own transaction, not
+        // here, so two concurrent writers to the same conversation cannot read the
+        // same max and assign the same sequence.
+        messageDao.insertWithNextSequence(
             MessageEntity(
                 id = UUID.randomUUID().toString(),
                 conversationId = conversationId,
@@ -346,9 +349,7 @@ class DefaultAgentConversationRepository @Inject constructor(
                 status = status,
                 errorText = errorText,
                 createdAtMillis = now,
-                // Explicit sequence because several messages can share a millisecond
-                // and timestamp ordering would then be non-deterministic.
-                sequence = messageDao.maxSequence(conversationId) + 1,
+                sequence = 0,
             ),
         )
     }
