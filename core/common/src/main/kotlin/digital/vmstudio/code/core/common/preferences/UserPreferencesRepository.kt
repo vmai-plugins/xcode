@@ -142,6 +142,10 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.AI_STREAMING] = enabled
     }
 
+    suspend fun setAiToolsEnabled(enabled: Boolean) = edit {
+        it[Keys.AI_TOOLS_ENABLED] = enabled
+    }
+
     suspend fun setGitIdentity(name: String, email: String) = edit {
         it[Keys.GIT_NAME] = name
         it[Keys.GIT_EMAIL] = email
@@ -203,6 +207,7 @@ class UserPreferencesRepository @Inject constructor(
             aiAvailableModelIds = parseModelIds(this[Keys.AI_MODELS]),
             aiModelPreset = this[Keys.AI_MODEL_PRESET] ?: defaults.aiModelPreset,
             aiStreamingEnabled = this[Keys.AI_STREAMING] ?: defaults.aiStreamingEnabled,
+            aiToolsEnabled = this[Keys.AI_TOOLS_ENABLED] ?: defaults.aiToolsEnabled,
             gitUserName = this[Keys.GIT_NAME] ?: defaults.gitUserName,
             gitUserEmail = this[Keys.GIT_EMAIL] ?: defaults.gitUserEmail,
             notifyOnTaskComplete = this[Keys.NOTIFY_TASK] ?: defaults.notifyOnTaskComplete,
@@ -240,6 +245,7 @@ class UserPreferencesRepository @Inject constructor(
         val AI_MODELS = stringPreferencesKey("ai_models")
         val AI_MODEL_PRESET = stringPreferencesKey("ai_model_preset")
         val AI_STREAMING = booleanPreferencesKey("ai_streaming")
+        val AI_TOOLS_ENABLED = booleanPreferencesKey("ai_tools_enabled")
         val GIT_NAME = stringPreferencesKey("git_name")
         val GIT_EMAIL = stringPreferencesKey("git_email")
         val NOTIFY_TASK = booleanPreferencesKey("notify_task")

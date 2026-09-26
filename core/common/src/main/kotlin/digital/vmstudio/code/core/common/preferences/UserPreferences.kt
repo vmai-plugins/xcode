@@ -68,6 +68,13 @@ data class UserPreferences(
     val aiAvailableModelIds: List<String> = emptyList(),
     val aiModelPreset: String = "balanced",
     val aiStreamingEnabled: Boolean = true,
+    /**
+     * Whether OmniRoute may call tools (read/write/list files, run commands)
+     * instead of only chatting. Off by default: reliability at real tool-calling
+     * depends entirely on the selected model, and this is never assumed - only
+     * turned on by an explicit, informed choice.
+     */
+    val aiToolsEnabled: Boolean = false,
     val gitUserName: String = "",
     val gitUserEmail: String = "",
     val notifyOnTaskComplete: Boolean = true,
