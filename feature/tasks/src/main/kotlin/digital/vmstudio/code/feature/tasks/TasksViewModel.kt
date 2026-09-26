@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.repository.AgentTask
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -26,12 +29,15 @@ class TasksViewModel @Inject constructor(
 
     val uiState: StateFlow<TasksUiState> =
         tasks.observeAll().map { list ->
-            TasksUiState(
-                isLoading = false,
-                tasks = list.map { task ->
-                    TaskRowUi(task = task, serverId = tasks.serverIdFor(task.projectId))
-                },
-            )
+            // Fetched concurrently rather than one query per task in sequence: a
+            // busy project can emit rapidly, and awaiting each lookup in turn would
+            // make this pipeline fall increasingly behind the live repository state.
+            val rows = coroutineScope {
+                list.map { task ->
+                    async { TaskRowUi(task = task, serverId = tasks.serverIdFor(task.projectId)) }
+                }.awaitAll()
+            }
+            TasksUiState(isLoading = false, tasks = rows)
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
