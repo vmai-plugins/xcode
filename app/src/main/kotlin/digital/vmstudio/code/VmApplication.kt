@@ -24,12 +24,15 @@ class VmApplication : Application() {
 
     @Inject lateinit var updateManager: UpdateManager
 
+    @Inject lateinit var projectsHubSyncManager: ProjectsHubSyncManager
+
     @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
     override fun onCreate() {
         super.onCreate()
         installLogging()
         reconcileInterruptedWork()
+        syncProjectsHub()
         updateManager.checkForUpdate()
     }
 
@@ -52,6 +55,18 @@ class VmApplication : Application() {
         applicationScope.launch {
             startupReconciler.reconcile().onFailure { error ->
                 VmLog.e(LogCategory.DATABASE, TAG, "Startup reconciliation failed: ${error.summary}")
+            }
+        }
+    }
+
+    /**
+     * Provisions default VPS ecosystem servers and synchronizes active projects from
+     * the VM Project Hub WordPress REST API in the background.
+     */
+    private fun syncProjectsHub() {
+        applicationScope.launch {
+            projectsHubSyncManager.syncAll().onFailure { error ->
+                VmLog.w(LogCategory.CONNECTOR, TAG, "Initial VM Project Hub sync deferred: ${error.summary}")
             }
         }
     }

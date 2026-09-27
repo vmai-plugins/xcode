@@ -78,6 +78,7 @@ dependencies {
     implementation(projects.core.sftp)
     implementation(projects.core.terminal)
     implementation(projects.core.ai)
+    implementation(projects.core.connectors)
     implementation(projects.core.update)
 
     implementation(projects.feature.dashboard)

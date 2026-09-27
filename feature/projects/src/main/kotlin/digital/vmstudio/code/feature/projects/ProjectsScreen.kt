@@ -15,7 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Workspaces
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -60,7 +62,29 @@ fun ProjectsScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { TopAppBar(title = { Text(title) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(title) },
+                actions = {
+                    IconButton(
+                        onClick = viewModel::syncWithHub,
+                        enabled = !state.isSyncing,
+                    ) {
+                        if (state.isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Sync,
+                                contentDescription = "Sync with VM Project Hub",
+                            )
+                        }
+                    }
+                },
+            )
+        },
         floatingActionButton = {
             if (state.canCreate) {
                 FloatingActionButton(onClick = onCreateProject) {
