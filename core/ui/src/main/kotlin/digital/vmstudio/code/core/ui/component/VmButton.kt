@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
@@ -76,7 +77,7 @@ fun VmButton(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            Text(text = text, maxLines = 1)
+            Text(text = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 

@@ -9,4 +9,5 @@ android {
 dependencies {
     implementation(projects.core.security)
     implementation(projects.core.ai)
+    implementation(projects.core.update)
 }

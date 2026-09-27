@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ssh.connection.ServerInfo
@@ -252,7 +253,17 @@ private fun InfoRow(label: String, value: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(text = value, style = VmTheme.code.mono, maxLines = 1)
+        Text(
+            text = value,
+            style = VmTheme.code.mono,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // Unweighted, "maxLines = 1" alone let a long probed value (a full
+            // `uname -a` string, a deep home directory path) size past the card
+            // and get clipped by its shape with no ellipsis. Bounding it to the
+            // remaining row width is what lets the ellipsis actually take effect.
+            modifier = Modifier.weight(1f, fill = false),
+        )
     }
 }
 

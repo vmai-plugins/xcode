@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
@@ -90,6 +91,7 @@ fun VmStatusBadge(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -131,6 +133,7 @@ fun VmChip(
         style = if (monospace) VmTheme.code.mono else MaterialTheme.typography.labelMedium,
         color = contentColor,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .clip(MaterialTheme.shapes.extraSmall)
             .background(containerColor)

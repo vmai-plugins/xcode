@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Workspaces
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,9 +32,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.database.entity.ActivityEntity
 import digital.vmstudio.code.core.ui.component.VmButton
+import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmCard
+import digital.vmstudio.code.core.ui.component.VmProgress
 import digital.vmstudio.code.core.ui.component.VmSectionHeader
 import digital.vmstudio.code.core.ui.theme.VmTheme
+import digital.vmstudio.code.core.update.UpdateState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,6 +63,29 @@ fun HomeScreen(
     ) {
         if (!state.isOnline) {
             item(key = "offline") { OfflineBanner() }
+        }
+
+        when (val update = state.updateState) {
+            is UpdateState.Available -> item(key = "update-banner") {
+                UpdateAvailableBanner(
+                    versionName = update.info.versionName,
+                    actionLabel = "Download & install",
+                    onAction = viewModel::downloadUpdate,
+                    onDismiss = viewModel::dismissUpdate,
+                )
+            }
+            is UpdateState.Downloading -> item(key = "update-banner") {
+                UpdateDownloadingBanner(progress = update.progress)
+            }
+            is UpdateState.ReadyToInstall -> item(key = "update-banner") {
+                UpdateAvailableBanner(
+                    versionName = update.info.versionName,
+                    actionLabel = "Install",
+                    onAction = viewModel::retryInstall,
+                    onDismiss = viewModel::dismissUpdate,
+                )
+            }
+            else -> Unit
         }
 
         item(key = "header") {
@@ -133,6 +160,56 @@ private fun OfflineBanner() {
                 "remote operations will fail until you reconnect.",
             style = MaterialTheme.typography.bodySmall,
             color = VmTheme.colors.onWarningContainer,
+        )
+    }
+}
+
+@Composable
+private fun UpdateAvailableBanner(
+    versionName: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val spacing = VmTheme.spacing
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.SystemUpdate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = "Update available: v$versionName",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+            VmButton(text = actionLabel, style = VmButtonStyle.Primary, onClick = onAction)
+            VmButton(text = "Later", style = VmButtonStyle.Tertiary, onClick = onDismiss)
+        }
+    }
+}
+
+@Composable
+private fun UpdateDownloadingBanner(progress: Float) {
+    VmCard {
+        VmProgress(
+            progress = progress,
+            label = "Downloading update...",
+            trailingLabel = "${(progress * 100).toInt()}%",
         )
     }
 }

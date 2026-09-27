@@ -9,4 +9,5 @@ android {
 dependencies {
     implementation(projects.core.ssh)
     implementation(projects.core.database)
+    implementation(projects.core.update)
 }

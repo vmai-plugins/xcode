@@ -73,4 +73,10 @@ interface GitService {
      * Pushes to the remote.
      */
     suspend fun push(serverId: String, repoPath: String): GitResult<Unit>
+
+    /**
+     * Restores a single file to its content at HEAD, discarding any staged
+     * or unstaged changes to it.
+     */
+    suspend fun restoreFile(serverId: String, repoPath: String, filePath: String): GitResult<Unit>
 }

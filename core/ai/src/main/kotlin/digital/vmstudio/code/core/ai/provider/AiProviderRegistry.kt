@@ -110,6 +110,7 @@ val AiProviderKind.capabilitySummary: String
             "Full agent: reads and edits files, runs commands and tests on the server. " +
                 "Needs an SSH server with Claude Code installed and signed in."
         AiProviderKind.OMNIROUTE ->
-            "Chat only: answers questions and writes code into the conversation. " +
-                "It cannot touch files or run commands."
+            "Chat by default: answers questions and writes code into the conversation. " +
+                "Can optionally read, write and run commands too - turn on \"Tool use\" " +
+                "below - but reliability then depends entirely on the selected model."
     }

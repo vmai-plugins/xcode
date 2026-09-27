@@ -43,20 +43,36 @@ class AgentRunService : Service() {
     /** Servers with runs worth watching; a run can be started on more than one. */
     private val watchedServers = linkedSetOf<String>()
 
+    private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // START_STICKY redelivers with a null intent after a system-initiated kill,
+        // so the server id from the original start would otherwise be lost with the
+        // killed instance - pollLoop would then find watchedServers empty on its very
+        // first iteration and stop itself immediately, never re-reading live state as
+        // intended. Restoring the last-known set here is what makes restart actually
+        // resume watching rather than silently give up.
+        watchedServers += prefs.getStringSet(KEY_WATCHED_SERVERS, emptySet()).orEmpty()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val serverId = intent?.getStringExtra(EXTRA_SERVER_ID)
         if (serverId != null) watchedServers += serverId
+        persistWatchedServers()
 
         notifications.ensureChannels()
         startForegroundSafely(runningCount = watchedServers.size)
 
         if (pollJob == null) pollJob = scope.launch { pollLoop() }
 
-        // Redelivery would re-run the last intent after a kill; the watcher re-reads
-        // live state on every poll, so restarting plainly is enough.
         return START_STICKY
+    }
+
+    private fun persistWatchedServers() {
+        prefs.edit().putStringSet(KEY_WATCHED_SERVERS, watchedServers.toSet()).apply()
     }
 
     private suspend fun pollLoop() {
@@ -78,6 +94,7 @@ class AgentRunService : Service() {
                 // Nothing left on this server, so stop asking it.
                 if (!result.hasWork && !result.hasAnnouncements) watchedServers -= serverId
             }
+            persistWatchedServers()
 
             if (running > 0) {
                 idleRounds = 0
@@ -133,6 +150,8 @@ class AgentRunService : Service() {
     companion object {
         private const val TAG = "AgentRunService"
         private const val EXTRA_SERVER_ID = "serverId"
+        private const val PREFS_NAME = "agent_run_service"
+        private const val KEY_WATCHED_SERVERS = "watched_servers"
 
         /**
          * Frequent enough that a short task is announced promptly, sparse enough not

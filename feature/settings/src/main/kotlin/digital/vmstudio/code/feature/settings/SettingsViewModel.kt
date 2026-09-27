@@ -8,8 +8,11 @@ import digital.vmstudio.code.core.common.preferences.AgentAutonomyLevel
 import digital.vmstudio.code.core.common.preferences.ThemePreference
 import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
+import digital.vmstudio.code.core.common.version.AppVersionProvider
 import digital.vmstudio.code.core.security.crypto.KeystoreCrypto
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
+import digital.vmstudio.code.core.update.UpdateManager
+import digital.vmstudio.code.core.update.UpdateState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +26,8 @@ data class SettingsUiState(
     val storedCredentialCount: Int = 0,
     val isHardwareBackedKeystore: Boolean = false,
     val isErasing: Boolean = false,
+    val installedVersionName: String = "",
+    val updateState: UpdateState = UpdateState.Idle,
 )
 
 @HiltViewModel
@@ -31,6 +36,8 @@ class SettingsViewModel @Inject constructor(
     private val credentialStore: SecureCredentialStore,
     private val keystoreCrypto: KeystoreCrypto,
     private val diagnosticsLogSink: DiagnosticsLogSink,
+    private val appVersionProvider: AppVersionProvider,
+    private val updateManager: UpdateManager,
 ) : ViewModel() {
 
     private val isErasing = MutableStateFlow(false)
@@ -39,7 +46,8 @@ class SettingsViewModel @Inject constructor(
         preferencesRepository.preferences,
         credentialStore.credentials,
         isErasing,
-    ) { preferences, credentials, erasing ->
+        updateManager.state,
+    ) { preferences, credentials, erasing, updateState ->
         SettingsUiState(
             preferences = preferences,
             storedCredentialCount = credentials.size,
@@ -48,12 +56,22 @@ class SettingsViewModel @Inject constructor(
             // a secret is first stored, not on every cold launch.
             isHardwareBackedKeystore = keystoreCrypto.isHardwareBacked(),
             isErasing = erasing,
+            installedVersionName = appVersionProvider.versionName,
+            updateState = updateState,
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = SettingsUiState(),
     )
+
+    fun checkForUpdates() = updateManager.checkForUpdate()
+
+    fun downloadUpdate() = updateManager.downloadAndInstall()
+
+    fun retryInstall() = updateManager.retryInstall()
+
+    fun dismissUpdate() = updateManager.dismiss()
 
     fun setTheme(preference: ThemePreference) {
         viewModelScope.launch { preferencesRepository.setThemePreference(preference) }

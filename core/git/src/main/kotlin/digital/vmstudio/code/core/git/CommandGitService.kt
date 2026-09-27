@@ -83,6 +83,10 @@ class CommandGitService @Inject constructor(
         return execute(serverId, repoPath, "git push").map { }
     }
 
+    override suspend fun restoreFile(serverId: String, repoPath: String, filePath: String): GitResult<Unit> {
+        return execute(serverId, repoPath, "git checkout HEAD -- \"$filePath\"").map { }
+    }
+
     private suspend fun execute(
         serverId: String,
         repoPath: String,
