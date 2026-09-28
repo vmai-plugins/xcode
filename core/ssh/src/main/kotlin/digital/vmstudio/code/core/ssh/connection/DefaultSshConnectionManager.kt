@@ -122,8 +122,25 @@ class DefaultSshConnectionManager @Inject constructor(
         }
     }
 
+    /**
+     * Disconnects every session, including ones established while this was running.
+     *
+     * Each [disconnect] call is atomic for its own key (it holds that key's lock for
+     * the whole removal), but the set of keys is not locked as a whole: a caller can
+     * call [session] for a key this has already visited right after that key's
+     * disconnect() returns, re-establishing it before this method returns - it would
+     * then survive a "disconnect everything" with no indication anything is wrong.
+     * A bounded number of sweeps closes that window in practice (each sweep catches
+     * whatever the previous one raced against) without serialising every ordinary
+     * session()/reconnect() call behind a single global lock for the rare case this
+     * method actually runs.
+     */
     override suspend fun disconnectAll() {
-        sessions.keys.toList().forEach { disconnect(it) }
+        repeat(MAX_DISCONNECT_ALL_SWEEPS) {
+            val remaining = sessions.keys.toList()
+            if (remaining.isEmpty()) return
+            remaining.forEach { disconnect(it) }
+        }
     }
 
     override suspend fun <T> withSession(
@@ -222,6 +239,13 @@ class DefaultSshConnectionManager @Inject constructor(
         if (server.keepAliveIntervalSeconds <= 0) return
         runCatching {
             client.connection.keepAlive.keepAliveInterval = server.keepAliveIntervalSeconds
+        }.onFailure {
+            // A connection left with no keepalive looks "connected" indefinitely
+            // against a dead peer until SOCKET_TIMEOUT_MILLIS or the next active
+            // write/read - worth a log trail, unlike closeQuietly's cleanup-on-the-
+            // way-out failures, since this one can silently degrade a connection
+            // that otherwise looks healthy.
+            VmLog.w(LogCategory.SSH, TAG, "Could not configure keepalive for ${server.name}: ${it.message}")
         }
     }
 
@@ -312,6 +336,9 @@ class DefaultSshConnectionManager @Inject constructor(
         // instead of hanging a feature coroutine indefinitely. Keepalives cover idle
         // peers; this covers peers that never fully disconnect but stop responding.
         const val SOCKET_TIMEOUT_MILLIS = 60_000
+
+        /** See disconnectAll()'s doc comment for what this bounds. */
+        const val MAX_DISCONNECT_ALL_SWEEPS = 3
     }
 }
 
