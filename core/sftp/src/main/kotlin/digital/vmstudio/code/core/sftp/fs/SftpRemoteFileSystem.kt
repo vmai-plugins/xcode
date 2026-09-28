@@ -113,7 +113,11 @@ class SftpRemoteFileSystem @Inject constructor(
         recursive: Boolean,
     ): VmResult<Unit> = withSftp(serverId, path) { sftp ->
         val normalised = RemotePath.normalise(path)
-        val attributes = sftp.stat(normalised)
+        // lstat, not stat: stat follows symlinks, so a symlink pointing at a
+        // directory would be classified as DIRECTORY and deleteRecursively() would
+        // then list and delete the *target* directory's contents through the link,
+        // rather than just unlinking the symlink itself.
+        val attributes = sftp.lstat(normalised)
         if (attributes.type == FileMode.Type.DIRECTORY) {
             if (!recursive) {
                 sftp.rmdir(normalised)
