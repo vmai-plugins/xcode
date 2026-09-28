@@ -87,8 +87,10 @@ class AgentRunService : Service() {
                 result.newlyFinished.forEach(notifications::notifyFinished)
                 result.newlyBlocked.forEach(notifications::notifyBlocked)
 
-                val announced = (result.newlyFinished + result.newlyBlocked).mapNotNull { it.id }
-                watcher.markAnnounced(announced)
+                watcher.markAnnounced(
+                    finishedIds = result.newlyFinished.mapNotNull { it.id },
+                    blockedIds = result.newlyBlocked.mapNotNull { it.id },
+                )
 
                 running += result.stillRunning.size
                 // Nothing left on this server, so stop asking it.

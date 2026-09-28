@@ -58,9 +58,16 @@ class AgentRunWatcher @Inject constructor(
             is VmResult.Failure -> return WatchResult(emptyList(), emptyList(), emptyList())
         }
 
-        val announced = announcedIds()
-        val finished = runs.filter { !it.isRunning && !it.isBlocked && it.id !in announced }
-        val blocked = runs.filter { it.isBlocked && it.id !in announced }
+        // Kept as two separate records, not one: a run that was blocked (announced,
+        // id remembered) and then resumed and finished is !isRunning && !isBlocked
+        // by the time of a later poll. A single shared "announced" set would already
+        // contain its id from the blocked notification and would then wrongly
+        // exclude it here too - the user would be told it is blocked and never hear
+        // anything else, because its completion could never be announced.
+        val announcedFinished = announcedIds(ANNOUNCED_FINISHED)
+        val announcedBlocked = announcedIds(ANNOUNCED_BLOCKED)
+        val finished = runs.filter { !it.isRunning && !it.isBlocked && it.id !in announcedFinished }
+        val blocked = runs.filter { it.isBlocked && it.id !in announcedBlocked }
         val running = runs.filter { it.isRunning }
 
         return WatchResult(
@@ -70,46 +77,59 @@ class AgentRunWatcher @Inject constructor(
         )
     }
 
-    /** Records that the user has been told about these runs. */
-    suspend fun markAnnounced(runIds: Collection<String>) {
-        if (runIds.isEmpty()) return
+    /** Records that the user has been told about these runs, per announcement kind. */
+    suspend fun markAnnounced(
+        finishedIds: Collection<String> = emptyList(),
+        blockedIds: Collection<String> = emptyList(),
+    ) {
+        if (finishedIds.isEmpty() && blockedIds.isEmpty()) return
         store.edit { preferences ->
-            val existing = preferences[ANNOUNCED] ?: emptySet()
-            // Newest kept: a set has no order, so the incoming ids go last and the
-            // oldest are the ones dropped when the record is trimmed.
-            preferences[ANNOUNCED] = (existing + runIds)
-                .toList()
-                .takeLast(MAX_REMEMBERED)
-                .toSet()
+            if (finishedIds.isNotEmpty()) {
+                preferences[ANNOUNCED_FINISHED] = merge(preferences[ANNOUNCED_FINISHED], finishedIds)
+            }
+            if (blockedIds.isNotEmpty()) {
+                preferences[ANNOUNCED_BLOCKED] = merge(preferences[ANNOUNCED_BLOCKED], blockedIds)
+            }
         }
     }
 
     /**
-     * Treats everything currently finished as already seen.
+     * Treats everything currently finished or blocked as already seen.
      *
      * Called the first time a server is watched so the user is not greeted with
-     * notifications for runs that completed long before they enabled this.
+     * notifications for runs that completed, or were already stuck, long before
+     * they enabled this.
      */
     suspend fun baseline(serverId: String) {
         val runs = when (val result = runner.list(serverId)) {
             is VmResult.Success -> result.value
             is VmResult.Failure -> return
         }
-        markAnnounced(runs.filter { !it.isRunning }.mapNotNull { it.id })
+        markAnnounced(
+            finishedIds = runs.filter { !it.isRunning && !it.isBlocked }.mapNotNull { it.id },
+            blockedIds = runs.filter { it.isBlocked }.mapNotNull { it.id },
+        )
     }
 
     suspend fun forget(runIds: Collection<String>) {
         if (runIds.isEmpty()) return
+        val remove = runIds.toSet()
         store.edit { preferences ->
-            preferences[ANNOUNCED] = (preferences[ANNOUNCED] ?: emptySet()) - runIds.toSet()
+            preferences[ANNOUNCED_FINISHED] = (preferences[ANNOUNCED_FINISHED] ?: emptySet()) - remove
+            preferences[ANNOUNCED_BLOCKED] = (preferences[ANNOUNCED_BLOCKED] ?: emptySet()) - remove
         }
     }
 
-    private suspend fun announcedIds(): Set<String> =
-        store.data.first()[ANNOUNCED] ?: emptySet()
+    /** Newest kept: a set has no order, so the oldest ids are the ones trimmed off. */
+    private fun merge(existing: Set<String>?, incoming: Collection<String>): Set<String> =
+        (existing.orEmpty() + incoming).toList().takeLast(MAX_REMEMBERED).toSet()
+
+    private suspend fun announcedIds(key: Preferences.Key<Set<String>>): Set<String> =
+        store.data.first()[key] ?: emptySet()
 
     private companion object {
-        val ANNOUNCED = stringSetPreferencesKey("announced_run_ids")
+        val ANNOUNCED_FINISHED = stringSetPreferencesKey("announced_finished_run_ids")
+        val ANNOUNCED_BLOCKED = stringSetPreferencesKey("announced_blocked_run_ids")
 
         /**
          * Bounded so the record cannot grow without limit. Old ids falling off is

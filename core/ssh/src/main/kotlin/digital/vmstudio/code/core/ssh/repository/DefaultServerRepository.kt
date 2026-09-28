@@ -21,6 +21,8 @@ import digital.vmstudio.code.core.ssh.model.ServerValidator
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
@@ -32,6 +34,19 @@ class DefaultServerRepository @Inject constructor(
     private val credentialStore: SecureCredentialStore,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : ServerRepository {
+
+    /**
+     * Serializes save() and delete() for the same server against each other.
+     *
+     * save() reads the existing row, stores credentials, then upserts - a
+     * read-modify-write with no transaction around it. A delete() for the same id
+     * landing between the read and the upsert would free that row's credential ids
+     * from the secure store while save()'s in-flight write still references them,
+     * resurrecting a server that points at credentials which are gone or about to
+     * be. A single mutex is simpler than a per-id lock table and cheap enough here:
+     * server CRUD is a rare, user-initiated action, never a hot path.
+     */
+    private val writeMutex = Mutex()
 
     override val servers: Flow<List<Server>> =
         serverDao.observeAll().map { list -> list.map { it.toDomain() } }
@@ -54,11 +69,15 @@ class DefaultServerRepository @Inject constructor(
     }
 
     override suspend fun save(draft: ServerDraft): VmResult<Server> = withContext(ioDispatcher) {
+        writeMutex.withLock { saveLocked(draft) }
+    }
+
+    private suspend fun saveLocked(draft: ServerDraft): VmResult<Server> {
         val validation = ServerValidator.validate(draft)
         if (!validation.isValid) {
             // Report the first field error; the form highlights all of them from
             // its own validation pass.
-            return@withContext VmResult.Failure(validation.errors.values.first())
+            return VmResult.Failure(validation.errors.values.first())
         }
 
         val existing = draft.id?.let { serverDao.getById(it) }
@@ -67,7 +86,7 @@ class DefaultServerRepository @Inject constructor(
         // Store secrets first. If this fails, nothing has been written to Room and
         // there is no half-configured server left behind.
         val credentials = when (val stored = storeSecrets(draft, existing)) {
-            is VmResult.Failure -> return@withContext stored
+            is VmResult.Failure -> return stored
             is VmResult.Success -> stored.value
         }
 
@@ -95,7 +114,7 @@ class DefaultServerRepository @Inject constructor(
         )
 
         val result = vmCatching(::mapDatabaseError) { serverDao.upsert(entity) }
-        when (result) {
+        return when (result) {
             is VmResult.Failure -> {
                 // Roll back any credential written in this call so the store does
                 // not accumulate secrets no server references.
@@ -117,13 +136,15 @@ class DefaultServerRepository @Inject constructor(
     }
 
     override suspend fun delete(serverId: String): VmResult<Unit> = withContext(ioDispatcher) {
-        val credentialIds = serverDao.credentialIdsFor(serverId)
-        val deleted = vmCatching(::mapDatabaseError) { serverDao.deleteById(serverId) }
-        if (deleted is VmResult.Success) {
-            credentialIds.forEach { credentialStore.delete(it) }
-            VmLog.i(LogCategory.SSH, TAG, "Deleted server $serverId and ${credentialIds.size} credentials")
+        writeMutex.withLock {
+            val credentialIds = serverDao.credentialIdsFor(serverId)
+            val deleted = vmCatching(::mapDatabaseError) { serverDao.deleteById(serverId) }
+            if (deleted is VmResult.Success) {
+                credentialIds.forEach { credentialStore.delete(it) }
+                VmLog.i(LogCategory.SSH, TAG, "Deleted server $serverId and ${credentialIds.size} credentials")
+            }
+            deleted
         }
-        deleted
     }
 
     override suspend fun markConnected(serverId: String): VmResult<Unit> =
