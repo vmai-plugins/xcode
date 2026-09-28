@@ -493,7 +493,12 @@ private fun NameDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var name by remember { mutableStateOf(initial) }
+    // Keyed on `initial`: this composable is reused across CreateFile/CreateDirectory/
+    // Rename at one call site (the `when` branch in FileActionDialogs), so switching
+    // the rename target directly from one entry to another without an intervening
+    // recomposition where the dialog is absent would otherwise keep the previous
+    // entry's stale, possibly-edited text instead of resetting to the new one's name.
+    var name by remember(initial) { mutableStateOf(initial) }
     // A name with a separator would silently create or move into another directory.
     val invalid = name.isBlank() || name.contains('/') || name == "." || name == ".."
 
