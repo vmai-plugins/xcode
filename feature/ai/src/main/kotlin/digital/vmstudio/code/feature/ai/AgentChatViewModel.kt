@@ -15,6 +15,8 @@ import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
 import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
 import digital.vmstudio.code.core.ai.background.BackgroundRun
 import digital.vmstudio.code.core.ai.repository.StoredEntry
+import digital.vmstudio.code.core.project.Project
+import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
@@ -92,6 +94,8 @@ data class AgentChatUiState(
      */
     val watchServerId: String? = null,
     val error: VmError? = null,
+    val availableProjects: List<Project> = emptyList(),
+    val selectedModel: String = "claude-3-7-sonnet-latest",
 ) {
     /** The chat-only backend has no server or working directory to satisfy. */
     val canRun: Boolean
@@ -111,6 +115,7 @@ class AgentChatViewModel @Inject constructor(
     private val remoteFileSystem: RemoteFileSystem,
     private val backgroundRunner: BackgroundAgentRunner,
     private val preferences: UserPreferencesSource,
+    private val projectRepository: ProjectRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -132,6 +137,7 @@ class AgentChatViewModel @Inject constructor(
     init {
         applyStoredAutonomy()
         checkHealth()
+        observeProjects()
         when {
             // Reopening a stored conversation: its own directory and session id are
             // authoritative, so nothing is probed or prefilled.
@@ -143,6 +149,16 @@ class AgentChatViewModel @Inject constructor(
             else -> serverId?.let(::prefillWorkingDirectory)
         }
         refreshBackgroundRuns()
+    }
+
+    private fun observeProjects() {
+        viewModelScope.launch {
+            projectRepository.observeAll().collect { projects ->
+                _uiState.update { current ->
+                    current.copy(availableProjects = projects)
+                }
+            }
+        }
     }
 
     /**
@@ -324,6 +340,23 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(workingDirectory = path) }
     }
 
+    fun selectProject(project: Project) {
+        if (_uiState.value.isRunning) return
+        _uiState.update {
+            it.copy(
+                serverId = project.serverId ?: it.serverId,
+                workingDirectory = project.remotePath,
+                conversationId = null,
+                providerSessionId = null,
+            )
+        }
+        refreshBackgroundRuns()
+    }
+
+    fun selectModel(model: String) {
+        _uiState.update { it.copy(selectedModel = model) }
+    }
+
     fun setPermissionMode(mode: AgentPermissionMode) {
         _uiState.update { it.copy(permissionMode = mode) }
     }
@@ -368,6 +401,7 @@ class AgentChatViewModel @Inject constructor(
                 prompt = prompt,
                 resumeSessionId = state.providerSessionId,
                 permissionMode = state.permissionMode,
+                model = state.selectedModel,
                 autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
             )
 
@@ -522,8 +556,15 @@ class AgentChatViewModel @Inject constructor(
 
             is AgentEvent.Failed -> append(TranscriptItem.Failure(nextId(), event.error))
 
-            is AgentEvent.Diagnostic ->
-                append(TranscriptItem.Diagnostic(nextId(), event.line, event.isStderr))
+            is AgentEvent.Diagnostic -> {
+                val line = event.line.trim()
+                if (!line.contains("no stdin data received", ignoreCase = true) &&
+                    !line.contains("proceeding without it", ignoreCase = true) &&
+                    !line.contains("raw mode", ignoreCase = true)
+                ) {
+                    append(TranscriptItem.Diagnostic(nextId(), event.line, event.isStderr))
+                }
+            }
         }
     }
 

@@ -30,6 +30,7 @@ internal object ClaudeCodeCommandBuilder {
         parts += "&&"
 
         parts += binary
+        parts += "< /dev/null"
         parts += "--print"
         parts += "--output-format"
         parts += "stream-json"

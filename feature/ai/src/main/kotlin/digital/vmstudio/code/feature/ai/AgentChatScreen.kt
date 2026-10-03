@@ -32,10 +32,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -55,6 +57,8 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -119,6 +123,23 @@ fun AgentChatScreen(
     val listState = rememberLazyListState()
     var composerText by remember { mutableStateOf("") }
     var showDirectoryDialog by remember { mutableStateOf(false) }
+    var showProjectMenu by remember { mutableStateOf(false) }
+    var showModelMenu by remember { mutableStateOf(false) }
+
+    val currentProjectName = remember(state.workingDirectory, state.availableProjects) {
+        state.availableProjects.firstOrNull { it.remotePath == state.workingDirectory }?.name
+            ?: state.workingDirectory.trimEnd('/').substringAfterLast('/').ifBlank { "AI Agent" }
+    }
+
+    val currentModelLabel = when (state.selectedModel) {
+        "claude-3-7-sonnet-latest" -> "Claude 3.7"
+        "claude-3-5-sonnet-latest" -> "Claude 3.5"
+        "omniroute/gpt-4o" -> "GPT-4o"
+        "claude-3-5-haiku-latest" -> "Haiku 3.5"
+        else -> "Claude 3.7"
+    }
+
+    val groupedTranscript = remember(state.transcript) { groupTranscript(state.transcript) }
 
     state.watchServerId?.let { server ->
         LaunchedEffect(server) {
@@ -128,9 +149,9 @@ fun AgentChatScreen(
     }
 
     // Follow the tail as events arrive
-    LaunchedEffect(state.transcript.size) {
-        if (state.transcript.isNotEmpty()) {
-            listState.animateScrollToItem(state.transcript.lastIndex)
+    LaunchedEffect(groupedTranscript.size) {
+        if (groupedTranscript.isNotEmpty()) {
+            listState.animateScrollToItem(groupedTranscript.lastIndex)
         }
     }
 
@@ -151,30 +172,77 @@ fun AgentChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "AI Agent",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            )
-                            state.health?.let { health ->
-                                if (health.isAvailable) {
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = VmTheme.colors.agentContainer,
-                                    ) {
-                                        Text(
-                                            text = "Claude Code",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                            color = VmTheme.colors.onAgentContainer,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        )
+                        // Project Selector Row
+                        Box {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = state.availableProjects.isNotEmpty() && !state.isRunning) {
+                                        showProjectMenu = true
                                     }
+                                    .padding(vertical = 2.dp, horizontal = 2.dp),
+                            ) {
+                                Text(
+                                    text = currentProjectName,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 160.dp),
+                                )
+                                if (state.availableProjects.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Select project",
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = showProjectMenu,
+                                onDismissRequest = { showProjectMenu = false },
+                            ) {
+                                state.availableProjects.forEach { proj ->
+                                    val isSelected = proj.remotePath == state.workingDirectory
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(
+                                                    text = proj.name,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    ),
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                                )
+                                                Text(
+                                                    text = proj.remotePath,
+                                                    style = VmTheme.code.mono.copy(fontSize = 10.sp),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Folder,
+                                                contentDescription = null,
+                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.selectProject(proj)
+                                            showProjectMenu = false
+                                        },
+                                    )
                                 }
                             }
                         }
+
                         // Subtitle status row
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -186,9 +254,9 @@ fun AgentChatScreen(
                                 else -> VmStatus.DISCONNECTED
                             }
                             val label = when {
-                                state.isCheckingHealth -> "Probing server runtime..."
-                                state.health?.isAvailable == true -> "Server runtime active"
-                                else -> "CLI runtime offline"
+                                state.isCheckingHealth -> "Probing runtime..."
+                                state.health?.isAvailable == true -> "Server online"
+                                else -> "CLI offline"
                             }
                             VmStatusBadge(status = status, label = label)
                         }
@@ -200,6 +268,88 @@ fun AgentChatScreen(
                     }
                 },
                 actions = {
+                    // Model Selector Dropdown Pill
+                    Box {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = VmTheme.colors.agentContainer,
+                            border = BorderStroke(1.dp, VmTheme.colors.agent.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(enabled = !state.isRunning) { showModelMenu = true },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Psychology,
+                                    contentDescription = null,
+                                    tint = VmTheme.colors.agent,
+                                    modifier = Modifier.size(13.dp),
+                                )
+                                Text(
+                                    text = currentModelLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = VmTheme.colors.onAgentContainer,
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = VmTheme.colors.agent,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showModelMenu,
+                            onDismissRequest = { showModelMenu = false },
+                        ) {
+                            listOf(
+                                Triple("claude-3-7-sonnet-latest", "Claude 3.7 Sonnet", "Hybrid reasoning · Recommended"),
+                                Triple("claude-3-5-sonnet-latest", "Claude 3.5 Sonnet", "High speed & coding accuracy"),
+                                Triple("omniroute/gpt-4o", "OmniRoute GPT-4o", "Multi-provider gateway"),
+                                Triple("claude-3-5-haiku-latest", "Claude 3.5 Haiku", "Fast & cost-efficient"),
+                            ).forEach { (id, name, desc) ->
+                                val isSelected = state.selectedModel == id
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                text = name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                ),
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            )
+                                            Text(
+                                                text = desc,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.selectModel(id)
+                                        showModelMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+
                     if (state.transcript.isNotEmpty()) {
                         IconButton(onClick = viewModel::startNewConversation) {
                             Icon(Icons.Default.Add, contentDescription = "New conversation")
@@ -261,8 +411,11 @@ fun AgentChatScreen(
                     contentPadding = PaddingValues(spacing.md),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(state.transcript, key = { it.id }) { item ->
-                        TranscriptRow(item, onOpenDiff = onOpenDiff)
+                    items(groupedTranscript, key = { it.id }) { rowItem ->
+                        when (rowItem) {
+                            is TranscriptRowItem.Single -> TranscriptRow(rowItem.item, onOpenDiff = onOpenDiff)
+                            is TranscriptRowItem.ToolBatch -> ToolBatchRow(batch = rowItem, onOpenDiff = onOpenDiff)
+                        }
                     }
                 }
             }
@@ -957,6 +1110,156 @@ private fun HealthBanner(
                     style = VmButtonStyle.Tertiary,
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+    }
+}
+
+private sealed interface TranscriptRowItem {
+    val id: String
+    data class Single(val item: TranscriptItem) : TranscriptRowItem {
+        override val id: String get() = item.id
+    }
+    data class ToolBatch(
+        override val id: String,
+        val tools: List<TranscriptItem.ToolCall>,
+    ) : TranscriptRowItem
+}
+
+private fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem> {
+    val result = mutableListOf<TranscriptRowItem>()
+    val currentTools = mutableListOf<TranscriptItem.ToolCall>()
+
+    fun flushTools() {
+        if (currentTools.isEmpty()) return
+        if (currentTools.size == 1) {
+            result.add(TranscriptRowItem.Single(currentTools.first()))
+        } else {
+            result.add(
+                TranscriptRowItem.ToolBatch(
+                    id = "batch-${currentTools.first().id}-${currentTools.size}",
+                    tools = currentTools.toList(),
+                ),
+            )
+        }
+        currentTools.clear()
+    }
+
+    for (item in items) {
+        if (item is TranscriptItem.ToolCall) {
+            currentTools.add(item)
+        } else {
+            flushTools()
+            result.add(TranscriptRowItem.Single(item))
+        }
+    }
+    flushTools()
+    return result
+}
+
+/**
+ * Aggregated batch card for consecutive tool calls (matching Web Cockpit 2.0).
+ * Prevents long streams of CLI/bash commands from cluttering the conversation.
+ */
+@Composable
+private fun ToolBatchRow(
+    batch: TranscriptRowItem.ToolBatch,
+    onOpenDiff: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val isRunning = batch.tools.any { it.isRunning }
+    val hasError = batch.tools.any { it.isError }
+    val successCount = batch.tools.count { !it.isError && !it.isRunning }
+    val spacing = VmTheme.spacing
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(
+            1.dp,
+            if (hasError) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else VmTheme.colors.divider,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { expanded = !expanded },
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isRunning) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    } else if (hasError) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(15.dp),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.AutoFixHigh,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+
+                    Text(
+                        text = if (isRunning) "Running ${batch.tools.size} tools..." else "⚡ Ran ${batch.tools.size} tools",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    ) {
+                        Text(
+                            text = if (isRunning) "in progress" else "$successCount/${batch.tools.size} succeeded",
+                            style = VmTheme.code.mono.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (expanded) "Hide" else "Details",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    batch.tools.forEach { tool ->
+                        ToolRow(item = tool, onOpenDiff = onOpenDiff)
+                    }
+                }
             }
         }
     }

@@ -11,4 +11,5 @@ dependencies {
     implementation(projects.core.ssh)
     implementation(projects.core.sftp)
     implementation(projects.core.git)
+    implementation(projects.core.project)
 }
