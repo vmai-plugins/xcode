@@ -141,6 +141,16 @@ sealed class VmDestination(val route: String) {
         }
     }
 
+    data class ProjectDetail(val projectId: String) : VmDestination(routeFor(projectId)) {
+        companion object {
+            const val ARG_PROJECT_ID = "projectId"
+            const val ROUTE_PATTERN = "projects/{$ARG_PROJECT_ID}"
+            fun routeFor(projectId: String) = "projects/$projectId"
+        }
+    }
+
+    data object Connectors : VmDestination("connectors")
+
     data object Onboarding : VmDestination("onboarding")
 
     data object Tasks : VmDestination("tasks")

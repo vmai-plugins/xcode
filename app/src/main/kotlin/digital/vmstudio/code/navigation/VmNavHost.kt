@@ -1,4 +1,4 @@
-﻿package digital.vmstudio.code.navigation
+package digital.vmstudio.code.navigation
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -22,6 +22,8 @@ import digital.vmstudio.code.feature.editor.EditorScreen
 import digital.vmstudio.code.feature.servers.RecipeScreen
 import digital.vmstudio.code.feature.servers.ServerAppsScreen
 import digital.vmstudio.code.feature.projects.ProjectsScreen
+import digital.vmstudio.code.feature.projects.ProjectDetailScreen
+import digital.vmstudio.code.feature.connectors.ConnectorsScreen
 import digital.vmstudio.code.feature.servers.ServersScreen
 import digital.vmstudio.code.feature.settings.SettingsScreen
 import digital.vmstudio.code.feature.terminal.TerminalRoute
@@ -163,14 +165,39 @@ fun VmNavHost(
         composable(VmDestination.Projects.route) {
             ProjectsScreen(
                 onOpenProject = { project ->
-                    project.serverId?.let { serverId ->
-                        navController.navigate(
-                            VmDestination.ServerAgent.routeFor(serverId, project.remotePath),
-                        )
-                    }
+                    navController.navigate(VmDestination.ProjectDetail.routeFor(project.id))
                 },
                 onCreateProject = { navController.navigate(VmDestination.ProjectAdd.route) },
                 onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
+            )
+        }
+
+        composable(
+            route = VmDestination.ProjectDetail.ROUTE_PATTERN,
+            arguments = listOf(
+                navArgument(VmDestination.ProjectDetail.ARG_PROJECT_ID) { type = NavType.StringType },
+            ),
+        ) {
+            ProjectDetailScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenTerminal = { serverId, _ ->
+                    navController.navigate(VmDestination.ServerTerminal.routeFor(serverId))
+                },
+                onOpenFiles = { serverId, _ ->
+                    navController.navigate(VmDestination.ServerFiles.routeFor(serverId))
+                },
+                onOpenAgent = { serverId, path ->
+                    navController.navigate(VmDestination.ServerAgent.routeFor(serverId, path))
+                },
+            )
+        }
+
+        composable(VmDestination.Connectors.route) {
+            ConnectorsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenTerminal = {
+                    navController.navigate(VmDestination.Servers.route)
+                },
             )
         }
 

@@ -90,6 +90,7 @@ dependencies {
     implementation(projects.feature.projects)
     implementation(projects.feature.editor)
     implementation(projects.feature.tasks)
+    implementation(projects.feature.connectors)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
