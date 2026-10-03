@@ -9,6 +9,7 @@ import digital.vmstudio.code.core.common.log.LogLevel
 import digital.vmstudio.code.core.common.log.LogcatSink
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.onFailure
+import digital.vmstudio.code.core.connectors.sync.ProjectsHubSyncManager
 import digital.vmstudio.code.core.database.StartupReconciler
 import digital.vmstudio.code.core.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope

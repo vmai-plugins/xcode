@@ -2,6 +2,7 @@ package digital.vmstudio.code.core.connectors.sync
 
 import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.error.displayText
 import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.VmResult
@@ -131,11 +132,11 @@ class ProjectsHubSyncManager @Inject constructor(
 
             val projectsResult = hubClient.getProjects()
             val hubProjects = when (projectsResult) {
-                is VmResult.Success -> projectsResult.data
+                is VmResult.Success -> projectsResult.value
                 is VmResult.Failure -> {
-                    val err = projectsResult.error.message
+                    val err = projectsResult.error.displayText()
                     _syncState.update { it.copy(isSyncing = false, lastError = err) }
-                    return@withContext projectsResult
+                    return@withContext VmResult.Failure(projectsResult.error)
                 }
             }
 
@@ -159,7 +160,7 @@ class ProjectsHubSyncManager @Inject constructor(
             // Also check global tasks endpoint for any tasks not nested under projects
             val tasksResult = hubClient.getTasks()
             if (tasksResult is VmResult.Success) {
-                for (task in tasksResult.data) {
+                for (task in tasksResult.value) {
                     val targetProjId = task.project_id?.let { "hub_project_$it" }
                     if (targetProjId != null) {
                         val taskEntity = mapHubTaskToEntity(task, targetProjId, now)

@@ -48,7 +48,8 @@ class ProjectsHubAgentManager @Inject constructor(
         val numericId = parseHubNumericId(projectEntityId)
             ?: return@withContext VmResult.Failure(
                 VmError.Validation(
-                    field = "projectId",
+                    summary = "Invalid project ID",
+                    fieldName = "projectId",
                     reason = "Cannot extract numeric Hub ID from $projectEntityId",
                 )
             )
@@ -77,8 +78,7 @@ class ProjectsHubAgentManager @Inject constructor(
             ?: return@withContext VmResult.Failure(
                 VmError.NotFound(
                     summary = "Task not found",
-                    entityId = taskId,
-                    entityType = "AgentTask",
+                    reason = "Agent task with ID $taskId was not found",
                 )
             )
 
@@ -86,15 +86,15 @@ class ProjectsHubAgentManager @Inject constructor(
             ?: return@withContext VmResult.Failure(
                 VmError.NotFound(
                     summary = "Project not found for task",
-                    entityId = task.projectId,
-                    entityType = "Project",
+                    reason = "Project with ID ${task.projectId} was not found",
                 )
             )
 
         val serverId = project.serverId
             ?: return@withContext VmResult.Failure(
                 VmError.Validation(
-                    field = "serverId",
+                    summary = "Missing server ID",
+                    fieldName = "serverId",
                     reason = "Project ${project.name} has no remote server assigned",
                 )
             )
@@ -102,7 +102,8 @@ class ProjectsHubAgentManager @Inject constructor(
         val workDir = project.remotePath
             ?: return@withContext VmResult.Failure(
                 VmError.Validation(
-                    field = "remotePath",
+                    summary = "Missing remote path",
+                    fieldName = "remotePath",
                     reason = "Project ${project.name} has no remote directory specified",
                 )
             )
@@ -122,7 +123,7 @@ class ProjectsHubAgentManager @Inject constructor(
 
         when (startResult) {
             is VmResult.Success -> {
-                VmLog.i(LogCategory.AI, TAG, "Agent run started successfully: ${startResult.data}")
+                VmLog.i(LogCategory.AI, TAG, "Agent run started successfully: ${startResult.value}")
                 startResult
             }
             is VmResult.Failure -> {
@@ -143,7 +144,7 @@ class ProjectsHubAgentManager @Inject constructor(
         val projects = hubClient.getProjects()
         var audited = 0
         if (projects is VmResult.Success) {
-            for (p in projects.data) {
+            for (p in projects.value) {
                 if (p.id > 0) {
                     hubClient.triggerGrowthRun(p.id, "Autopilot scheduled project audit and growth evaluation")
                     audited++
