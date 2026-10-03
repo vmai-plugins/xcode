@@ -201,7 +201,7 @@ jobs:
           # PEM private keys anywhere outside the redaction tests, which contain a
           # deliberately fake one to prove the redactor removes it.
           if git grep -lE 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY' -- \
-              ':!*SecretRedactorTest.kt' ':!*ServerValidatorTest.kt' | grep .; then
+              ':!*SecretRedactorTest.kt' ':!*ServerValidatorTest.kt' ':!*SecretRedactor.kt' | grep .; then
             echo "::error::A private key block appears in tracked files"
             fail=1
           fi
