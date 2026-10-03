@@ -1,10 +1,17 @@
 package digital.vmstudio.code.feature.ai
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,33 +20,53 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Difference
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,8 +76,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ai.background.BackgroundRun
@@ -59,6 +93,7 @@ import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmCard
 import digital.vmstudio.code.core.ui.component.VmChip
+import digital.vmstudio.code.core.ui.component.VmDialog
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.component.VmStatus
 import digital.vmstudio.code.core.ui.component.VmStatusBadge
@@ -76,11 +111,14 @@ fun AgentChatScreen(
      */
     onWatchBackgroundRuns: (serverId: String) -> Unit = {},
     onOpenDiff: (filePath: String) -> Unit = {},
+    onOpenFiles: () -> Unit = {},
     viewModel: AgentChatViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
     val listState = rememberLazyListState()
+    var composerText by remember { mutableStateOf("") }
+    var showDirectoryDialog by remember { mutableStateOf(false) }
 
     state.watchServerId?.let { server ->
         LaunchedEffect(server) {
@@ -89,19 +127,73 @@ fun AgentChatScreen(
         }
     }
 
-    // Follow the tail as events arrive; a transcript that stays at the top while the
-    // agent works reads as nothing happening.
+    // Follow the tail as events arrive
     LaunchedEffect(state.transcript.size) {
         if (state.transcript.isNotEmpty()) {
             listState.animateScrollToItem(state.transcript.lastIndex)
         }
     }
 
+    if (showDirectoryDialog) {
+        EditDirectoryDialog(
+            currentDirectory = state.workingDirectory,
+            onDismiss = { showDirectoryDialog = false },
+            onConfirm = { newDir ->
+                viewModel.setWorkingDirectory(newDir)
+                showDirectoryDialog = false
+            },
+        )
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("AI Agent") },
+                title = {
+                    Column {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "AI Agent",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            )
+                            state.health?.let { health ->
+                                if (health.isAvailable) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = VmTheme.colors.agentContainer,
+                                    ) {
+                                        Text(
+                                            text = "Claude Code",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = VmTheme.colors.onAgentContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // Subtitle status row
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val status = when {
+                                state.isCheckingHealth -> VmStatus.CONNECTING
+                                state.health?.isAvailable == true -> VmStatus.CONNECTED
+                                else -> VmStatus.DISCONNECTED
+                            }
+                            val label = when {
+                                state.isCheckingHealth -> "Probing server runtime..."
+                                state.health?.isAvailable == true -> "Server runtime active"
+                                else -> "CLI runtime offline"
+                            }
+                            VmStatusBadge(status = status, label = label)
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -114,6 +206,9 @@ fun AgentChatScreen(
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { padding ->
@@ -123,35 +218,56 @@ fun AgentChatScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
+            // Sleek collapsible health banner
             HealthBanner(state = state, onRetry = viewModel::checkHealth)
 
-            RunContextBar(
+            // Ultra-compact project workspace context bar (replaces the bulky 90dp textfield)
+            WorkspaceContextBar(
                 state = state,
-                onDirectoryChange = viewModel::setWorkingDirectory,
-                onPermissionModeChange = viewModel::setPermissionMode,
+                onEditDirectory = { showDirectoryDialog = true },
+                onOpenFiles = onOpenFiles,
+                onPullGit = { composerText = "git pull origin main" },
             )
 
             state.error?.let { error ->
                 VmErrorPanel(
                     error = error,
-                    modifier = Modifier.padding(spacing.md),
+                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
                     onRetry = viewModel::checkHealth,
                 )
             }
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(spacing.md),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
-            ) {
-                items(state.transcript, key = { it.id }) { item ->
-                    TranscriptRow(item, onOpenDiff = onOpenDiff)
+            // Main chat content or modern empty state hero
+            if (state.transcript.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EmptyChatHero(
+                        workingDirectory = state.workingDirectory,
+                        onSuggestionClick = { prompt ->
+                            composerText = prompt
+                        },
+                    )
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(state.transcript, key = { it.id }) { item ->
+                        TranscriptRow(item, onOpenDiff = onOpenDiff)
+                    }
                 }
             }
 
+            // Background runs if any exist
             BackgroundRunsSection(
                 runs = state.backgroundRuns,
                 onOpenLogs = viewModel::backgroundLogs,
@@ -159,7 +275,17 @@ fun AgentChatScreen(
                 onRefresh = viewModel::refreshBackgroundRuns,
             )
 
-            Composer(
+            // Sleek mode selector docked above composer
+            ModeSelectorRow(
+                currentMode = state.permissionMode,
+                enabled = !state.isRunning,
+                onModeSelect = viewModel::setPermissionMode,
+            )
+
+            // Redesigned modern composer
+            ModernComposer(
+                text = composerText,
+                onTextChange = { composerText = it },
                 enabled = state.canRun,
                 isRunning = state.isRunning,
                 isResuming = state.isResuming,
@@ -172,137 +298,673 @@ fun AgentChatScreen(
     }
 }
 
+/**
+ * Sleek, modern Workspace Context Bar replacing the huge outlined text field.
+ * Displays remote directory with quick tap-to-edit.
+ */
 @Composable
-private fun HealthBanner(state: AgentChatUiState, onRetry: () -> Unit) {
-    val health = state.health
+private fun WorkspaceContextBar(
+    state: AgentChatUiState,
+    onEditDirectory: () -> Unit,
+    onOpenFiles: () -> Unit,
+    onPullGit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val spacing = VmTheme.spacing
-
-    // Health is reported before anything else because every failure mode below
-    // presents identically at the prompt: an agent that appears to do nothing.
-    if (state.isCheckingHealth) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(spacing.md),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-            Text(
-                text = "Checking Claude Code on the server",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        return
+    val dirName = remember(state.workingDirectory) {
+        val trimmed = state.workingDirectory.trimEnd('/')
+        trimmed.substringAfterLast('/', trimmed)
     }
 
-    if (health == null) return
-
-    val ready = health.isAvailable && health.isAuthenticated
-    if (ready) {
-        Row(
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.md, vertical = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, VmTheme.colors.divider),
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = spacing.md, vertical = spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = spacing.md, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            VmStatusBadge(status = VmStatus.CONNECTED, label = "Claude Code ready")
-            health.version?.let { VmChip(text = it, monospace = true) }
-            health.latencyMillis?.let { VmChip(text = "${it} ms", monospace = true) }
-        }
-        return
-    }
+            // Top Row: Project Title & Branch Status
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        text = dirName.ifBlank { "Remote Workspace" },
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
 
-    VmCard(modifier = Modifier.padding(spacing.md)) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Default.ErrorOutline,
-                contentDescription = null,
-                tint = VmTheme.colors.warning,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = if (!health.isAvailable) "Claude Code not found" else "Not signed in",
-                style = MaterialTheme.typography.titleSmall,
-            )
+                // Git Branch Badge
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = VmTheme.colors.successContainer.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, VmTheme.colors.success.copy(alpha = 0.3f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "🌿 main",
+                            style = VmTheme.code.mono.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                            color = VmTheme.colors.success,
+                        )
+                    }
+                }
+            }
+
+            // Bottom Row: Path & Quick Action Chips (Files, Pull, Edit)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = state.workingDirectory.ifBlank { "Tap to set path" },
+                    style = VmTheme.code.mono.copy(fontSize = 10.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(enabled = !state.isRunning, onClick = onEditDirectory),
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Files Chip
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(onClick = onOpenFiles),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = "Files",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(11.dp),
+                            )
+                            Text(
+                                text = "Files",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+
+                    // Git Pull Chip
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(onClick = onPullGit),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Pull",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(11.dp),
+                            )
+                            Text(
+                                text = "Pull",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+
+                    // Edit Path Chip
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = !state.isRunning, onClick = onEditDirectory),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit directory",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(11.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
-        health.diagnosis?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = spacing.xs),
-            )
-        }
-        VmButton(
-            text = "Check again",
-            onClick = onRetry,
-            style = VmButtonStyle.Secondary,
-            modifier = Modifier.padding(top = spacing.sm),
+    }
+}
+
+/**
+ * Minimal, clean dialog to inspect and edit the working directory.
+ */
+@Composable
+private fun EditDirectoryDialog(
+    currentDirectory: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(currentDirectory) }
+
+    VmDialog(
+        title = "Server Project Path",
+        onDismiss = onDismiss,
+        confirmLabel = "Save Directory",
+        onConfirm = { onConfirm(text.trim()) },
+        confirmEnabled = text.isNotBlank(),
+        icon = Icons.Default.Folder,
+    ) {
+        Text(
+            text = "The AI agent executes commands, runs audits, and edits source code inside this remote directory.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            label = { Text("Absolute Remote Directory") },
+            singleLine = true,
+            textStyle = VmTheme.code.mono,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Modern, styled segmented pill selector for agent permission modes.
+ */
 @Composable
-private fun RunContextBar(
-    state: AgentChatUiState,
-    onDirectoryChange: (String) -> Unit,
-    onPermissionModeChange: (AgentPermissionMode) -> Unit,
+private fun ModeSelectorRow(
+    currentMode: AgentPermissionMode,
+    enabled: Boolean,
+    onModeSelect: (AgentPermissionMode) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
 
-    Column(
-        modifier = Modifier
+    Row(
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = spacing.md, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedTextField(
-            value = state.workingDirectory,
-            onValueChange = onDirectoryChange,
-            label = { Text("Project directory on the server") },
-            singleLine = true,
-            enabled = !state.isRunning,
-            textStyle = VmTheme.code.mono,
-            supportingText = {
-                Text(
-                    // Scope is the one setting with real consequences here, so it is
-                    // stated rather than left implied.
-                    text = "The agent reads and writes inside this directory.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            },
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
-            AgentPermissionMode.entries.forEach { mode ->
-                FilterChip(
-                    selected = state.permissionMode == mode,
-                    onClick = { onPermissionModeChange(mode) },
-                    enabled = !state.isRunning,
-                    label = { Text(mode.label()) },
-                )
+        AgentPermissionMode.entries.forEach { mode ->
+            val isSelected = currentMode == mode
+            val (icon, label) = when (mode) {
+                AgentPermissionMode.PLAN -> Icons.Default.Shield to "Plan only"
+                AgentPermissionMode.ACCEPT_EDITS -> Icons.Default.AutoFixHigh to "Auto-edit"
+                AgentPermissionMode.MANUAL -> Icons.Default.HelpOutline to "Ask first"
+                AgentPermissionMode.BYPASS -> Icons.Default.RocketLaunch to "Full auto"
             }
-        }
 
-        if (state.isResuming) {
-            Text(
-                text = "Continuing the same conversation on the server.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (isSelected) {
+                    VmTheme.colors.agentContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                },
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isSelected) VmTheme.colors.agent else VmTheme.colors.divider,
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(enabled = enabled) { onModeSelect(mode) },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isSelected) VmTheme.colors.agent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        ),
+                        color = if (isSelected) {
+                            VmTheme.colors.onAgentContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+            }
         }
     }
 }
 
+/**
+ * Beautiful AI Welcome hero with curated action cards when transcript is empty.
+ */
+@Composable
+private fun EmptyChatHero(
+    workingDirectory: String,
+    onSuggestionClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = VmTheme.spacing
+    val dirName = remember(workingDirectory) {
+        val trimmed = workingDirectory.trimEnd('/')
+        trimmed.substringAfterLast('/', "Repository")
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = spacing.lg, vertical = spacing.md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        // Glowing Sparkle Avatar
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF8B5CF6).copy(alpha = 0.35f),
+                            Color(0xFF6366F1).copy(alpha = 0.15f),
+                            Color.Transparent,
+                        )
+                    )
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = CircleShape,
+                color = VmTheme.colors.agentContainer,
+                border = BorderStroke(1.5.dp, VmTheme.colors.agent),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = VmTheme.colors.agent,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "AI Coding Partner",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = spacing.sm),
+        )
+
+        Text(
+            text = "Connected to $dirName",
+            style = VmTheme.code.mono.copy(fontSize = 11.sp),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 2.dp, bottom = spacing.md),
+        )
+
+        // Suggestion Action Cards
+        val suggestions = listOf(
+            Triple(
+                Icons.Default.AccountTree,
+                "Explain Architecture",
+                "Analyze project structure, dependencies, and key entrypoints.",
+            ),
+            Triple(
+                Icons.Default.BugReport,
+                "Audit & Find Bugs",
+                "Scan recent files for potential syntax bugs and runtime issues.",
+            ),
+            Triple(
+                Icons.Default.Science,
+                "Generate Unit Tests",
+                "Create comprehensive test cases for core application flows.",
+            ),
+            Triple(
+                Icons.Default.Difference,
+                "Review Git Status",
+                "Inspect uncommitted changes and summarize local modifications.",
+            ),
+        )
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            suggestions.forEach { (icon, title, prompt) ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    border = BorderStroke(1.dp, VmTheme.colors.divider),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSuggestionClick(prompt) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = prompt,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Health banner for AI runtime.
+ * Dismissible and collapsible so it never blocks the developer's chat flow.
+ */
+@Composable
+private fun HealthBanner(
+    state: AgentChatUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val health = state.health
+    val spacing = VmTheme.spacing
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var isExpanded by remember { mutableStateOf(false) }
+    var isDismissed by remember { mutableStateOf(false) }
+
+    if (state.isCheckingHealth) {
+        Surface(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.md, vertical = spacing.xs),
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, VmTheme.colors.divider),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                Text(
+                    text = "Checking Claude Code CLI on the server...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
+
+    if (health == null || isDismissed) return
+
+    val ready = health.isAvailable && health.isAuthenticated
+    if (ready) {
+        Surface(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.md, vertical = 2.dp),
+            shape = RoundedCornerShape(10.dp),
+            color = VmTheme.colors.successContainer.copy(alpha = 0.12f),
+            border = BorderStroke(1.dp, VmTheme.colors.success.copy(alpha = 0.25f)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = 5.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    VmStatusBadge(status = VmStatus.CONNECTED, label = "Claude Code Active")
+                    health.version?.let { VmChip(text = it, monospace = true) }
+                }
+                health.latencyMillis?.let { VmChip(text = "${it}ms", monospace = true) }
+            }
+        }
+        return
+    }
+
+    // Modern Amber Warning Banner with fast copy & setup actions
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.md, vertical = spacing.xs),
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF1E1710),
+        border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.45f)),
+    ) {
+        Column(modifier = Modifier.padding(spacing.md)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFD97706).copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.WarningAmber,
+                            contentDescription = null,
+                            tint = Color(0xFFFBBF24),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = if (!health.isAvailable) "Claude Code CLI not found" else "Claude not authenticated",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFFFDE68A),
+                        )
+                        Text(
+                            text = "Required for terminal tools & autonomous file edits",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFFD1D5DB),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = { isDismissed = true },
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = Color(0xFF9CA3AF),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    health.diagnosis?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFE5E7EB),
+                        )
+                    }
+                    Text(
+                        text = "Quick Install on Server (via SSH):",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFFFDE68A),
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0F172A),
+                        border = BorderStroke(1.dp, Color(0xFF334155)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacing.sm, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "npm install -g @anthropic-ai/claude-code",
+                                style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                                color = Color(0xFF38BDF8),
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString("npm install -g @anthropic-ai/claude-code"))
+                                    Toast.makeText(context, "Command copied to clipboard", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(26.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy command",
+                                    tint = Color(0xFF94A3B8),
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VmButton(
+                    text = "Check again",
+                    onClick = onRetry,
+                    style = VmButtonStyle.Secondary,
+                    modifier = Modifier.weight(1f),
+                )
+                VmButton(
+                    text = if (isExpanded) "Less info" else "Setup instructions",
+                    onClick = { isExpanded = !isExpanded },
+                    style = VmButtonStyle.Tertiary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Message Row in the conversation transcript.
+ */
 @Composable
 private fun TranscriptRow(item: TranscriptItem, onOpenDiff: (String) -> Unit) {
     val spacing = VmTheme.spacing
@@ -312,83 +974,133 @@ private fun TranscriptRow(item: TranscriptItem, onOpenDiff: (String) -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
-            Text(
-                text = item.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(spacing.md),
-            )
+            Surface(
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                modifier = Modifier.widthIn(max = 320.dp),
+            ) {
+                Text(
+                    text = item.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                )
+            }
         }
 
         is TranscriptItem.AssistantText -> Row(
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                tint = VmTheme.colors.agent,
-                modifier = Modifier.size(16.dp).padding(top = 3.dp),
-            )
-            // Rendered as markdown: the agent writes code blocks and lists, and as
-            // flat text a shell command it produced had to be retyped by hand.
-            MarkdownText(markdown = item.text)
+            Surface(
+                shape = CircleShape,
+                color = VmTheme.colors.agentContainer,
+                modifier = Modifier
+                    .size(26.dp)
+                    .padding(top = 2.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = VmTheme.colors.agent,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, VmTheme.colors.divider),
+                modifier = Modifier.weight(1f),
+            ) {
+                Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    MarkdownText(markdown = item.text)
+                }
+            }
         }
 
         is TranscriptItem.StreamingText -> Row(
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                tint = VmTheme.colors.agent,
-                modifier = Modifier.size(16.dp).padding(top = 3.dp),
-            )
-            // Plain text while streaming: re-parsing markdown on every token would
-            // flicker as a half-typed code fence opens and closes.
-            Text(
-                text = item.text + "▌",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Surface(
+                shape = CircleShape,
+                color = VmTheme.colors.agentContainer,
+                modifier = Modifier
+                    .size(26.dp)
+                    .padding(top = 2.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = VmTheme.colors.agent,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, VmTheme.colors.divider),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = item.text + "▌",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                )
+            }
         }
 
         is TranscriptItem.Reasoning -> CollapsibleReasoning(item)
 
         is TranscriptItem.ToolCall -> ToolRow(item, onOpenDiff = onOpenDiff)
 
-        is TranscriptItem.Diagnostic -> Text(
-            text = item.text,
-            style = VmTheme.code.mono,
-            color = if (item.isStderr) VmTheme.colors.warning else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.extraSmall)
-                .background(VmTheme.colors.codeSurface)
-                .padding(spacing.sm),
-        )
-
-        is TranscriptItem.RunSummary -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
+        is TranscriptItem.Diagnostic -> Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = VmTheme.colors.codeSurface,
+            border = BorderStroke(1.dp, VmTheme.colors.divider),
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Icon(
-                imageVector = if (item.isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = if (item.isError) MaterialTheme.colorScheme.error else VmTheme.colors.success,
-                modifier = Modifier.size(14.dp),
+            Text(
+                text = item.text,
+                style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                color = if (item.isStderr) VmTheme.colors.warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(spacing.sm),
             )
-            VmChip(text = "${item.durationMillis / 1000}s", monospace = true)
-            VmChip(text = "${item.inputTokens + item.outputTokens} tokens", monospace = true)
-            if (item.costUsd > 0) {
-                VmChip(text = "$%.4f".format(item.costUsd), monospace = true)
+        }
+
+        is TranscriptItem.RunSummary -> Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, VmTheme.colors.divider),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = spacing.md, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = if (item.isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = if (item.isError) MaterialTheme.colorScheme.error else VmTheme.colors.success,
+                    modifier = Modifier.size(14.dp),
+                )
+                VmChip(text = "${item.durationMillis / 1000}s", monospace = true)
+                VmChip(text = "${item.inputTokens + item.outputTokens} tokens", monospace = true)
+                if (item.costUsd > 0) {
+                    VmChip(text = "$%.4f".format(item.costUsd), monospace = true)
+                }
             }
         }
 
@@ -396,46 +1108,67 @@ private fun TranscriptRow(item: TranscriptItem, onOpenDiff: (String) -> Unit) {
     }
 }
 
+/**
+ * Modern Thought Process accordion for agent reasoning.
+ */
 @Composable
 private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
     var expanded by remember { mutableStateOf(false) }
     val spacing = VmTheme.spacing
 
-    Column(
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = VmTheme.colors.agentContainer.copy(alpha = 0.35f),
+        border = BorderStroke(1.dp, VmTheme.colors.agent.copy(alpha = 0.3f)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .background(VmTheme.colors.agentContainer)
-            .clickable { expanded = !expanded }
-            .padding(spacing.sm),
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { expanded = !expanded },
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Default.Psychology,
-                contentDescription = null,
-                tint = VmTheme.colors.agent,
-                modifier = Modifier.size(14.dp),
-            )
-            Text(
-                text = if (expanded) "Reasoning" else "Reasoning (tap to expand)",
-                style = MaterialTheme.typography.labelMedium,
-                color = VmTheme.colors.onAgentContainer,
-            )
-        }
-        AnimatedVisibility(visible = expanded) {
-            Text(
-                text = item.text,
-                style = MaterialTheme.typography.bodySmall,
-                color = VmTheme.colors.onAgentContainer,
-                modifier = Modifier.padding(top = spacing.xs),
-            )
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Psychology,
+                        contentDescription = null,
+                        tint = VmTheme.colors.agent,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = if (expanded) "Thinking Process" else "Thinking Process (tap to expand)",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = VmTheme.colors.onAgentContainer,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = VmTheme.colors.agent,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            AnimatedVisibility(visible = expanded) {
+                Text(
+                    text = item.text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VmTheme.colors.onAgentContainer,
+                    modifier = Modifier.padding(top = spacing.xs),
+                )
+            }
         }
     }
 }
 
+/**
+ * Terminal & tool execution card.
+ */
 @Composable
 private fun ToolRow(
     item: TranscriptItem.ToolCall,
@@ -445,73 +1178,94 @@ private fun ToolRow(
     val spacing = VmTheme.spacing
     val hasOutput = !item.output.isNullOrBlank()
 
-    Column(
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, VmTheme.colors.divider),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .then(if (hasOutput) Modifier.clickable { expanded = !expanded } else Modifier)
-            .padding(spacing.sm),
+            .clip(RoundedCornerShape(10.dp))
+            .then(if (hasOutput) Modifier.clickable { expanded = !expanded } else Modifier),
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            when {
-                item.isRunning -> CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp,
-                )
-                item.isError -> Icon(
-                    imageVector = Icons.Default.ErrorOutline,
-                    contentDescription = "Failed",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(14.dp),
-                )
-                else -> Icon(
-                    imageVector = Icons.Default.Build,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-            Text(
-                text = item.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = if (expanded) Int.MAX_VALUE else 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            val affectedPath = item.affectedPath
-            if (affectedPath != null) {
-                IconButton(
-                    onClick = { onOpenDiff(affectedPath) },
-                    modifier = Modifier.size(24.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Difference,
-                        contentDescription = "Review changes",
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                when {
+                    item.isRunning -> CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    item.isError -> Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = "Failed",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    else -> Icon(
+                        imageVector = if (item.name.contains("bash", ignoreCase = true)) {
+                            Icons.Default.Terminal
+                        } else {
+                            Icons.Default.Build
+                        },
+                        contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(14.dp),
                     )
                 }
+                Text(
+                    text = item.summary,
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = if (expanded) Int.MAX_VALUE else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                val affectedPath = item.affectedPath
+                if (affectedPath != null) {
+                    IconButton(
+                        onClick = { onOpenDiff(affectedPath) },
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Difference,
+                            contentDescription = "Review changes",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+                }
             }
-        }
 
-        AnimatedVisibility(visible = expanded && hasOutput) {
-            Text(
-                text = item.output.orEmpty(),
-                style = VmTheme.code.mono,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = spacing.xs),
-            )
+            AnimatedVisibility(visible = expanded && hasOutput) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF0B0F14),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                ) {
+                    Text(
+                        text = item.output.orEmpty(),
+                        style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                        color = Color(0xFFE2E8F0),
+                        modifier = Modifier.padding(8.dp),
+                    )
+                }
+            }
         }
     }
 }
 
+/**
+ * Modern floating composer with multi-line text field, background run trigger,
+ * and high-contrast circular gradient action button.
+ */
 @Composable
-private fun Composer(
+private fun ModernComposer(
+    text: String,
+    onTextChange: (String) -> Unit,
     enabled: Boolean,
     isRunning: Boolean,
     isResuming: Boolean,
@@ -519,65 +1273,134 @@ private fun Composer(
     onSend: (String) -> Unit,
     onSendInBackground: (String) -> Unit,
     onStop: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var text by remember { mutableStateOf("") }
     val spacing = VmTheme.spacing
 
-    Row(
-        modifier = Modifier
+    Surface(
+        modifier = modifier
             .fillMaxWidth()
-            .padding(spacing.md),
-        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-        verticalAlignment = Alignment.Bottom,
+            .padding(horizontal = spacing.md, vertical = spacing.xs),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, VmTheme.colors.divider),
+        shadowElevation = 3.dp,
     ) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier.weight(1f),
-            enabled = !isRunning,
-            placeholder = {
-                Text(if (isResuming) "Continue the conversation" else "What should the agent do?")
-            },
-            maxLines = 5,
-        )
-
-        if (isRunning) {
-            IconButton(onClick = onStop) {
-                Icon(
-                    imageVector = Icons.Default.Stop,
-                    contentDescription = "Stop the agent",
-                    tint = MaterialTheme.colorScheme.error,
-                )
-            }
-        } else {
-            // Detached send sits beside the normal one rather than behind a menu:
-            // on a phone it is the option that survives the app being closed, so it
-            // is at least as important as watching the run live.
-            IconButton(
-                onClick = {
-                    onSendInBackground(text)
-                    text = ""
-                },
-                enabled = enabled && text.isNotBlank() && !isStartingBackgroundRun,
-            ) {
-                if (isStartingBackgroundRun) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = "Run in the background",
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+        ) {
+            TextField(
+                value = text,
+                onValueChange = onTextChange,
+                enabled = !isRunning,
+                placeholder = {
+                    Text(
+                        text = if (isResuming) "Continue discussion..." else "Ask agent or describe changes...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                     )
-                }
-            }
-
-            IconButton(
-                onClick = {
-                    onSend(text)
-                    text = ""
                 },
-                enabled = enabled && text.isNotBlank(),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                ),
+                maxLines = 5,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                // Detached Background Run Button
+                IconButton(
+                    onClick = {
+                        val toSend = text
+                        onTextChange("")
+                        onSendInBackground(toSend)
+                    },
+                    enabled = enabled && text.isNotBlank() && !isStartingBackgroundRun,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    if (isStartingBackgroundRun) {
+                        CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = "Run in background",
+                            tint = if (enabled && text.isNotBlank()) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                            },
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                }
+
+                if (isRunning) {
+                    // Glowing Red Stop Button
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onStop),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "Stop agent",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(19.dp),
+                            )
+                        }
+                    }
+                } else {
+                    // Sleek gradient Send button
+                    val canSend = enabled && text.isNotBlank()
+                    Surface(
+                        shape = CircleShape,
+                        color = if (canSend) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .then(
+                                if (canSend) {
+                                    Modifier.background(
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFF6366F1), Color(0xFFA855F7))
+                                        )
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clickable(enabled = canSend) {
+                                val toSend = text
+                                onTextChange("")
+                                onSend(toSend)
+                            },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send",
+                                tint = if (canSend) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -585,10 +1408,6 @@ private fun Composer(
 
 /**
  * Detached runs for this project.
- *
- * Shown above the composer because their whole purpose is to be visible after
- * returning to the app — a run the user started yesterday should be the first thing
- * they see, not something buried behind a refresh.
  */
 @Composable
 private fun BackgroundRunsSection(
@@ -637,9 +1456,6 @@ private fun BackgroundRunsSection(
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Scrolls rather than squeezing: the id and status chips have no
-                    // fixed budget, and a long status ("Needs attention") must never
-                    // fight the Output/Stop controls for space on a narrow screen.
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -647,8 +1463,6 @@ private fun BackgroundRunsSection(
                         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                     ) {
                         VmChip(text = id, monospace = true)
-                        // A blocked run looks identical to a slow one unless it is
-                        // named; an expired login on the server produces exactly this.
                         if (run.isBlocked) {
                             VmChip(text = "Needs attention")
                         } else {
@@ -673,11 +1487,4 @@ private fun BackgroundRunsSection(
             }
         }
     }
-}
-
-private fun AgentPermissionMode.label(): String = when (this) {
-    AgentPermissionMode.PLAN -> "Plan only"
-    AgentPermissionMode.ACCEPT_EDITS -> "Auto-edit"
-    AgentPermissionMode.MANUAL -> "Ask first"
-    AgentPermissionMode.BYPASS -> "No prompts"
 }

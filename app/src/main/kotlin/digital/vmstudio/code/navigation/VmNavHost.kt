@@ -226,6 +226,9 @@ fun VmNavHost(
                 onOpenDiff = { filePath ->
                     navController.navigate(VmDestination.ServerDiff.routeFor(agentServerId, filePath))
                 },
+                onOpenFiles = {
+                    navController.navigate(VmDestination.ServerFiles.routeFor(agentServerId))
+                },
             )
         }
 

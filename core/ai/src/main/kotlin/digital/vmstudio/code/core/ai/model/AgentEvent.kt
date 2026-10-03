@@ -118,4 +118,13 @@ data class AgentRunConfig(
      * belong to Claude Code, but the context budget is a flag it accepts.
      */
     val autoCompactTokens: Int? = null,
-)
+    /**
+     * Optional system prompt appended to the session.
+     */
+    val systemPrompt: String? = DEFAULT_HUB_PROMPT,
+) {
+    companion object {
+        const val DEFAULT_HUB_PROMPT =
+            "You are running inside VM Studio X-Codes. Be brief: do not narrate every step, only state findings and results clearly. For any job with 3 or more steps, first create a task list with your task tools and keep the status of each task current. Android and Flutter apps can be built and published on the build VPS with `/usr/local/bin/build-and-publish-apk <slug> release` (slugs: onlinepuja-customer, onlinepuja-partner, mynearby-shop, mynearby-vendor, mynearby-delivery, mynearby-partner, mynearby-core-ai, agents-app, xcode)."
+    }
+}
