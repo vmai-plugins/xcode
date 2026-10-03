@@ -29,7 +29,15 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
     WRITE_FILE(
         "write_file",
         "Create or overwrite a text file with the given content. Always writes the " +
-            "complete file - there is no partial-edit tool.",
+            "complete file.",
+    ),
+    EDIT_FILE(
+        "edit_file",
+        "Perform a targeted search-and-replace edit on an existing file. Replaces target_content with replacement_content.",
+    ),
+    GREP_SEARCH(
+        "grep_search",
+        "Search for a pattern or regular expression across files in the project. Returns matching files and lines.",
     ),
     RUN_COMMAND(
         "run_command",
@@ -72,6 +80,48 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             add("path")
             add("content")
         }
+    }
+
+    OmniRouteTool.EDIT_FILE -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("path") {
+                put("type", "string")
+                put("description", "Absolute or working-directory-relative path.")
+            }
+            putJsonObject("target_content") {
+                put("type", "string")
+                put("description", "The exact lines or block of code to find and replace. Must match existing file content exactly.")
+            }
+            putJsonObject("replacement_content") {
+                put("type", "string")
+                put("description", "The replacement content to substitute.")
+            }
+        }
+        putJsonArray("required") {
+            add("path")
+            add("target_content")
+            add("replacement_content")
+        }
+    }
+
+    OmniRouteTool.GREP_SEARCH -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("query") {
+                put("type", "string")
+                put("description", "Search string or regular expression.")
+            }
+            putJsonObject("path") {
+                put("type", "string")
+                put("description", "Directory or file to search within. Defaults to the working directory.")
+            }
+            putJsonObject("case_sensitive") {
+                put("type", "boolean")
+                put("description", "Whether the search is case-sensitive. Defaults to false.")
+            }
+        }
+        putJsonArray("required") { add("query") }
     }
 
     OmniRouteTool.RUN_COMMAND -> buildJsonObject {

@@ -155,10 +155,8 @@ class OmniRouteProvider @Inject constructor(
         val dialect = detectedDialect.takeIf { it != OmniRouteDialect.UNKNOWN }
             ?: detectDialect(baseUrl, key).also { detectedDialect = it }
 
-        // Tool use is opt-in and needs somewhere to act: without a working directory
-        // there is no project for read_file/write_file/run_command to act on, so this
-        // falls back to plain chat exactly as it would if the toggle were off.
-        if (settings.aiToolsEnabled && config.workingDirectory.isNotBlank()) {
+        // Run as an autonomous agent loop whenever a project workspace is active on a server
+        if (config.workingDirectory.isNotBlank() && (settings.aiToolsEnabled || config.serverId.isNotBlank())) {
             try {
                 emitAll(agentLoop.run(baseUrl, key, dialect, model, config, settings.agentAutonomyLevel))
             } finally {

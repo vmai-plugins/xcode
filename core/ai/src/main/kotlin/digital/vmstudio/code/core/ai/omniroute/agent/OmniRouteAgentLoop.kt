@@ -71,8 +71,10 @@ class OmniRouteAgentLoop @Inject constructor(
         val allowedTools = buildSet {
             add(OmniRouteTool.READ_FILE)
             add(OmniRouteTool.LIST_DIRECTORY)
+            add(OmniRouteTool.GREP_SEARCH)
             if (config.permissionMode != AgentPermissionMode.PLAN) {
                 add(OmniRouteTool.WRITE_FILE)
+                add(OmniRouteTool.EDIT_FILE)
                 if (!config.restricted) add(OmniRouteTool.RUN_COMMAND)
             }
         }
@@ -263,7 +265,9 @@ class OmniRouteAgentLoop @Inject constructor(
         return when (tool) {
             OmniRouteTool.READ_FILE -> readFile(call, serverId, workingDirectory)
             OmniRouteTool.LIST_DIRECTORY -> listDirectory(call, serverId, workingDirectory)
+            OmniRouteTool.GREP_SEARCH -> grepSearch(call, serverId, workingDirectory)
             OmniRouteTool.WRITE_FILE -> writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
+            OmniRouteTool.EDIT_FILE -> editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId)
         }
     }
@@ -295,6 +299,107 @@ class OmniRouteAgentLoop @Inject constructor(
                 }
                 ToolOutcome(listing.ifBlank { "(empty directory)" }, isError = false)
             }
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+    }
+
+    private suspend fun grepSearch(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
+        val query = argument(call.argumentsJson, "query")
+            ?: return ToolOutcome("Missing required argument \"query\".", isError = true)
+        val path = argument(call.argumentsJson, "path") ?: "."
+        val resolved = resolvePath(workingDirectory, path)
+        val caseSensitive = argument(call.argumentsJson, "case_sensitive")?.toBooleanStrictOrNull() ?: false
+
+        val flags = if (caseSensitive) "-rn" else "-rni"
+        val escapedQuery = query.replace("'", "'\\''")
+        val escapedPath = resolved.replace("'", "'\\''")
+        val command = "grep $flags --exclude-dir={.git,node_modules,build,.gradle} '$escapedQuery' '$escapedPath' | head -n 50"
+
+        return when (val result = commandGuard.run(serverId, command, requestedByAgent = true)) {
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Success -> {
+                val output = result.value.combinedOutput()
+                ToolOutcome(
+                    output = output.ifBlank { "(no matches found for '$query')" },
+                    isError = false,
+                )
+            }
+        }
+    }
+
+    private suspend fun editFile(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+        autonomyLevel: AgentAutonomyLevel,
+        permissionMode: AgentPermissionMode,
+    ): ToolOutcome {
+        val path = argument(call.argumentsJson, "path")
+            ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
+        val target = argument(call.argumentsJson, "target_content")
+            ?: return ToolOutcome("Missing required argument \"target_content\".", isError = true)
+        val replacement = argument(call.argumentsJson, "replacement_content")
+            ?: return ToolOutcome("Missing required argument \"replacement_content\".", isError = true)
+        val resolved = resolvePath(workingDirectory, path)
+
+        val server = when (val result = serverRepository.get(serverId)) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+
+        val existingContent = when (val result = remoteFileSystem.readText(serverId, resolved)) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Failed to read file before edit: ${result.error.summaryWithReason()}", isError = true)
+        }
+
+        if (!existingContent.contains(target)) {
+            return ToolOutcome(
+                "Could not find the target_content in \"$resolved\". Ensure target_content exactly matches the existing file contents.",
+                isError = true,
+            )
+        }
+
+        val occurrences = existingContent.split(target).size - 1
+        if (occurrences > 1) {
+            return ToolOutcome(
+                "target_content matches $occurrences times in \"$resolved\". Please provide more surrounding context so the match is unique.",
+                isError = true,
+            )
+        }
+
+        val newContent = existingContent.replace(target, replacement)
+
+        val autoApply = server.environment != ServerEnvironment.PRODUCTION &&
+            permissionMode != AgentPermissionMode.MANUAL &&
+            (
+                permissionMode == AgentPermissionMode.ACCEPT_EDITS ||
+                    permissionMode == AgentPermissionMode.BYPASS ||
+                    autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)
+            )
+
+        if (!autoApply) {
+            val approved = fileEditApprovalGate.request(
+                FileEditApprovalRequest(
+                    path = resolved,
+                    isNewFile = false,
+                    oldContent = existingContent,
+                    newContent = newContent,
+                    serverId = server.id,
+                    serverName = server.name,
+                    environment = server.environment,
+                ),
+            )
+            if (!approved) {
+                return ToolOutcome("The edit to \"$resolved\" was not approved.", isError = true)
+            }
+        }
+
+        return when (val result = remoteFileSystem.writeText(serverId, resolved, newContent)) {
+            is VmResult.Success -> ToolOutcome("Successfully edited $resolved.", isError = false)
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
         }
     }
@@ -388,7 +493,9 @@ class OmniRouteAgentLoop @Inject constructor(
     private fun summarize(tool: OmniRouteTool?, toolName: String, path: String?): String = when (tool) {
         OmniRouteTool.READ_FILE -> "Read ${path ?: "?"}"
         OmniRouteTool.LIST_DIRECTORY -> "List ${path ?: "?"}"
+        OmniRouteTool.GREP_SEARCH -> "Search in ${path ?: "?"}"
         OmniRouteTool.WRITE_FILE -> "Write ${path ?: "?"}"
+        OmniRouteTool.EDIT_FILE -> "Edit ${path ?: "?"}"
         OmniRouteTool.RUN_COMMAND -> "Run command"
         null -> toolName
     }
@@ -406,18 +513,21 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private fun systemPrompt(workingDirectory: String, allowedTools: Set<OmniRouteTool>): String = buildString {
         append(
-            "You are a coding assistant working inside $workingDirectory on a remote " +
-                "server, reached through tools rather than direct access. Use read_file " +
-                "and list_directory to understand the project before making changes. ",
+            "You are VMStudio Code, an autonomous AI coding agent running inside $workingDirectory on a remote " +
+                "server, reached through tools. First inspect the project structure with list_directory, read_file, or grep_search. ",
         )
+        if (OmniRouteTool.EDIT_FILE in allowedTools) {
+            append(
+                "When modifying existing files, always prefer edit_file to replace targeted code sections precisely. ",
+            )
+        }
         if (OmniRouteTool.WRITE_FILE in allowedTools) {
             append(
-                "Use write_file to create or replace a file's entire contents - there " +
-                    "is no partial-edit tool, so include the whole file. ",
+                "Use write_file to create new files or rewrite small files entirely. ",
             )
         }
         if (OmniRouteTool.RUN_COMMAND in allowedTools) {
-            append("Use run_command for anything else a shell can do (building, testing, git). ")
+            append("Use run_command to run build, test, git, and lint commands, inspect outputs, and self-correct any errors. ")
         }
         if (OmniRouteTool.WRITE_FILE !in allowedTools) {
             append(
@@ -426,8 +536,8 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
         append(
-            "Prefer relative paths under $workingDirectory. When you are done, reply " +
-                "with plain text and no further tool calls.",
+            "Prefer relative paths under $workingDirectory. When done, reply " +
+                "with a clear summary of findings or modifications.",
         )
     }
 
