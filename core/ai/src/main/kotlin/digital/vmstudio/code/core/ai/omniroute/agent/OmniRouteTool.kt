@@ -41,6 +41,12 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "Search for a pattern or regular expression across files in the project. " +
             "Returns matching files and lines.",
     ),
+    WEB_FETCH(
+        "web_fetch",
+        "Fetch a public web page or text URL (http or https) and return its readable " +
+            "text, up to about 20,000 characters. Use it for documentation, changelogs " +
+            "and API references.",
+    ),
     RUN_COMMAND(
         "run_command",
         "Run a shell command on the server and return its output. Subject to the " +
@@ -128,6 +134,17 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             }
         }
         putJsonArray("required") { add("query") }
+    }
+
+    OmniRouteTool.WEB_FETCH -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("url") {
+                put("type", "string")
+                put("description", "The full http or https URL to fetch.")
+            }
+        }
+        putJsonArray("required") { add("url") }
     }
 
     OmniRouteTool.RUN_COMMAND -> buildJsonObject {

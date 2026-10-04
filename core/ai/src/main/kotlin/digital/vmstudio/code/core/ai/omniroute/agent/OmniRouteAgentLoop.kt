@@ -50,6 +50,7 @@ class OmniRouteAgentLoop @Inject constructor(
     private val commandGuard: CommandGuard,
     private val fileEditApprovalGate: FileEditApprovalGate,
     private val serverRepository: ServerRepository,
+    private val webFetcher: WebFetcher,
 ) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -206,6 +207,9 @@ class OmniRouteAgentLoop @Inject constructor(
         add(OmniRouteTool.READ_FILE)
         add(OmniRouteTool.LIST_DIRECTORY)
         add(OmniRouteTool.GREP_SEARCH)
+        // Read-only, but it sends a model-chosen URL off the device, so a
+        // restricted run does not get it.
+        if (!config.restricted) add(OmniRouteTool.WEB_FETCH)
         if (config.permissionMode != AgentPermissionMode.PLAN) {
             add(OmniRouteTool.WRITE_FILE)
             add(OmniRouteTool.EDIT_FILE)
@@ -246,6 +250,7 @@ class OmniRouteAgentLoop @Inject constructor(
     ): OmniRouteMessage.ToolResult {
         val tool = OmniRouteTool.fromToolName(call.name)
         val path = argument(call.argumentsJson, "path")
+        val target = path ?: argument(call.argumentsJson, "url")
         // Resolved to an absolute path, not the raw model argument:
         // a model editing a repo-root file may well call this with
         // just "README.md", and DiffReviewViewModel derives the
@@ -258,7 +263,7 @@ class OmniRouteAgentLoop @Inject constructor(
             AgentEvent.ToolStarted(
                 toolUseId = call.id,
                 name = call.name,
-                summary = summarize(tool, call.name, path),
+                summary = summarize(tool, call.name, target),
                 argumentsJson = call.argumentsJson,
                 affectedPath = resolvedPath,
             ),
@@ -320,6 +325,16 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.EDIT_FILE ->
                 editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId)
+            OmniRouteTool.WEB_FETCH -> webFetch(call)
+        }
+    }
+
+    private suspend fun webFetch(call: OmniRouteToolCall): ToolOutcome {
+        val url = argument(call.argumentsJson, "url")
+            ?: return ToolOutcome("Missing required argument \"url\".", isError = true)
+        return when (val result = webFetcher.fetch(url)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
         }
     }
 
@@ -569,6 +584,7 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.WRITE_FILE -> "Write ${path ?: "?"}"
         OmniRouteTool.EDIT_FILE -> "Edit ${path ?: "?"}"
         OmniRouteTool.RUN_COMMAND -> "Run command"
+        OmniRouteTool.WEB_FETCH -> "Fetch ${path ?: "web page"}"
         null -> toolName
     }
 
@@ -593,6 +609,9 @@ class OmniRouteAgentLoop @Inject constructor(
                 "server, reached through tools. First inspect the project structure with " +
                 "list_directory, read_file, or grep_search. ",
         )
+        if (OmniRouteTool.WEB_FETCH in allowedTools) {
+            append("Use web_fetch to read documentation or other public pages when you need them. ")
+        }
         if (OmniRouteTool.EDIT_FILE in allowedTools) {
             append(
                 "When modifying existing files, always prefer edit_file to replace targeted " +
