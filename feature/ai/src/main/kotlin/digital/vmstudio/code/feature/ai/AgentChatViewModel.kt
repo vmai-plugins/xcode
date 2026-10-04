@@ -73,6 +73,11 @@ sealed interface TranscriptItem {
     ) : TranscriptItem
 
     data class Failure(override val id: String, val error: VmError) : TranscriptItem
+
+    data class PlanChecklist(
+        override val id: String,
+        val steps: List<digital.vmstudio.code.core.ai.model.PlanStep>,
+    ) : TranscriptItem
 }
 
 data class AgentChatUiState(
@@ -568,6 +573,62 @@ class AgentChatViewModel @Inject constructor(
                 ) {
                     append(TranscriptItem.Diagnostic(nextId(), event.line, event.isStderr))
                 }
+            }
+
+            is AgentEvent.PlanUpdated -> {
+                _uiState.update { state ->
+                    val existingIndex = state.transcript.indexOfLast { it is TranscriptItem.PlanChecklist }
+                    if (existingIndex >= 0) {
+                        val updated = state.transcript.toMutableList()
+                        updated[existingIndex] = TranscriptItem.PlanChecklist(
+                            id = (updated[existingIndex] as TranscriptItem.PlanChecklist).id,
+                            steps = event.steps,
+                        )
+                        state.copy(transcript = updated)
+                    } else {
+                        state.copy(transcript = state.transcript + TranscriptItem.PlanChecklist(nextId(), event.steps))
+                    }
+                }
+            }
+        }
+    }
+
+    fun rollbackRun() {
+        val sId = serverId ?: return
+        viewModelScope.launch {
+            val touchedFiles = _uiState.value.transcript
+                .filterIsInstance<TranscriptItem.ToolCall>()
+                .mapNotNull { it.affectedPath }
+                .distinct()
+
+            if (touchedFiles.isEmpty()) {
+                append(TranscriptItem.Diagnostic(nextId(), "No modified files found to rollback in this run.", isStderr = false))
+                return@launch
+            }
+
+            val repoPath = _uiState.value.workingDirectory.ifBlank { "." }
+            var restoredCount = 0
+            for (file in touchedFiles) {
+                when (gitService.restoreFile(sId, repoPath, file)) {
+                    is GitResult.Success -> restoredCount++
+                    is GitResult.Failure -> Unit
+                }
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    transcript = state.transcript.map { item ->
+                        if (item is TranscriptItem.ToolCall && item.affectedPath != null) {
+                            item.copy(isReverted = true)
+                        } else {
+                            item
+                        }
+                    } + TranscriptItem.Diagnostic(
+                        id = nextId(),
+                        text = "⏮️ Run-level rollback complete: restored $restoredCount files.",
+                        isStderr = false,
+                    ),
+                )
             }
         }
     }

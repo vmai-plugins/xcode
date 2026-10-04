@@ -351,6 +351,17 @@ fun AgentChatScreen(
                         }
                     }
 
+                    val hasTouchedFiles = state.transcript.any { it is TranscriptItem.ToolCall && it.affectedPath != null && !it.isReverted }
+                    if (hasTouchedFiles) {
+                        IconButton(onClick = viewModel::rollbackRun) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Rollback run modifications",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+
                     if (state.transcript.isNotEmpty()) {
                         IconButton(onClick = viewModel::startNewConversation) {
                             Icon(Icons.Default.Add, contentDescription = "New conversation")
@@ -1422,6 +1433,86 @@ private fun TranscriptRow(
         }
 
         is TranscriptItem.Failure -> VmErrorPanel(error = item.error)
+
+        is TranscriptItem.PlanChecklist -> PlanChecklistCard(item = item)
+    }
+}
+
+@Composable
+private fun PlanChecklistCard(item: TranscriptItem.PlanChecklist) {
+    val spacing = VmTheme.spacing
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(spacing.md), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "Implementation Plan",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+                val completedCount = item.steps.count { it.status.equals("completed", ignoreCase = true) }
+                Text(
+                    text = "$completedCount / ${item.steps.size}",
+                    style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            androidx.compose.material3.HorizontalDivider(color = VmTheme.colors.divider)
+
+            item.steps.forEach { step ->
+                val isCompleted = step.status.equals("completed", ignoreCase = true)
+                val isInProgress = step.status.equals("in_progress", ignoreCase = true)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    when {
+                        isCompleted -> Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = VmTheme.colors.success,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        isInProgress -> CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        else -> Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+                                    shape = CircleShape,
+                                ),
+                        )
+                    }
+                    Text(
+                        text = step.step,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDecoration = if (isCompleted) androidx.compose.ui.text.style.TextDecoration.LineThrough else androidx.compose.ui.text.style.TextDecoration.None,
+                        ),
+                        color = if (isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
     }
 }
 
