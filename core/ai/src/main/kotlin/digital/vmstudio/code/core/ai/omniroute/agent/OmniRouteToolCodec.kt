@@ -1,5 +1,6 @@
 package digital.vmstudio.code.core.ai.omniroute.agent
 
+import digital.vmstudio.code.core.ai.model.ImageAttachment
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteDialect
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -16,7 +17,7 @@ data class OmniRouteToolCall(val id: String, val name: String, val argumentsJson
 
 /** One turn of conversation, in a shape both dialects can render. */
 sealed interface OmniRouteMessage {
-    data class User(val text: String) : OmniRouteMessage
+    data class User(val text: String, val images: List<ImageAttachment> = emptyList()) : OmniRouteMessage
     data class Assistant(val text: String?, val toolCalls: List<OmniRouteToolCall>) : OmniRouteMessage
     data class ToolResult(
         val toolCallId: String,
@@ -54,7 +55,8 @@ object OmniRouteToolCodec {
         maxTokens: Int,
         tools: List<OmniRouteTool> = OmniRouteTool.entries,
     ): String = when (dialect) {
-        OmniRouteDialect.ANTHROPIC_MESSAGES -> buildAnthropicRequest(model, systemPrompt, history, maxTokens, tools)
+        OmniRouteDialect.ANTHROPIC_MESSAGES ->
+            buildAnthropicRequest(model, systemPrompt, history, maxTokens, tools)
         OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN ->
             buildOpenAiRequest(model, systemPrompt, history, maxTokens, tools)
     }
@@ -98,7 +100,23 @@ object OmniRouteToolCodec {
     private fun OmniRouteMessage.toOpenAiJson(): JsonObject = when (this) {
         is OmniRouteMessage.User -> buildJsonObject {
             put("role", "user")
-            put("content", text)
+            if (images.isEmpty()) {
+                put("content", text)
+            } else {
+                putJsonArray("content") {
+                    add(buildJsonObject { put("type", "text"); put("text", text) })
+                    images.forEach { image ->
+                        add(
+                            buildJsonObject {
+                                put("type", "image_url")
+                                putJsonObject("image_url") {
+                                    put("url", "data:${image.mediaType};base64,${image.base64Data}")
+                                }
+                            },
+                        )
+                    }
+                }
+            }
         }
 
         is OmniRouteMessage.Assistant -> buildJsonObject {
@@ -202,6 +220,18 @@ object OmniRouteToolCodec {
         is OmniRouteMessage.User -> buildJsonObject {
             put("role", "user")
             putJsonArray("content") {
+                images.forEach { image ->
+                    add(
+                        buildJsonObject {
+                            put("type", "image")
+                            putJsonObject("source") {
+                                put("type", "base64")
+                                put("media_type", image.mediaType)
+                                put("data", image.base64Data)
+                            }
+                        },
+                    )
+                }
                 add(buildJsonObject { put("type", "text"); put("text", text) })
             }
         }
@@ -226,7 +256,7 @@ object OmniRouteToolCodec {
         }
 
         is OmniRouteMessage.ToolResult ->
-            throw IllegalStateException("ToolResult is batched by buildAnthropicRequest, not rendered alone.")
+            error("ToolResult is batched by buildAnthropicRequest, not rendered alone.")
     }
 
     private fun OmniRouteMessage.ToolResult.toAnthropicToolResultJson(): JsonObject = buildJsonObject {
@@ -248,10 +278,12 @@ object OmniRouteToolCodec {
             when (block.stringOrNull("type")) {
                 "text" -> block.stringOrNull("text")?.let(text::append)
                 "tool_use" -> {
-                    val id = block.stringOrNull("id") ?: continue
-                    val name = block.stringOrNull("name") ?: continue
-                    val input = (block["input"] as? JsonObject) ?: JsonObject(emptyMap())
-                    toolCalls += OmniRouteToolCall(id, name, input.toString())
+                    val id = block.stringOrNull("id")
+                    val name = block.stringOrNull("name")
+                    if (id != null && name != null) {
+                        val input = (block["input"] as? JsonObject) ?: JsonObject(emptyMap())
+                        toolCalls += OmniRouteToolCall(id, name, input.toString())
+                    }
                 }
             }
         }
@@ -264,17 +296,17 @@ object OmniRouteToolCodec {
 
     private fun parseArgumentsOrEmpty(argumentsJson: String): JsonElement =
         runCatching { json.parseToJsonElement(argumentsJson) }.getOrDefault(JsonObject(emptyMap()))
-
-    private fun usageOf(root: JsonObject, inputKey: String, outputKey: String): Pair<Long, Long>? {
-        val usage = root["usage"] as? JsonObject ?: return null
-        val input = usage.longOrNull(inputKey) ?: return null
-        val output = usage.longOrNull(outputKey) ?: return null
-        return input to output
-    }
-
-    private fun JsonObject.stringOrNull(key: String): String? =
-        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-    private fun JsonObject.longOrNull(key: String): Long? =
-        (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 }
+
+private fun usageOf(root: JsonObject, inputKey: String, outputKey: String): Pair<Long, Long>? {
+    val usage = root["usage"] as? JsonObject ?: return null
+    val input = usage.longOrNull(inputKey) ?: return null
+    val output = usage.longOrNull(outputKey) ?: return null
+    return input to output
+}
+
+private fun JsonObject.stringOrNull(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+private fun JsonObject.longOrNull(key: String): Long? =
+    (this[key] as? JsonPrimitive)?.content?.toLongOrNull()

@@ -1,6 +1,16 @@
 package digital.vmstudio.code.navigation
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -12,7 +22,6 @@ import digital.vmstudio.code.background.rememberAgentRunWatchStarter
 import digital.vmstudio.code.feature.ai.AgentChatScreen
 import digital.vmstudio.code.feature.ai.AgentConversationsScreen
 import digital.vmstudio.code.feature.tasks.TasksScreen
-import digital.vmstudio.code.feature.dashboard.HomeScreen
 import digital.vmstudio.code.feature.files.FilesScreen
 import digital.vmstudio.code.feature.servers.ServerDetailScreen
 import digital.vmstudio.code.feature.servers.ServerEditScreen
@@ -27,6 +36,7 @@ import digital.vmstudio.code.feature.connectors.ConnectorsScreen
 import digital.vmstudio.code.feature.servers.ServersScreen
 import digital.vmstudio.code.feature.settings.SettingsScreen
 import digital.vmstudio.code.feature.terminal.TerminalRoute
+import digital.vmstudio.code.ui.NewChatScreen
 
 /**
  * The app's single navigation graph.
@@ -39,6 +49,7 @@ import digital.vmstudio.code.feature.terminal.TerminalRoute
 fun VmNavHost(
     navController: NavHostController,
     isOnline: Boolean,
+    onOpenMenu: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Resolved once here rather than per screen: it owns a permission launcher,
@@ -47,27 +58,35 @@ fun VmNavHost(
 
     NavHost(
         navController = navController,
-        startDestination = VmDestination.Home.route,
+        startDestination = VmDestination.NewChat.route,
         modifier = modifier.fillMaxSize(),
     ) {
-        composable(VmDestination.Home.route) {
-            HomeScreen(
+        composable(VmDestination.NewChat.route) {
+            NewChatScreen(
+                onOpenChat = { serverId ->
+                    // Replace the start screen so Back leaves the app instead of
+                    // bouncing through a redirect.
+                    navController.navigate(VmDestination.ServerAgent.routeFor(serverId)) {
+                        popUpTo(VmDestination.NewChat.route) { inclusive = true }
+                    }
+                },
                 onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
-                onOpenServers = { navController.navigate(VmDestination.Servers.route) },
-                onOpenProjects = { navController.navigate(VmDestination.Projects.route) },
+                onOpenMenu = onOpenMenu,
             )
         }
 
         composable(VmDestination.Servers.route) {
-            ServersScreen(
-                onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
-                onOpenServer = { serverId ->
-                    navController.navigate(VmDestination.ServerDetail.routeFor(serverId))
-                },
-                onEditServer = { serverId ->
-                    navController.navigate(VmDestination.ServerEdit.routeFor(serverId))
-                },
-            )
+            MenuScaffold(title = "Servers", onOpenMenu = onOpenMenu) {
+                ServersScreen(
+                    onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
+                    onOpenServer = { serverId ->
+                        navController.navigate(VmDestination.ServerDetail.routeFor(serverId))
+                    },
+                    onEditServer = { serverId ->
+                        navController.navigate(VmDestination.ServerEdit.routeFor(serverId))
+                    },
+                )
+            }
         }
 
         composable(VmDestination.ServerAdd.route) {
@@ -222,6 +241,7 @@ fun VmNavHost(
             val agentServerId = backStackEntry.arguments?.getString(VmDestination.ServerAgent.ARG_SERVER_ID) ?: ""
             AgentChatScreen(
                 onNavigateBack = { navController.popBackStack() },
+                onOpenMenu = onOpenMenu,
                 onWatchBackgroundRuns = startWatchingRuns,
                 onOpenDiff = { filePath ->
                     navController.navigate(VmDestination.ServerDiff.routeFor(agentServerId, filePath))
@@ -252,16 +272,14 @@ fun VmNavHost(
             DiffReviewScreen(onNavigateBack = { navController.popBackStack() })
         }
 
-        // The two tabs answer different questions: Projects is *where* the agent
-        // works, this is *what* was asked and what came back.
-        composable(VmDestination.Agent.route) {
+        composable(VmDestination.Chats.route) {
             AgentConversationsScreen(
                 onOpenConversation = { conversationId ->
                     navController.navigate(
                         VmDestination.AgentConversation.routeFor(conversationId),
                     )
                 },
-                onNewConversation = { navController.navigate(VmDestination.Projects.route) },
+                onNewConversation = { navigateToNewChat(navController) },
                 onOpenTasks = { navController.navigate(VmDestination.Tasks.route) },
             )
         }
@@ -276,6 +294,7 @@ fun VmNavHost(
         ) {
             AgentChatScreen(
                 onNavigateBack = { navController.popBackStack() },
+                onOpenMenu = onOpenMenu,
                 onWatchBackgroundRuns = startWatchingRuns,
             )
         }
@@ -296,9 +315,40 @@ fun VmNavHost(
         }
 
         composable(VmDestination.Settings.route) {
-            SettingsScreen()
+            MenuScaffold(title = "Settings", onOpenMenu = onOpenMenu) {
+                SettingsScreen()
+            }
         }
     }
 }
 
+/** Clears the stack and reopens the start screen, which forwards into a fresh chat. */
+fun navigateToNewChat(navController: NavHostController) {
+    navController.navigate(VmDestination.NewChat.route) {
+        popUpTo(navController.graph.id) { inclusive = true }
+    }
+}
 
+/** Top-level screens that have no bar of their own get one carrying the drawer button. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MenuScaffold(
+    title: String,
+    onOpenMenu: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(title) },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Box(modifier = Modifier.padding(padding)) { content() }
+    }
+}

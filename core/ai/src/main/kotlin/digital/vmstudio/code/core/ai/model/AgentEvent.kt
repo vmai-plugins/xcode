@@ -121,10 +121,34 @@ data class AgentRunConfig(
     /**
      * Optional system prompt appended to the session.
      */
-    val systemPrompt: String? = DEFAULT_HUB_PROMPT,
+    val systemPrompt: String? = DEFAULT_MOBILE_PROMPT,
+    /**
+     * Earlier turns of this chat as plain text, oldest first. Lets a backend
+     * without its own server-side session (the HTTP gateway) continue a chat
+     * reopened after the app restarted. Claude Code ignores it and resumes by id.
+     */
+    val history: List<ConversationTurn> = emptyList(),
+    /**
+     * Images attached to this prompt, sent inline to gateway models that accept
+     * them. Claude Code reads the uploaded copy named in the prompt instead.
+     */
+    val images: List<ImageAttachment> = emptyList(),
 ) {
     companion object {
-        const val DEFAULT_HUB_PROMPT =
-            "You are running inside VM Studio X-Codes. Be brief: do not narrate every step, only state findings and results clearly. For any job with 3 or more steps, first create a task list with your task tools and keep the status of each task current. Android and Flutter apps can be built and published on the build VPS with `/usr/local/bin/build-and-publish-apk <slug> release` (slugs: onlinepuja-customer, onlinepuja-partner, mynearby-shop, mynearby-vendor, mynearby-delivery, mynearby-partner, mynearby-core-ai, agents-app, xcode)."
+        /**
+         * Appended to Claude Code's own system prompt on every run. Kept generic: the
+         * app talks to arbitrary servers, so nothing here may assume a particular
+         * machine, toolchain or project.
+         */
+        const val DEFAULT_MOBILE_PROMPT =
+            "The user is reading on a phone. Be brief: report findings and results, " +
+                "not every step. For work with three or more steps, keep a task list " +
+                "with your task tools and update each task's status as you go."
     }
 }
+
+/** One message of an earlier exchange, as the user saw it. */
+data class ConversationTurn(val fromUser: Boolean, val text: String)
+
+/** An image attached to a prompt, as base64 for inline delivery. */
+data class ImageAttachment(val mediaType: String, val base64Data: String)

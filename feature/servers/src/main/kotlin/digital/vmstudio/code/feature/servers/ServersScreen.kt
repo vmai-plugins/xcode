@@ -31,17 +31,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import digital.vmstudio.code.core.database.entity.ServerEnvironment
-import digital.vmstudio.code.core.database.entity.SshAuthMethod
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ui.component.VmCard
-import digital.vmstudio.code.core.ui.component.VmChip
 import digital.vmstudio.code.core.ui.component.VmDialog
 import digital.vmstudio.code.core.ui.component.VmEmptyState
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.component.VmSectionHeader
-import digital.vmstudio.code.core.ui.component.VmStatus
-import digital.vmstudio.code.core.ui.component.VmStatusBadge
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
 @Composable
@@ -195,7 +190,11 @@ private fun ServerCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = server.displayTarget,
+                    text = if (server.isProduction) {
+                        "${server.displayTarget} · Production"
+                    } else {
+                        server.displayTarget
+                    },
                     style = VmTheme.code.mono,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -231,51 +230,5 @@ private fun ServerCard(
                 }
             }
         }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = spacing.md),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Connection state is not tracked until the SSH engine lands; showing a
-            // fabricated "Connected" here would be worse than showing nothing.
-            VmStatusBadge(
-                status = if (server.lastConnectedAtMillis > 0) VmStatus.IDLE else VmStatus.DISCONNECTED,
-                label = if (server.lastConnectedAtMillis > 0) "Not connected" else "Never connected",
-            )
-            VmChip(text = server.authMethod.label())
-            if (server.environment != ServerEnvironment.UNSPECIFIED) {
-                VmChip(
-                    text = server.environment.label(),
-                    containerColor = if (server.isProduction) {
-                        VmTheme.colors.warningContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                    },
-                    contentColor = if (server.isProduction) {
-                        VmTheme.colors.onWarningContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-            }
-        }
     }
-}
-
-private fun SshAuthMethod.label(): String = when (this) {
-    SshAuthMethod.PASSWORD -> "Password"
-    SshAuthMethod.PRIVATE_KEY -> "Key"
-    SshAuthMethod.PRIVATE_KEY_WITH_PASSPHRASE -> "Key + passphrase"
-    SshAuthMethod.AGENT -> "Agent"
-}
-
-private fun ServerEnvironment.label(): String = when (this) {
-    ServerEnvironment.PRODUCTION -> "Production"
-    ServerEnvironment.STAGING -> "Staging"
-    ServerEnvironment.DEVELOPMENT -> "Development"
-    ServerEnvironment.LOCAL -> "Local"
-    ServerEnvironment.UNSPECIFIED -> ""
 }

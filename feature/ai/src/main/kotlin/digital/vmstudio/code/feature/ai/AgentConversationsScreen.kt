@@ -62,7 +62,7 @@ fun AgentConversationsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("AI Agent") },
+                title = { Text("Chats") },
                 actions = {
                     IconButton(onClick = onOpenTasks) {
                         Icon(

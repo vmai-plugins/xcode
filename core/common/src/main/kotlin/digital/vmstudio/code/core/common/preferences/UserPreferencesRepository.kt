@@ -135,6 +135,7 @@ class UserPreferencesRepository @Inject constructor(
             it.remove(Keys.AI_MODELS)
         } else {
             it[Keys.AI_MODELS] = sanitised.joinToString(MODEL_ID_SEPARATOR)
+            it[Keys.AI_MODELS_SYNCED_AT] = System.currentTimeMillis()
         }
     }
 
@@ -205,6 +206,7 @@ class UserPreferencesRepository @Inject constructor(
             aiApiKeyCredentialId = this[Keys.AI_API_KEY_CREDENTIAL],
             aiSelectedModelId = this[Keys.AI_MODEL],
             aiAvailableModelIds = parseModelIds(this[Keys.AI_MODELS]),
+            aiModelsSyncedAtMillis = this[Keys.AI_MODELS_SYNCED_AT] ?: defaults.aiModelsSyncedAtMillis,
             aiModelPreset = this[Keys.AI_MODEL_PRESET] ?: defaults.aiModelPreset,
             aiStreamingEnabled = this[Keys.AI_STREAMING] ?: defaults.aiStreamingEnabled,
             aiToolsEnabled = this[Keys.AI_TOOLS_ENABLED] ?: defaults.aiToolsEnabled,
@@ -243,6 +245,7 @@ class UserPreferencesRepository @Inject constructor(
         val AI_API_KEY_CREDENTIAL = stringPreferencesKey("ai_api_key_credential")
         val AI_MODEL = stringPreferencesKey("ai_model")
         val AI_MODELS = stringPreferencesKey("ai_models")
+        val AI_MODELS_SYNCED_AT = longPreferencesKey("ai_models_synced_at")
         val AI_MODEL_PRESET = stringPreferencesKey("ai_model_preset")
         val AI_STREAMING = booleanPreferencesKey("ai_streaming")
         val AI_TOOLS_ENABLED = booleanPreferencesKey("ai_tools_enabled")

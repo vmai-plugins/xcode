@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
-import digital.vmstudio.code.core.connectors.agent.ProjectsHubAgentManager
 import digital.vmstudio.code.core.database.dao.AgentTaskDao
 import digital.vmstudio.code.core.database.entity.AgentTaskEntity
 import digital.vmstudio.code.core.database.entity.AgentTaskStatus
@@ -28,8 +27,6 @@ data class ProjectDetailUiState(
     val project: Project? = null,
     val server: Server? = null,
     val tasks: List<AgentTaskEntity> = emptyList(),
-    val isAuditing: Boolean = false,
-    val auditMessage: String? = null,
     val error: VmError? = null,
 )
 
@@ -38,7 +35,6 @@ class ProjectDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val projectRepository: ProjectRepository,
     private val agentTaskDao: AgentTaskDao,
-    private val agentManager: ProjectsHubAgentManager,
     private val serverRepository: ServerRepository,
 ) : ViewModel() {
 
@@ -46,26 +42,18 @@ class ProjectDetailViewModel @Inject constructor(
 
     private val project = MutableStateFlow<Project?>(null)
     private val server = MutableStateFlow<Server?>(null)
-    private val isAuditing = MutableStateFlow(false)
-    private val auditMessage = MutableStateFlow<String?>(null)
     private val error = MutableStateFlow<VmError?>(null)
 
-    private val baseProjectFlow = combine(project, server, isAuditing) { proj, srv, auditing ->
-        Triple(proj, srv, auditing)
-    }
-
     val uiState: StateFlow<ProjectDetailUiState> = combine(
-        baseProjectFlow,
+        project,
+        server,
         agentTaskDao.observeForProject(projectId),
-        auditMessage,
         error,
-    ) { (proj, srv, auditing), taskList, msg, err ->
+    ) { proj, srv, taskList, err ->
         ProjectDetailUiState(
             project = proj,
             server = srv,
             tasks = taskList,
-            isAuditing = auditing,
-            auditMessage = msg,
             error = err,
         )
     }.stateIn(
@@ -92,22 +80,6 @@ class ProjectDetailViewModel @Inject constructor(
         }
     }
 
-    fun auditProject() {
-        viewModelScope.launch {
-            isAuditing.value = true
-            auditMessage.value = null
-            when (val result = agentManager.auditProject(projectId)) {
-                is VmResult.Success -> {
-                    auditMessage.value = "Audit triggered successfully. Growth run dispatched."
-                }
-                is VmResult.Failure -> {
-                    error.value = result.error
-                }
-            }
-            isAuditing.value = false
-        }
-    }
-
     fun toggleTask(task: AgentTaskEntity) {
         viewModelScope.launch {
             val newStatus = if (task.status == AgentTaskStatus.COMPLETED) {
@@ -123,7 +95,7 @@ class ProjectDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val newTask = AgentTaskEntity(
-                id = "task_" + UUID.randomUUID().toString().take(8),
+                id = "task_" + UUID.randomUUID().toString().take(TASK_ID_LENGTH),
                 projectId = projectId,
                 conversationId = null,
                 title = title.trim(),
@@ -144,7 +116,8 @@ class ProjectDetailViewModel @Inject constructor(
     }
 
     fun dismissMessage() {
-        auditMessage.value = null
         error.value = null
     }
 }
+
+private const val TASK_ID_LENGTH = 8

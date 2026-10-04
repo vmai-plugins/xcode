@@ -81,7 +81,6 @@ dependencies {
     implementation(projects.core.connectors)
     implementation(projects.core.update)
 
-    implementation(projects.feature.dashboard)
     implementation(projects.feature.servers)
     implementation(projects.feature.settings)
     implementation(projects.feature.terminal)

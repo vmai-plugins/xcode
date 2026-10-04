@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -40,21 +41,20 @@ fun VmCard(
         androidx.compose.foundation.layout.PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = MaterialTheme.shapes.medium
+    // Flat tonal surface, no outline: separation comes from the fill, not a border.
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = androidx.compose.foundation.BorderStroke(
-            width = VmTheme.spacing.hairline,
-            color = VmTheme.colors.divider,
-        ),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(
             modifier = Modifier
                 .then(
                     if (onClick != null) {
-                        Modifier.clickable(role = Role.Button, onClick = onClick)
+                        Modifier
+                            .clip(shape)
+                            .clickable(role = Role.Button, onClick = onClick)
                     } else {
                         Modifier
                     },

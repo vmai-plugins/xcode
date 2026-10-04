@@ -8,7 +8,6 @@ import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
-import digital.vmstudio.code.core.connectors.sync.ProjectsHubSyncManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +20,6 @@ data class ProjectsUiState(
     val projects: List<Project> = emptyList(),
     val servers: List<ServerOption> = emptyList(),
     val isLoading: Boolean = true,
-    val isSyncing: Boolean = false,
     val error: VmError? = null,
 ) {
     /**
@@ -41,7 +39,6 @@ data class ProjectsUiState(
 @HiltViewModel
 class ProjectsViewModel @Inject constructor(
     private val projects: ProjectRepository,
-    private val syncManager: ProjectsHubSyncManager,
     servers: ServerRepository,
 ) : ViewModel() {
 
@@ -50,29 +47,19 @@ class ProjectsViewModel @Inject constructor(
     val uiState: StateFlow<ProjectsUiState> = combine(
         projects.observeAll(),
         servers.servers,
-        syncManager.syncState,
         error,
-    ) { projectList, serverList, syncState, currentError ->
+    ) { projectList, serverList, currentError ->
         ProjectsUiState(
             projects = projectList,
             servers = serverList.toServerOptions(),
             isLoading = false,
-            isSyncing = syncState.isSyncing,
-            error = currentError ?: syncState.lastError?.let {
-                VmError.Unexpected(summary = "VM Project Hub Sync Issue", reason = it)
-            },
+            error = currentError,
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = ProjectsUiState(),
     )
-
-    fun syncWithHub() {
-        viewModelScope.launch {
-            syncManager.syncAll()
-        }
-    }
 
     /** Records the open so the list orders by recency, then hands back the project. */
     fun open(project: Project, onOpened: (Project) -> Unit) {

@@ -17,6 +17,13 @@ import androidx.compose.ui.graphics.Color
 internal object Palette {
 
     // Accent ramp.
+    // Clay: the warm accent used for primary actions.
+    val Clay20 = Color(0xFF3A1D12)
+    val Clay30 = Color(0xFF5C2F1D)
+    val Clay40 = Color(0xFFB4532F)
+    val Clay70 = Color(0xFFD97757)
+    val Clay90 = Color(0xFFF6DDD3)
+
     val Blue20 = Color(0xFF03293F)
     val Blue30 = Color(0xFF06405F)
     val Blue40 = Color(0xFF0A5A83)
@@ -41,17 +48,17 @@ internal object Palette {
     val Violet90 = Color(0xFFE2DBF9)
 
     // Neutrals (blue-shifted slate).
-    val Neutral04 = Color(0xFF0B0F14)
-    val Neutral06 = Color(0xFF10151C)
-    val Neutral10 = Color(0xFF161C25)
-    val Neutral14 = Color(0xFF1D242F)
-    val Neutral20 = Color(0xFF27303D)
-    val Neutral30 = Color(0xFF3A4553)
-    val Neutral50 = Color(0xFF6B7686)
-    val Neutral70 = Color(0xFF9AA4B2)
-    val Neutral85 = Color(0xFFC6CDD6)
-    val Neutral94 = Color(0xFFE6EAEF)
-    val Neutral97 = Color(0xFFF3F5F8)
+    val Neutral04 = Color(0xFF1F1E1D)
+    val Neutral06 = Color(0xFF262624)
+    val Neutral10 = Color(0xFF2B2A28)
+    val Neutral14 = Color(0xFF30302E)
+    val Neutral20 = Color(0xFF3D3D3A)
+    val Neutral30 = Color(0xFF54534F)
+    val Neutral50 = Color(0xFF73726C)
+    val Neutral70 = Color(0xFFA3A29B)
+    val Neutral85 = Color(0xFFD8D5CB)
+    val Neutral94 = Color(0xFFEFEDE6)
+    val Neutral97 = Color(0xFFF5F4EE)
     val Neutral100 = Color(0xFFFFFFFF)
 
     // Status ramp. Chosen for >= 4.5:1 against their paired containers.

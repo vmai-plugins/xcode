@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,7 +47,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import digital.vmstudio.code.core.database.entity.AgentTaskEntity
 import digital.vmstudio.code.core.database.entity.AgentTaskStatus
 import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
@@ -71,6 +69,7 @@ fun ProjectDetailScreen(
     viewModel: ProjectDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val completedCount = state.tasks.count { it.status == AgentTaskStatus.COMPLETED }
     val spacing = VmTheme.spacing
     var showAddTaskDialog by remember { mutableStateOf(false) }
 
@@ -84,19 +83,6 @@ fun ProjectDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (state.isAuditing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    } else {
-                        IconButton(onClick = viewModel::auditProject) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "Run Audit")
-                        }
                     }
                 },
             )
@@ -118,29 +104,6 @@ fun ProjectDetailScreen(
                         error = err,
                         actions = listOf(VmErrorAction("Dismiss", viewModel::dismissMessage)),
                     )
-                }
-            }
-
-            state.auditMessage?.let { msg ->
-                item(key = "audit-msg") {
-                    VmCard(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(spacing.md),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = msg,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            IconButton(onClick = viewModel::dismissMessage) {
-                                Text("OK", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
                 }
             }
 
@@ -262,7 +225,7 @@ fun ProjectDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     VmSectionHeader(
-                        title = "Tasks (${state.tasks.count { it.status == AgentTaskStatus.COMPLETED }}/${state.tasks.size})",
+                        title = "Tasks ($completedCount/${state.tasks.size})",
                     )
                     IconButton(onClick = { showAddTaskDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = "Add Task")
@@ -274,7 +237,7 @@ fun ProjectDetailScreen(
                 item(key = "no-tasks") {
                     VmCard(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = "No tasks yet for this project. Tap '+' or run an AI audit to generate a task backlog.",
+                            text = "No tasks yet for this project. Tap '+' to add one.",
                             modifier = Modifier.padding(spacing.md),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -293,18 +256,34 @@ fun ProjectDetailScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
-                                imageVector = if (isDone) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                imageVector = if (isDone) {
+                                    Icons.Default.CheckCircle
+                                } else {
+                                    Icons.Default.RadioButtonUnchecked
+                                },
                                 contentDescription = null,
-                                tint = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (isDone) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 modifier = Modifier.size(20.dp),
                             )
                             Spacer(Modifier.width(spacing.sm))
                             Text(
                                 text = task.title,
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
+                                    textDecoration = if (isDone) {
+                                        TextDecoration.LineThrough
+                                    } else {
+                                        TextDecoration.None
+                                    },
                                 ),
-                                color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                color = if (isDone) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 modifier = Modifier.weight(1f),
                             )
                             IconButton(onClick = { viewModel.deleteTask(task.id) }) {

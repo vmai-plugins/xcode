@@ -141,7 +141,11 @@ class DefaultServerRepository @Inject constructor(
             val deleted = vmCatching(::mapDatabaseError) { serverDao.deleteById(serverId) }
             if (deleted is VmResult.Success) {
                 credentialIds.forEach { credentialStore.delete(it) }
-                VmLog.i(LogCategory.SSH, TAG, "Deleted server $serverId and ${credentialIds.size} credentials")
+                VmLog.i(
+                    LogCategory.SSH,
+                    TAG,
+                    "Deleted server $serverId and ${credentialIds.size} credentials",
+                )
             }
             deleted
         }

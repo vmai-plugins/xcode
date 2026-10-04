@@ -66,6 +66,8 @@ data class UserPreferences(
      * never fabricated — the list is only ever what the gateway itself answered.
      */
     val aiAvailableModelIds: List<String> = emptyList(),
+    /** When [aiAvailableModelIds] was last refreshed from the gateway; 0 if never. */
+    val aiModelsSyncedAtMillis: Long = 0L,
     val aiModelPreset: String = "balanced",
     val aiStreamingEnabled: Boolean = true,
     /**
@@ -88,7 +90,8 @@ data class UserPreferences(
     val activeProjectId: String? = null,
 ) {
     companion object {
-        const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
+        /** No default gateway: the app is universal, so the user supplies their own. */
+        const val DEFAULT_AI_BASE_URL = ""
 
         /** Agentic backend: Claude Code driven over SSH. The default. */
         const val PROVIDER_CLAUDE_CODE = "claude-code"
