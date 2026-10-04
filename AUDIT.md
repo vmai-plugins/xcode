@@ -42,7 +42,7 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
    in a private repo or behind env vars with no default.
 
 **UI**
-4. `AgentChatScreen.kt` is still ~1,500 lines; split transcript rows and composer out.
+4. Chat screen is split into `AgentChatScreen` (host), `ChatTranscript`, `ChatComposer`, `ChatPanels`.
 5. Settings is one long scroll of option cards; group it into a few pages.
 7. `ConnectorsScreen` has no entry point (it had none before either). Either link it
    from Settings or delete it.
