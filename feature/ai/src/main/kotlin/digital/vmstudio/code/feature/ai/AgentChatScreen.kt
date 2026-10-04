@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -413,8 +414,16 @@ fun AgentChatScreen(
                 ) {
                     items(groupedTranscript, key = { it.id }) { rowItem ->
                         when (rowItem) {
-                            is TranscriptRowItem.Single -> TranscriptRow(rowItem.item, onOpenDiff = onOpenDiff)
-                            is TranscriptRowItem.ToolBatch -> ToolBatchRow(batch = rowItem, onOpenDiff = onOpenDiff)
+                            is TranscriptRowItem.Single -> TranscriptRow(
+                                item = rowItem.item,
+                                onOpenDiff = onOpenDiff,
+                                onRollback = viewModel::rollbackFile,
+                            )
+                            is TranscriptRowItem.ToolBatch -> ToolBatchRow(
+                                batch = rowItem,
+                                onOpenDiff = onOpenDiff,
+                                onRollback = viewModel::rollbackFile,
+                            )
                         }
                     }
                 }
@@ -1165,6 +1174,7 @@ private fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem
 private fun ToolBatchRow(
     batch: TranscriptRowItem.ToolBatch,
     onOpenDiff: (String) -> Unit,
+    onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val isRunning = batch.tools.any { it.isRunning }
@@ -1257,7 +1267,7 @@ private fun ToolBatchRow(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     batch.tools.forEach { tool ->
-                        ToolRow(item = tool, onOpenDiff = onOpenDiff)
+                        ToolRow(item = tool, onOpenDiff = onOpenDiff, onRollback = onRollback)
                     }
                 }
             }
@@ -1269,7 +1279,11 @@ private fun ToolBatchRow(
  * Message Row in the conversation transcript.
  */
 @Composable
-private fun TranscriptRow(item: TranscriptItem, onOpenDiff: (String) -> Unit) {
+private fun TranscriptRow(
+    item: TranscriptItem,
+    onOpenDiff: (String) -> Unit,
+    onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
+) {
     val spacing = VmTheme.spacing
 
     when (item) {
@@ -1363,7 +1377,7 @@ private fun TranscriptRow(item: TranscriptItem, onOpenDiff: (String) -> Unit) {
 
         is TranscriptItem.Reasoning -> CollapsibleReasoning(item)
 
-        is TranscriptItem.ToolCall -> ToolRow(item, onOpenDiff = onOpenDiff)
+        is TranscriptItem.ToolCall -> ToolRow(item, onOpenDiff = onOpenDiff, onRollback = onRollback)
 
         is TranscriptItem.Diagnostic -> Surface(
             shape = RoundedCornerShape(8.dp),
@@ -1476,6 +1490,7 @@ private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
 private fun ToolRow(
     item: TranscriptItem.ToolCall,
     onOpenDiff: (String) -> Unit,
+    onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val spacing = VmTheme.spacing
@@ -1527,6 +1542,31 @@ private fun ToolRow(
                 )
                 val affectedPath = item.affectedPath
                 if (affectedPath != null) {
+                    if (item.isReverted) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Text(
+                                text = "Reverted",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    } else if (onRollback != null) {
+                        IconButton(
+                            onClick = { onRollback(item.id, affectedPath) },
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Rollback changes",
+                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                                modifier = Modifier.size(15.dp),
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = { onOpenDiff(affectedPath) },
                         modifier = Modifier.size(24.dp),
@@ -1549,12 +1589,38 @@ private fun ToolRow(
                         .fillMaxWidth()
                         .padding(top = 6.dp),
                 ) {
-                    Text(
-                        text = item.output.orEmpty(),
-                        style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                        color = Color(0xFFE2E8F0),
-                        modifier = Modifier.padding(8.dp),
-                    )
+                    val rawOutput = item.output.orEmpty()
+                    val outputLines = rawOutput.lines()
+                    val isDiff = outputLines.any { it.startsWith("+") || it.startsWith("-") }
+                    if (isDiff) {
+                        Column(modifier = Modifier.padding(6.dp)) {
+                            outputLines.take(300).forEach { line ->
+                                val (bg, textColor) = when {
+                                    line.startsWith("+++") || line.startsWith("---") -> Color(0xFF1E293B) to Color(0xFF94A3B8)
+                                    line.startsWith("+") -> Color(0xFF143823) to Color(0xFF4ADE80)
+                                    line.startsWith("-") -> Color(0xFF38181D) to Color(0xFFF87171)
+                                    line.startsWith("@@") -> Color(0xFF1E1B4B) to Color(0xFF818CF8)
+                                    else -> Color.Transparent to Color(0xFFCBD5E1)
+                                }
+                                Text(
+                                    text = line,
+                                    style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                                    color = textColor,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(bg)
+                                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = rawOutput,
+                            style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                            color = Color(0xFFE2E8F0),
+                            modifier = Modifier.padding(8.dp),
+                        )
+                    }
                 }
             }
         }

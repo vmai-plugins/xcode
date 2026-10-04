@@ -20,6 +20,8 @@ import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.git.GitResult
+import digital.vmstudio.code.core.git.GitService
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -52,6 +54,7 @@ sealed interface TranscriptItem {
         val isRunning: Boolean,
         val isError: Boolean = false,
         val output: String? = null,
+        val isReverted: Boolean = false,
     ) : TranscriptItem
 
     data class Diagnostic(
@@ -116,6 +119,7 @@ class AgentChatViewModel @Inject constructor(
     private val backgroundRunner: BackgroundAgentRunner,
     private val preferences: UserPreferencesSource,
     private val projectRepository: ProjectRepository,
+    private val gitService: GitService,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -563,6 +567,46 @@ class AgentChatViewModel @Inject constructor(
                     !line.contains("raw mode", ignoreCase = true)
                 ) {
                     append(TranscriptItem.Diagnostic(nextId(), event.line, event.isStderr))
+                }
+            }
+        }
+    }
+
+    fun rollbackFile(toolCallId: String, filePath: String) {
+        val sId = serverId ?: return
+        viewModelScope.launch {
+            val repoPath = _uiState.value.workingDirectory.ifBlank {
+                val idx = filePath.lastIndexOf('/')
+                if (idx > 0) filePath.substring(0, idx) else "."
+            }
+            when (val result = gitService.restoreFile(sId, repoPath, filePath)) {
+                is GitResult.Success -> {
+                    _uiState.update { state ->
+                        state.copy(
+                            transcript = state.transcript.map { item ->
+                                if (item is TranscriptItem.ToolCall && (item.id == toolCallId || item.affectedPath == filePath)) {
+                                    item.copy(isReverted = true)
+                                } else {
+                                    item
+                                }
+                            } + TranscriptItem.Diagnostic(
+                                id = nextId(),
+                                text = "⏮️ Checkpoint rollback successful: restored $filePath",
+                                isStderr = false,
+                            ),
+                        )
+                    }
+                }
+                is GitResult.Failure -> {
+                    _uiState.update { state ->
+                        state.copy(
+                            transcript = state.transcript + TranscriptItem.Diagnostic(
+                                id = nextId(),
+                                text = "❌ Rollback failed for $filePath: ${result.error}",
+                                isStderr = true,
+                            ),
+                        )
+                    }
                 }
             }
         }
