@@ -43,8 +43,7 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
 
 **UI**
 4. `AgentChatScreen.kt` is still ~1,500 lines; split transcript rows and composer out.
-5. Servers/Projects/Settings still use the older cards (they pick up the new colours but
-   not the flat layout).
+5. Settings is one long scroll of option cards; group it into a few pages.
 7. `ConnectorsScreen` has no entry point (it had none before either). Either link it
    from Settings or delete it.
 8. Tablet: the rail is gone; a permanent drawer at expanded width would use the space.
