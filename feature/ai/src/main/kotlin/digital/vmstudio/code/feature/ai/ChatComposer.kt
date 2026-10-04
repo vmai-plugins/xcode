@@ -2,6 +2,10 @@ package digital.vmstudio.code.feature.ai
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
+import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.foundation.layout.Spacer
@@ -43,12 +47,6 @@ import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
-private val MODEL_CHOICES = listOf(
-    Triple("sonnet", "Sonnet", "Everyday coding"),
-    Triple("opus", "Opus", "Hardest problems"),
-    Triple("haiku", "Haiku", "Fast and light"),
-)
-
 private fun AgentPermissionMode.chatLabel(): String = when (this) {
     AgentPermissionMode.PLAN -> "Plan only"
     AgentPermissionMode.ACCEPT_EDITS -> "Auto-edit"
@@ -69,6 +67,9 @@ internal fun ModernComposer(
     onPermissionModeChange: (AgentPermissionMode) -> Unit,
     selectedModel: String,
     onModelChange: (String) -> Unit,
+    omniModels: OmniRouteModels,
+    isSyncingModels: Boolean,
+    onSyncModels: () -> Unit,
     workingDirectory: String,
     onEditDirectory: () -> Unit,
     onSend: (String) -> Unit,
@@ -78,9 +79,9 @@ internal fun ModernComposer(
 ) {
     val spacing = VmTheme.spacing
     var showModeMenu by remember { mutableStateOf(false) }
-    var showModelMenu by remember { mutableStateOf(false) }
     val canSend = enabled && text.isNotBlank()
-    val modelLabel = MODEL_CHOICES.firstOrNull { it.first == selectedModel }?.second ?: "Sonnet"
+    // Detached runs are a Claude Code CLI feature; the gateway has no equivalent.
+    val canRunInBackground = ClaudeCodeModels.isClaudeCode(selectedModel)
 
     Surface(
         modifier = modifier
@@ -151,38 +152,14 @@ internal fun ModernComposer(
                     }
                 }
 
-                Box {
-                    ComposerChip(
-                        label = modelLabel,
-                        enabled = !isRunning,
-                        onClick = { showModelMenu = true },
-                    )
-                    DropdownMenu(expanded = showModelMenu, onDismissRequest = { showModelMenu = false }) {
-                        MODEL_CHOICES.forEach { (id, name, desc) ->
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(name)
-                                        Text(
-                                            text = desc,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                },
-                                leadingIcon = {
-                                    if (id == selectedModel) {
-                                        Icon(Icons.Default.Check, contentDescription = null)
-                                    }
-                                },
-                                onClick = {
-                                    onModelChange(id)
-                                    showModelMenu = false
-                                },
-                            )
-                        }
-                    }
-                }
+                ModelPicker(
+                    selectedModel = selectedModel,
+                    omniModels = omniModels,
+                    isSyncing = isSyncingModels,
+                    enabled = !isRunning,
+                    onModelChange = onModelChange,
+                    onSync = onSyncModels,
+                )
 
                 Spacer(Modifier.weight(1f))
 
@@ -193,7 +170,7 @@ internal fun ModernComposer(
                         onTextChange("")
                         onSendInBackground(toSend)
                     },
-                    enabled = canSend && !isStartingBackgroundRun,
+                    enabled = canSend && canRunInBackground && !isStartingBackgroundRun,
                     modifier = Modifier.size(40.dp),
                 ) {
                     if (isStartingBackgroundRun) {
@@ -294,3 +271,118 @@ private fun ComposerChip(
         )
     }
 }
+
+/**
+ * One picker for every model: Claude Code's aliases first, then whatever the
+ * OmniRoute gateway serves, synced live. The chosen model decides the backend.
+ */
+@Composable
+private fun ModelPicker(
+    selectedModel: String,
+    omniModels: OmniRouteModels,
+    isSyncing: Boolean,
+    enabled: Boolean,
+    onModelChange: (String) -> Unit,
+    onSync: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = ClaudeCodeModels.CHOICES.firstOrNull { it.id == selectedModel }?.label ?: selectedModel
+
+    fun pick(id: String) {
+        onModelChange(id)
+        expanded = false
+    }
+
+    Box {
+        ComposerChip(label = label, enabled = enabled, onClick = { expanded = true })
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.heightIn(max = 420.dp),
+        ) {
+            MenuSectionLabel("Claude Code")
+            ClaudeCodeModels.CHOICES.forEach { choice ->
+                ModelMenuItem(
+                    title = choice.label,
+                    subtitle = choice.description,
+                    selected = choice.id == selectedModel,
+                    onClick = { pick(choice.id) },
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            MenuSectionLabel(omniSectionTitle(omniModels, isSyncing))
+            omniModels.ids.forEach { id ->
+                ModelMenuItem(
+                    title = id,
+                    subtitle = null,
+                    selected = id == selectedModel,
+                    onClick = { pick(id) },
+                )
+            }
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = if (omniModels.isConfigured) SYNC_LABEL else SET_UP_LABEL,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                enabled = omniModels.isConfigured && !isSyncing,
+                onClick = onSync,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MenuSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun ModelMenuItem(title: String, subtitle: String?, selected: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Column {
+                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        leadingIcon = {
+            if (selected) Icon(Icons.Default.Check, contentDescription = null)
+        },
+        onClick = onClick,
+    )
+}
+
+private fun omniSectionTitle(models: OmniRouteModels, isSyncing: Boolean): String = when {
+    isSyncing -> "OmniRoute · syncing…"
+    !models.isConfigured -> "OmniRoute · not set up"
+    models.syncedAtMillis == 0L -> "OmniRoute · not synced yet"
+    else -> "OmniRoute · synced ${relativeAge(models.syncedAtMillis)}"
+}
+
+private fun relativeAge(millis: Long): String {
+    val minutes = (System.currentTimeMillis() - millis) / MILLIS_PER_MINUTE
+    return when {
+        minutes < 1 -> "just now"
+        minutes < MINUTES_PER_HOUR -> "$minutes min ago"
+        else -> "${minutes / MINUTES_PER_HOUR} h ago"
+    }
+}
+
+private const val MILLIS_PER_MINUTE = 60_000L
+private const val SYNC_LABEL = "Sync models now"
+private const val SET_UP_LABEL = "Set up OmniRoute in Settings"
+private const val MINUTES_PER_HOUR = 60L

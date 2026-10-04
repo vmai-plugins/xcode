@@ -4,24 +4,30 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
+import digital.vmstudio.code.core.ai.background.BackgroundRun
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
+import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
 import digital.vmstudio.code.core.ai.model.toPermissionMode
-import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
+import digital.vmstudio.code.core.ai.omniroute.OmniRouteModelCatalog
+import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
+import digital.vmstudio.code.core.ai.provider.AiProvider
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
+import digital.vmstudio.code.core.ai.provider.AiProviderKind
+import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
 import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
-import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
-import digital.vmstudio.code.core.ai.background.BackgroundRun
 import digital.vmstudio.code.core.ai.repository.StoredEntry
-import digital.vmstudio.code.core.project.Project
-import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.git.GitResult
 import digital.vmstudio.code.core.git.GitService
+import digital.vmstudio.code.core.project.Project
+import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -98,7 +104,10 @@ data class AgentChatUiState(
     val watchServerId: String? = null,
     val error: VmError? = null,
     val availableProjects: List<Project> = emptyList(),
-    val selectedModel: String = "sonnet",
+    val selectedModel: String = ClaudeCodeModels.DEFAULT,
+    /** The OmniRoute gateway's models, live-synced; shown under Claude Code's in the picker. */
+    val omniModels: OmniRouteModels = OmniRouteModels(),
+    val isSyncingModels: Boolean = false,
 ) {
     /** The chat-only backend has no server or working directory to satisfy. */
     val canRun: Boolean
@@ -120,6 +129,7 @@ class AgentChatViewModel @Inject constructor(
     private val preferences: UserPreferencesSource,
     private val projectRepository: ProjectRepository,
     private val gitService: GitService,
+    private val modelCatalog: OmniRouteModelCatalog,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -139,13 +149,18 @@ class AgentChatViewModel @Inject constructor(
     private var itemCounter = 0L
 
     init {
-        applyStoredAutonomy()
-        checkHealth()
+        applyStoredDefaults()
         viewModelScope.launch {
             projectRepository.observeAll().collect { projects ->
                 _uiState.update { it.copy(availableProjects = projects) }
             }
         }
+        viewModelScope.launch {
+            modelCatalog.models.collect { models -> _uiState.update { it.copy(omniModels = models) } }
+        }
+        // Live model sync: refresh the gateway's list whenever the chat opens on a
+        // stale one. A failure here is silent; an explicit sync reports it.
+        viewModelScope.launch { modelCatalog.syncIfStale() }
         when {
             // Reopening a stored conversation: its own directory and session id are
             // authoritative, so nothing is probed or prefilled.
@@ -154,7 +169,18 @@ class AgentChatViewModel @Inject constructor(
             // fallback for an agent opened straight from a server.
             !projectPath.isNullOrBlank() ->
                 _uiState.update { it.copy(workingDirectory = projectPath) }
-            else -> serverId?.let(::prefillWorkingDirectory)
+            // Defaults the agent's scope to the login home directory rather than `/`.
+            else -> serverId?.let { server ->
+                viewModelScope.launch {
+                    val home = remoteFileSystem.homeDirectory(server)
+                    // A failure is not fatal; the user can type a path.
+                    if (home is VmResult.Success) {
+                        _uiState.update {
+                            if (it.workingDirectory.isBlank()) it.copy(workingDirectory = home.value) else it
+                        }
+                    }
+                }
+            }
         }
         refreshBackgroundRuns()
     }
@@ -270,35 +296,34 @@ class AgentChatViewModel @Inject constructor(
     }
 
     /**
-     * Seeds the per-run permission mode from the Settings autonomy level.
+     * Seeds the permission mode from the Settings autonomy level and the model from
+     * the Settings provider, then checks that model's backend.
      *
-     * Settings holds the default and the chat chips override it for a single run;
-     * before this the chat always started at PLAN and the stored preference was
-     * inert.
+     * Settings holds the defaults and the chat chips override them for a single
+     * chat. The health check waits for the model, because the model decides which
+     * backend is checked.
      */
-    private fun applyStoredAutonomy() {
+    private fun applyStoredDefaults() {
+        _uiState.update { it.copy(isCheckingHealth = true) }
         viewModelScope.launch {
-            val level = preferences.preferences.first().agentAutonomyLevel
-            _uiState.update { it.copy(permissionMode = level.toPermissionMode()) }
-        }
-    }
-
-    /** Defaults the agent's scope to the login home directory rather than to `/`. */
-    private fun prefillWorkingDirectory(server: String) {
-        viewModelScope.launch {
-            when (val home = remoteFileSystem.homeDirectory(server)) {
-                is VmResult.Success -> _uiState.update {
-                    if (it.workingDirectory.isBlank()) it.copy(workingDirectory = home.value) else it
-                }
-                is VmResult.Failure -> Unit // Not fatal; the user can type a path.
+            val prefs = preferences.preferences.first()
+            val omniModel = prefs.aiSelectedModelId
+                ?.takeIf { prefs.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE }
+            _uiState.update {
+                it.copy(
+                    permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
+                    selectedModel = omniModel ?: ClaudeCodeModels.DEFAULT,
+                )
             }
+            checkHealth()
         }
     }
 
     fun checkHealth() {
         _uiState.update { it.copy(isCheckingHealth = true) }
         viewModelScope.launch {
-            when (val result = providers.checkHealth(providers.active(), serverId)) {
+            val provider = providers.forModel(_uiState.value.selectedModel)
+            when (val result = providers.checkHealth(provider, serverId)) {
                 is VmResult.Success -> _uiState.update {
                     it.copy(health = result.value, isCheckingHealth = false)
                 }
@@ -326,8 +351,36 @@ class AgentChatViewModel @Inject constructor(
         refreshBackgroundRuns()
     }
 
+    /**
+     * Picks the model for the next message. Moving between Claude Code and the
+     * gateway changes backend, so the provider session is dropped (neither can
+     * resume the other's) and the new backend is checked.
+     */
     fun selectModel(model: String) {
-        _uiState.update { it.copy(selectedModel = model) }
+        val before = _uiState.value.selectedModel
+        val switchesBackend = ClaudeCodeModels.isClaudeCode(before) != ClaudeCodeModels.isClaudeCode(model)
+        _uiState.update {
+            it.copy(
+                selectedModel = model,
+                providerSessionId = if (switchesBackend) null else it.providerSessionId,
+            )
+        }
+        if (switchesBackend) checkHealth()
+    }
+
+    /** Refreshes the gateway's model list now, reporting a failure. */
+    fun syncModels() {
+        if (_uiState.value.isSyncingModels) return
+        _uiState.update { it.copy(isSyncingModels = true) }
+        viewModelScope.launch {
+            val result = modelCatalog.sync()
+            _uiState.update {
+                it.copy(
+                    isSyncingModels = false,
+                    error = (result as? VmResult.Failure)?.error ?: it.error,
+                )
+            }
+        }
     }
 
     fun setPermissionMode(mode: AgentPermissionMode) {
@@ -379,7 +432,7 @@ class AgentChatViewModel @Inject constructor(
             )
 
             try {
-                providers.active().run(config).collect { event ->
+                providers.forModel(state.selectedModel).run(config).collect { event ->
                     if (runJob !== selfJob) return@collect
                     conversations.record(conversationId, event)
                     applyTaskEvent(taskId, event)
@@ -460,7 +513,7 @@ class AgentChatViewModel @Inject constructor(
         when (
             val created = conversations.create(
                 title = state.workingDirectory.substringAfterLast('/').ifBlank { "Agent" },
-                providerId = providers.active().kind.name,
+                providerId = providers.forModel(state.selectedModel).kind.name,
                 modelId = state.health?.version.orEmpty(),
                 serverId = server,
                 workingDirectory = state.workingDirectory.trim(),
@@ -627,3 +680,8 @@ private fun StoredEntry.toTranscriptItem(nextId: () -> String): TranscriptItem =
         error = VmError.Ai(summary = summary, provider = "restored"),
     )
 }
+
+/** Claude Code aliases run on the server's CLI; every other model goes to the gateway. */
+private fun AiProviderRegistry.forModel(model: String): AiProvider = forKind(
+    if (ClaudeCodeModels.isClaudeCode(model)) AiProviderKind.CLAUDE_CODE_CLI else AiProviderKind.OMNIROUTE,
+)

@@ -2,6 +2,7 @@ package digital.vmstudio.code.core.ai.omniroute
 
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
+import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
 import digital.vmstudio.code.core.ai.omniroute.agent.OmniRouteAgentLoop
 import digital.vmstudio.code.core.ai.provider.AiProvider
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
@@ -61,7 +62,17 @@ class OmniRouteProvider @Inject constructor(
 
     override suspend fun checkHealth(serverId: String?): VmResult<AiProviderHealth> {
         val settings = preferences.preferences.first()
-        val baseUrl = settings.aiBaseUrl.trimEnd('/')
+        val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
+        if (baseUrl.isEmpty()) {
+            return VmResult.Success(
+                AiProviderHealth(
+                    kind = kind,
+                    isAvailable = false,
+                    endpoint = baseUrl,
+                    diagnosis = "No gateway URL is set. Add your OmniRoute address in Settings.",
+                ),
+            )
+        }
 
         val key = resolveApiKey(settings.aiApiKeyCredentialId)
             ?: return VmResult.Success(
@@ -120,8 +131,11 @@ class OmniRouteProvider @Inject constructor(
 
     override fun run(config: AgentRunConfig): Flow<AgentEvent> = flow {
         val settings = preferences.preferences.first()
-        val baseUrl = settings.aiBaseUrl.trimEnd('/')
-        val model = config.model ?: settings.aiSelectedModelId
+        val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
+        // A Claude Code alias means nothing to the gateway; fall back to the model
+        // chosen for OmniRoute rather than sending an id it will reject.
+        val model = config.model?.takeUnless { it in ClaudeCodeModels.ALIASES }
+            ?: settings.aiSelectedModelId
 
         if (model.isNullOrBlank()) {
             emit(
@@ -210,6 +224,39 @@ class OmniRouteProvider @Inject constructor(
                     ),
                 ),
             )
+        } finally {
+            key.wipe()
+        }
+    }
+
+    /**
+     * Fetches the gateway's current model list, for the live model picker.
+     *
+     * Separate from [checkHealth] so a model refresh costs one `GET /v1/models`
+     * and not the dialect probes a full health check sends.
+     */
+    suspend fun listModels(): VmResult<List<String>> {
+        val settings = preferences.preferences.first()
+        val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
+        if (baseUrl.isEmpty()) {
+            return VmResult.Failure(
+                VmError.Ai(
+                    summary = "No gateway URL is set",
+                    suggestedAction = "Add your OmniRoute address in Settings.",
+                    retryable = false,
+                    provider = "omniroute",
+                ),
+            )
+        }
+        val key = resolveApiKey(settings.aiApiKeyCredentialId)
+            ?: return VmResult.Failure(
+                VmError.Authentication(
+                    summary = "No API key is stored",
+                    suggestedAction = "Add the gateway's API key in Settings.",
+                ),
+            )
+        return try {
+            fetchModels(baseUrl, key)
         } finally {
             key.wipe()
         }
@@ -331,3 +378,11 @@ class OmniRouteProvider @Inject constructor(
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
+
+/**
+ * Accepts the gateway address however it was typed: trailing slashes and a
+ * trailing `/v1` are dropped, because every path this provider builds already
+ * starts with `v1/`. Without this, `https://host/v1` produced `/v1/v1/models`.
+ */
+internal fun normalizeBaseUrl(raw: String): String =
+    raw.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')

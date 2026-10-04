@@ -54,6 +54,13 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+    /**
+     * Finished conversations by session id, so a follow-up message reaches the
+     * model with everything said before it. In memory only and capped at
+     * [MAX_SESSIONS]; a conversation reopened after a restart starts fresh.
+     */
+    private val sessions = SessionMemory(MAX_SESSIONS)
+
     fun run(
         baseUrl: String,
         key: Secret,
@@ -67,18 +74,24 @@ class OmniRouteAgentLoop @Inject constructor(
         val startedAt = System.currentTimeMillis()
 
         val allowedTools = allowedToolsFor(config)
+        // Continue the conversation the chat screen asks to resume, if this process
+        // still holds it; otherwise start fresh, exactly as a new chat would.
+        val sessionId = config.resumeSessionId?.takeIf { sessions.get(it) != null }
+            ?: (SESSION_PREFIX + UUID.randomUUID())
+        val previous = sessions.get(sessionId)
 
         try {
             emit(
                 AgentEvent.SessionStarted(
-                    sessionId = SESSION_PREFIX + UUID.randomUUID(),
+                    sessionId = sessionId,
                     workingDirectory = workingDirectory,
                     model = model,
                     availableTools = allowedTools.map { it.toolName },
                 ),
             )
 
-            val history = mutableListOf<OmniRouteMessage>(OmniRouteMessage.User(config.prompt))
+            val history = previous.orEmpty().toMutableList()
+            history += OmniRouteMessage.User(config.prompt)
             var inputTokensTotal = 0L
             var outputTokensTotal = 0L
 
@@ -116,9 +129,16 @@ class OmniRouteAgentLoop @Inject constructor(
                             outputTokensTotal += output
                         }
                         if (turn.text.isNotBlank()) emit(AgentEvent.AssistantMessage(turn.text))
+                        // An assistant turn with no content is rejected by the
+                        // Anthropic dialect, so a blank reply is stored as a marker.
+                        history += OmniRouteMessage.Assistant(
+                            text = turn.text.ifBlank { "(no reply)" },
+                            toolCalls = emptyList(),
+                        )
+                        sessions.put(sessionId, history.toList())
                         emit(
                             AgentEvent.Completed(
-                                sessionId = null,
+                                sessionId = sessionId,
                                 resultText = turn.text.takeIf { it.isNotBlank() },
                                 durationMillis = System.currentTimeMillis() - startedAt,
                                 costUsd = 0.0,
@@ -605,8 +625,31 @@ class OmniRouteAgentLoop @Inject constructor(
     private companion object {
         const val SESSION_PREFIX = "omniroute-"
         const val MAX_ITERATIONS = 25
+        const val MAX_SESSIONS = 16
         const val DEFAULT_MAX_TOKENS = 4096
         const val SIZE_COLUMN_WIDTH = 10
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+    }
+}
+
+/** A small least-recently-used map of conversation histories. */
+private class SessionMemory(private val capacity: Int) {
+    private val entries =
+        object : LinkedHashMap<String, List<OmniRouteMessage>>(capacity, LOAD_FACTOR, true) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, List<OmniRouteMessage>>?,
+            ): Boolean = size > capacity
+        }
+
+    @Synchronized
+    fun get(sessionId: String): List<OmniRouteMessage>? = entries[sessionId]
+
+    @Synchronized
+    fun put(sessionId: String, history: List<OmniRouteMessage>) {
+        entries[sessionId] = history
+    }
+
+    private companion object {
+        const val LOAD_FACTOR = 0.75f
     }
 }
