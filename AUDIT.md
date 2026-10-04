@@ -30,6 +30,28 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
   "Never connected"/auth/environment badges; only "Production" is called out.
 - Theme: warm neutrals and a clay accent in place of cold grey and blue.
 
+## OmniRoute integration audit
+
+**Fixed in this PR**
+
+| Problem | Effect | Fix |
+|---|---|---|
+| Model list only refreshed by the Settings connection test | Picker showed whatever was synced weeks ago | `OmniRouteModelCatalog`: persisted list + synced-at time, auto-refresh when the chat opens on a list older than 15 min, "Sync models now" in the picker |
+| Chat always sent its own model id (`claude-3-7-sonnet-latest`, later `sonnet`) | The model picked in Settings was ignored and the gateway got an id it may not serve | One picker; Claude aliases are never sent to the gateway |
+| Provider chosen globally in Settings | Switching between Claude Code and a gateway model meant a trip to Settings | The chosen model decides the backend; switching drops the session and re-checks health |
+| Agent runs started from scratch every message | Follow-ups ("now add a test for it") reached the model with no context | In-memory conversation history per session (LRU of 16); session id reported back |
+| `https://host/v1` as base URL | Requests went to `/v1/v1/models` and failed | Trailing `/v1` and slashes are normalised |
+| Default gateway `https://ai.vmstudio.digital` | Every install pointed at a private gateway | No default; blank URL gets a clear "add your gateway" message |
+
+**Still open, in priority order**
+
+1. **The "allow tools" switch does nothing in chat.** `OmniRouteProvider.run` enables the tool loop whenever a server is set (`aiToolsEnabled || serverId.isNotBlank()`), and the chat always has a server. Decide: either honour the switch or remove it from Settings.
+2. **Agent replies don't stream.** The tool loop uses one non-streaming request per turn, so text appears all at once after the model finishes. Plain chat mode streams; the loop should too.
+3. **Every health check sends two billed chat requests** (dialect probes with model `probe`). Cache the detected dialect per base URL instead of re-probing.
+4. **Conversation memory is in-memory only.** Reopening an OmniRoute chat after the app restarts continues without context. Rebuild history from the stored transcript instead.
+5. **No context trimming.** Long tool-heavy conversations grow until the gateway rejects them. Trim oldest turns while keeping tool-call/result pairs together.
+6. **Cost is always $0.** The gateway bills upstream; show tokens only, or read cost if the gateway reports it.
+
 ## Findings still open
 
 **Security (act on these first)**
