@@ -38,18 +38,17 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Stop
@@ -727,8 +726,8 @@ private fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem
 }
 
 /**
- * Aggregated batch card for consecutive tool calls (matching Web Cockpit 2.0).
- * Prevents long streams of CLI/bash commands from cluttering the conversation.
+ * Consecutive tool calls collapse into one quiet line ("Ran 5 tools ›") that expands
+ * to the individual calls, so a long agent run does not bury the conversation.
  */
 @Composable
 private fun ToolBatchRow(
@@ -738,97 +737,51 @@ private fun ToolBatchRow(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val isRunning = batch.tools.any { it.isRunning }
-    val hasError = batch.tools.any { it.isError }
-    val successCount = batch.tools.count { !it.isError && !it.isRunning }
-    val spacing = VmTheme.spacing
+    val failed = batch.tools.count { it.isError }
+    val label = when {
+        isRunning -> "Running ${batch.tools.size} tools…"
+        failed > 0 -> "Ran ${batch.tools.size} tools, $failed failed"
+        else -> "Ran ${batch.tools.size} tools"
+    }
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(
-            1.dp,
-            if (hasError) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else VmTheme.colors.divider,
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { expanded = !expanded },
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (isRunning) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    } else if (hasError) {
-                        Icon(
-                            imageVector = Icons.Default.ErrorOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(15.dp),
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.AutoFixHigh,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(15.dp),
-                        )
-                    }
-
-                    Text(
-                        text = if (isRunning) "Running ${batch.tools.size} tools..." else "⚡ Ran ${batch.tools.size} tools",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    ) {
-                        Text(
-                            text = if (isRunning) "in progress" else "$successCount/${batch.tools.size} succeeded",
-                            style = VmTheme.code.mono.copy(fontSize = 10.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = if (expanded) "Hide" else "Details",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(13.dp),
-                    )
-                }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isRunning) {
+                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
             }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (failed > 0) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Hide" else "Show",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
 
-            AnimatedVisibility(visible = expanded) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = spacing.sm),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    batch.tools.forEach { tool ->
-                        ToolRow(item = tool, onOpenDiff = onOpenDiff, onRollback = onRollback)
-                    }
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                batch.tools.forEach { tool ->
+                    ToolRow(item = tool, onOpenDiff = onOpenDiff, onRollback = onRollback)
                 }
             }
         }
@@ -933,60 +886,41 @@ private fun TranscriptRow(
     }
 }
 
-/**
- * Modern Thought Process accordion for agent reasoning.
- */
+/** "Thinking" is a quiet label that expands to the reasoning text. */
 @Composable
 private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
     var expanded by remember { mutableStateOf(false) }
-    val spacing = VmTheme.spacing
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = VmTheme.colors.agentContainer.copy(alpha = 0.35f),
-        border = BorderStroke(1.dp, VmTheme.colors.agent.copy(alpha = 0.3f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { expanded = !expanded },
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Psychology,
-                        contentDescription = null,
-                        tint = VmTheme.colors.agent,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Text(
-                        text = if (expanded) "Thinking Process" else "Thinking Process (tap to expand)",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = VmTheme.colors.onAgentContainer,
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = VmTheme.colors.agent,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-            AnimatedVisibility(visible = expanded) {
-                Text(
-                    text = item.text,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = VmTheme.colors.onAgentContainer,
-                    modifier = Modifier.padding(top = spacing.xs),
-                )
-            }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Thinking",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Hide" else "Show",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Text(
+                text = item.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(start = 4.dp, top = 2.dp)
+                    .fillMaxWidth(),
+            )
         }
     }
 }
@@ -1005,12 +939,11 @@ private fun ToolRow(
     val hasOutput = !item.output.isNullOrBlank()
 
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, VmTheme.colors.divider),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .then(if (hasOutput) Modifier.clickable { expanded = !expanded } else Modifier),
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -1036,7 +969,7 @@ private fun ToolRow(
                             Icons.Default.Build
                         },
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(14.dp),
                     )
                 }
@@ -1092,7 +1025,7 @@ private fun ToolRow(
             AnimatedVisibility(visible = expanded && hasOutput) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFF0B0F14),
+                    color = VmTheme.colors.codeSurface,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp),
@@ -1103,12 +1036,13 @@ private fun ToolRow(
                     if (isDiff) {
                         Column(modifier = Modifier.padding(6.dp)) {
                             outputLines.take(300).forEach { line ->
+                                val dim = MaterialTheme.colorScheme.onSurfaceVariant
                                 val (bg, textColor) = when {
-                                    line.startsWith("+++") || line.startsWith("---") -> Color(0xFF1E293B) to Color(0xFF94A3B8)
-                                    line.startsWith("+") -> Color(0xFF143823) to Color(0xFF4ADE80)
-                                    line.startsWith("-") -> Color(0xFF38181D) to Color(0xFFF87171)
-                                    line.startsWith("@@") -> Color(0xFF1E1B4B) to Color(0xFF818CF8)
-                                    else -> Color.Transparent to Color(0xFFCBD5E1)
+                                    line.startsWith("+++") || line.startsWith("---") -> Color.Transparent to dim
+                                    line.startsWith("+") -> VmTheme.colors.diffAddedBackground to VmTheme.colors.diffAddedGutter
+                                    line.startsWith("-") -> VmTheme.colors.diffRemovedBackground to VmTheme.colors.diffRemovedGutter
+                                    line.startsWith("@@") -> Color.Transparent to dim
+                                    else -> Color.Transparent to MaterialTheme.colorScheme.onSurface
                                 }
                                 Text(
                                     text = line,
@@ -1125,7 +1059,7 @@ private fun ToolRow(
                         Text(
                             text = rawOutput,
                             style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                            color = Color(0xFFE2E8F0),
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(8.dp),
                         )
                     }

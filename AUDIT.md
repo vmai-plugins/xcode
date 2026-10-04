@@ -23,6 +23,8 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
 - Composer: folder, permission mode and model pickers live inside it; round send button.
 - Model picker now offers `sonnet` / `opus` / `haiku` (aliases the CLI accepts) instead of
   stale 3.x ids and an OmniRoute option that sent an invalid `--model`.
+- Tool calls collapse to one muted line ("Ran 5 tools ›"); "Thinking" is a text toggle;
+  tool output and diffs use theme colours so they read in light mode too.
 - Theme: warm neutrals and a clay accent in place of cold grey and blue.
 
 ## Findings still open
@@ -39,7 +41,7 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
 **UI**
 4. `AgentChatScreen.kt` is still ~1,500 lines; split transcript rows and composer out.
 5. Servers/Projects/Settings still use the older cards (they pick up the new colours but
-   not the flat layout), and tool-call/diff rows were not restyled.
+   not the flat layout).
 7. `ConnectorsScreen` has no entry point (it had none before either). Either link it
    from Settings or delete it.
 8. Tablet: the rail is gone; a permanent drawer at expanded width would use the space.
