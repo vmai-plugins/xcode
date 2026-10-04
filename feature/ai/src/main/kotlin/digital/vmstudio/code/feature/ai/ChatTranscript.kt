@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -100,6 +101,7 @@ internal fun ToolBatchRow(
     batch: TranscriptRowItem.ToolBatch,
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
+    onPreview: ((String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val isRunning = batch.tools.any { it.isRunning }
@@ -147,7 +149,12 @@ internal fun ToolBatchRow(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 batch.tools.forEach { tool ->
-                    ToolRow(item = tool, onOpenDiff = onOpenDiff, onRollback = onRollback)
+                    ToolRow(
+                        item = tool,
+                        onOpenDiff = onOpenDiff,
+                        onRollback = onRollback,
+                        onPreview = onPreview,
+                    )
                 }
             }
         }
@@ -162,6 +169,7 @@ internal fun TranscriptRow(
     item: TranscriptItem,
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
+    onPreview: ((String) -> Unit)? = null,
 ) {
     val spacing = VmTheme.spacing
 
@@ -204,7 +212,8 @@ internal fun TranscriptRow(
 
         is TranscriptItem.Reasoning -> CollapsibleReasoning(item)
 
-        is TranscriptItem.ToolCall -> ToolRow(item, onOpenDiff = onOpenDiff, onRollback = onRollback)
+        is TranscriptItem.ToolCall ->
+            ToolRow(item, onOpenDiff = onOpenDiff, onRollback = onRollback, onPreview = onPreview)
 
         is TranscriptItem.Diagnostic -> Surface(
             shape = RoundedCornerShape(8.dp),
@@ -303,6 +312,7 @@ private fun ToolRow(
     item: TranscriptItem.ToolCall,
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
+    onPreview: ((String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val spacing = VmTheme.spacing
@@ -330,44 +340,8 @@ private fun ToolRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                val affectedPath = item.affectedPath
-                if (affectedPath != null) {
-                    if (item.isReverted) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                        ) {
-                            Text(
-                                text = "Reverted",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    } else if (onRollback != null) {
-                        IconButton(
-                            onClick = { onRollback(item.id, affectedPath) },
-                            modifier = Modifier.size(24.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Undo,
-                                contentDescription = "Rollback changes",
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
-                                modifier = Modifier.size(15.dp),
-                            )
-                        }
-                    }
-                    IconButton(
-                        onClick = { onOpenDiff(affectedPath) },
-                        modifier = Modifier.size(24.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Difference,
-                            contentDescription = "Review changes",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(15.dp),
-                        )
-                    }
+                item.affectedPath?.let { path ->
+                    FileActions(item, path, onOpenDiff, onRollback, onPreview)
                 }
             }
 
@@ -448,3 +422,63 @@ private fun ToolStatusIcon(item: TranscriptItem.ToolCall) {
         )
     }
 }
+
+/** Rollback, diff and (for web pages) preview buttons on a row that changed a file. */
+@Composable
+private fun FileActions(
+    item: TranscriptItem.ToolCall,
+    path: String,
+    onOpenDiff: (String) -> Unit,
+    onRollback: ((toolCallId: String, filePath: String) -> Unit)?,
+    onPreview: ((String) -> Unit)?,
+) {
+    if (item.isReverted) {
+        Surface(
+            shape = RoundedCornerShape(4.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Text(
+                text = "Reverted",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+    } else if (onRollback != null) {
+        IconButton(
+            onClick = { onRollback(item.id, path) },
+            modifier = Modifier.size(24.dp),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Undo,
+                contentDescription = "Rollback changes",
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+    IconButton(
+        onClick = { onOpenDiff(path) },
+        modifier = Modifier.size(24.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Difference,
+            contentDescription = "Review changes",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(15.dp),
+        )
+    }
+    if (onPreview != null && isWebPage(path)) {
+        IconButton(onClick = { onPreview(path) }, modifier = Modifier.size(24.dp)) {
+            Icon(
+                imageVector = Icons.Default.Visibility,
+                contentDescription = "Preview page",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+}
+
+internal fun isWebPage(path: String): Boolean =
+    path.endsWith(".html", ignoreCase = true) || path.endsWith(".htm", ignoreCase = true)

@@ -109,6 +109,7 @@ fun AgentChatScreen(
     }
 
     val canSwitchProject = state.availableProjects.isNotEmpty() && !state.isRunning
+    val previewTarget = rememberHtmlPreview(state.serverId)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -284,11 +285,13 @@ fun AgentChatScreen(
                                 item = rowItem.item,
                                 onOpenDiff = onOpenDiff,
                                 onRollback = viewModel::rollbackFile,
+                                onPreview = previewTarget,
                             )
                             is TranscriptRowItem.ToolBatch -> ToolBatchRow(
                                 batch = rowItem,
                                 onOpenDiff = onOpenDiff,
                                 onRollback = viewModel::rollbackFile,
+                                onPreview = previewTarget,
                             )
                         }
                     }
