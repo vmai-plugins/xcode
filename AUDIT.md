@@ -25,6 +25,9 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
   stale 3.x ids and an OmniRoute option that sent an invalid `--model`.
 - Tool calls collapse to one muted line ("Ran 5 tools ›"); "Thinking" is a text toggle;
   tool output and diffs use theme colours so they read in light mode too.
+- Cards app-wide (`VmCard`) are flat tonal surfaces with rounded corners and no outline, so
+  Servers, Projects, Settings and Connectors match the chat. Server rows lost the
+  "Never connected"/auth/environment badges; only "Production" is called out.
 - Theme: warm neutrals and a clay accent in place of cold grey and blue.
 
 ## Findings still open
