@@ -12,6 +12,10 @@ import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.security.model.Secret
+import digital.vmstudio.code.core.ai.model.PlanStep
+import digital.vmstudio.code.core.git.GitError
+import digital.vmstudio.code.core.git.GitResult
+import digital.vmstudio.code.core.git.GitService
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
@@ -20,11 +24,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLEncoder
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,6 +54,7 @@ class OmniRouteAgentLoop @Inject constructor(
     private val commandGuard: CommandGuard,
     private val fileEditApprovalGate: FileEditApprovalGate,
     private val serverRepository: ServerRepository,
+    private val gitService: GitService,
 ) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -72,9 +79,15 @@ class OmniRouteAgentLoop @Inject constructor(
             add(OmniRouteTool.READ_FILE)
             add(OmniRouteTool.LIST_DIRECTORY)
             add(OmniRouteTool.GREP_SEARCH)
+            add(OmniRouteTool.UPDATE_PLAN)
+            add(OmniRouteTool.WEB_FETCH)
+            add(OmniRouteTool.WEB_SEARCH)
+            add(OmniRouteTool.GIT_INSPECT)
             if (config.permissionMode != AgentPermissionMode.PLAN) {
                 add(OmniRouteTool.WRITE_FILE)
                 add(OmniRouteTool.EDIT_FILE)
+                add(OmniRouteTool.DELETE_PATH)
+                add(OmniRouteTool.GIT_CHANGE)
                 if (!config.restricted) add(OmniRouteTool.RUN_COMMAND)
             }
         }
@@ -189,6 +202,7 @@ class OmniRouteAgentLoop @Inject constructor(
                                 autonomyLevel = autonomyLevel,
                                 permissionMode = config.permissionMode,
                                 allowedTools = allowedTools,
+                                onPlanUpdated = { steps -> emit(AgentEvent.PlanUpdated(steps)) },
                             )
 
                             emit(
@@ -248,6 +262,7 @@ class OmniRouteAgentLoop @Inject constructor(
         autonomyLevel: AgentAutonomyLevel,
         permissionMode: AgentPermissionMode,
         allowedTools: Set<OmniRouteTool>,
+        onPlanUpdated: suspend (List<PlanStep>) -> Unit,
     ): ToolOutcome {
         if (tool == null) {
             return ToolOutcome("Unknown tool \"${call.name}\".", isError = true)
@@ -269,6 +284,12 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.WRITE_FILE -> writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.EDIT_FILE -> editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId)
+            OmniRouteTool.DELETE_PATH -> deletePath(call, serverId, workingDirectory, autonomyLevel)
+            OmniRouteTool.GIT_INSPECT -> gitInspect(call, serverId, workingDirectory)
+            OmniRouteTool.GIT_CHANGE -> gitChange(call, serverId, workingDirectory, autonomyLevel)
+            OmniRouteTool.UPDATE_PLAN -> updatePlan(call, onPlanUpdated)
+            OmniRouteTool.WEB_FETCH -> webFetch(call)
+            OmniRouteTool.WEB_SEARCH -> webSearch(call)
         }
     }
 
@@ -498,6 +519,314 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
+    private suspend fun deletePath(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+        autonomyLevel: AgentAutonomyLevel,
+    ): ToolOutcome {
+        val path = argument(call.argumentsJson, "path")
+            ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
+        val recursive = argument(call.argumentsJson, "recursive")?.toBooleanStrictOrNull() ?: false
+        val resolved = resolvePath(workingDirectory, path)
+
+        if (resolved == "/" || resolved == "~" || resolved == "/etc" || resolved == "/var" || resolved == "/root") {
+            return ToolOutcome("Refusing to delete critical system directory \"$resolved\".", isError = true)
+        }
+
+        val server = when (val result = serverRepository.get(serverId)) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+
+        if (server.environment == ServerEnvironment.PRODUCTION || !autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)) {
+            val approved = fileEditApprovalGate.request(
+                FileEditApprovalRequest(
+                    path = resolved,
+                    isNewFile = false,
+                    oldContent = "[File or directory deletion: $resolved]",
+                    newContent = "[DELETED]",
+                    serverId = server.id,
+                    serverName = server.name,
+                    environment = server.environment,
+                ),
+            )
+            if (!approved) {
+                return ToolOutcome("The deletion of \"$resolved\" was not approved.", isError = true)
+            }
+        }
+
+        return when (val result = remoteFileSystem.delete(serverId, resolved, recursive)) {
+            is VmResult.Success -> ToolOutcome("Successfully deleted \"$resolved\".", isError = false)
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+    }
+
+    private suspend fun gitInspect(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
+        val action = argument(call.argumentsJson, "action")?.lowercase() ?: "status"
+
+        return when (action) {
+            "status" -> {
+                when (val result = gitService.status(serverId, workingDirectory)) {
+                    is GitResult.Success -> {
+                        val s = result.value
+                        val text = buildString {
+                            appendLine("On branch ${s.branch}")
+                            if (s.staged.isNotEmpty()) {
+                                appendLine("Changes to be committed:")
+                                s.staged.forEach { appendLine("  ${it.status.prefix} ${it.path}") }
+                            }
+                            if (s.unstaged.isNotEmpty()) {
+                                appendLine("Changes not staged for commit:")
+                                s.unstaged.forEach { appendLine("  ${it.status.prefix} ${it.path}") }
+                            }
+                            if (s.untracked.isNotEmpty()) {
+                                appendLine("Untracked files:")
+                                s.untracked.forEach { appendLine("  ${it.path}") }
+                            }
+                            if (!s.hasChanges) {
+                                appendLine("Working tree clean.")
+                            }
+                        }.trim()
+                        ToolOutcome(text, isError = false)
+                    }
+                    is GitResult.Failure -> ToolOutcome("Git status failed: ${result.error}", isError = true)
+                }
+            }
+            "diff" -> {
+                when (val result = gitService.diffUnstaged(serverId, workingDirectory)) {
+                    is GitResult.Success -> {
+                        val diffText = result.value.files.joinToString("\n\n") { fileDiff ->
+                            "--- ${fileDiff.oldPath ?: "/dev/null"}\n+++ ${fileDiff.newPath ?: "/dev/null"}\n" +
+                                fileDiff.lines.joinToString("\n") { it.text }
+                        }
+                        ToolOutcome(diffText.ifBlank { "(no unstaged changes)" }, isError = false)
+                    }
+                    is GitResult.Failure -> ToolOutcome("Git diff failed: ${result.error}", isError = true)
+                }
+            }
+            "staged_diff" -> {
+                when (val result = gitService.diffStaged(serverId, workingDirectory)) {
+                    is GitResult.Success -> {
+                        val diffText = result.value.files.joinToString("\n\n") { fileDiff ->
+                            "--- ${fileDiff.oldPath ?: "/dev/null"}\n+++ ${fileDiff.newPath ?: "/dev/null"}\n" +
+                                fileDiff.lines.joinToString("\n") { it.text }
+                        }
+                        ToolOutcome(diffText.ifBlank { "(no staged changes)" }, isError = false)
+                    }
+                    is GitResult.Failure -> ToolOutcome("Git staged diff failed: ${result.error}", isError = true)
+                }
+            }
+            "log" -> {
+                when (val result = gitService.log(serverId, workingDirectory, 15)) {
+                    is GitResult.Success -> {
+                        val entries = result.value.commits.joinToString("\n") { c ->
+                            "${c.shortHash} - ${c.author} : ${c.message}"
+                        }
+                        ToolOutcome(entries.ifBlank { "(no commits)" }, isError = false)
+                    }
+                    is GitResult.Failure -> ToolOutcome("Git log failed: ${result.error}", isError = true)
+                }
+            }
+            "branches", "branch" -> {
+                when (val result = gitService.currentBranch(serverId, workingDirectory)) {
+                    is GitResult.Success -> ToolOutcome("Current branch: ${result.value}", isError = false)
+                    is GitResult.Failure -> ToolOutcome("Git branch failed: ${result.error}", isError = true)
+                }
+            }
+            else -> ToolOutcome("Unknown git inspect action \"$action\".", isError = true)
+        }
+    }
+
+    private suspend fun gitChange(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+        autonomyLevel: AgentAutonomyLevel,
+    ): ToolOutcome {
+        val action = argument(call.argumentsJson, "action")?.lowercase() ?: "commit"
+        val message = argument(call.argumentsJson, "message")
+        val target = argument(call.argumentsJson, "target")
+
+        val server = when (val result = serverRepository.get(serverId)) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+
+        return when (action) {
+            "commit" -> {
+                val commitMsg = message?.ifBlank { null } ?: "Update via VMStudio Code agent"
+                when (val addRes = gitService.add(serverId, workingDirectory, emptyList())) {
+                    is GitResult.Failure -> return ToolOutcome("Git add failed: ${addRes.error}", isError = true)
+                    is GitResult.Success -> Unit
+                }
+                when (val commitRes = gitService.commit(serverId, workingDirectory, commitMsg)) {
+                    is GitResult.Success -> ToolOutcome("Committed changes: \"$commitMsg\"", isError = false)
+                    is GitResult.Failure -> ToolOutcome("Git commit failed: ${commitRes.error}", isError = true)
+                }
+            }
+            "pull" -> {
+                when (val pullRes = gitService.pull(serverId, workingDirectory)) {
+                    is GitResult.Success -> ToolOutcome("Successfully pulled latest changes.", isError = false)
+                    is GitResult.Failure -> ToolOutcome("Git pull failed: ${pullRes.error}", isError = true)
+                }
+            }
+            "push" -> {
+                if (server.environment == ServerEnvironment.PRODUCTION || !autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)) {
+                    val approved = fileEditApprovalGate.request(
+                        FileEditApprovalRequest(
+                            path = workingDirectory,
+                            isNewFile = false,
+                            oldContent = "[Local Git Changes]",
+                            newContent = "[Git Push to Remote]",
+                            serverId = server.id,
+                            serverName = server.name,
+                            environment = server.environment,
+                        ),
+                    )
+                    if (!approved) {
+                        return ToolOutcome("Git push was not approved.", isError = true)
+                    }
+                }
+                when (val pushRes = gitService.push(serverId, workingDirectory)) {
+                    is GitResult.Success -> ToolOutcome("Successfully pushed to remote repository.", isError = false)
+                    is GitResult.Failure -> ToolOutcome("Git push failed: ${pushRes.error}", isError = true)
+                }
+            }
+            "checkout" -> {
+                val branch = target ?: return ToolOutcome("Missing target branch for checkout.", isError = true)
+                val safeBranch = branch.replace("'", "")
+                val cmd = "git checkout '$safeBranch'"
+                when (val res = commandGuard.run(serverId, cmd, requestedByAgent = true)) {
+                    is VmResult.Success -> ToolOutcome("Switched to branch $branch.", isError = false)
+                    is VmResult.Failure -> ToolOutcome(res.error.summaryWithReason(), isError = true)
+                }
+            }
+            "branch" -> {
+                val branch = target ?: return ToolOutcome("Missing target branch name.", isError = true)
+                val safeBranch = branch.replace("'", "")
+                val cmd = "git checkout -b '$safeBranch'"
+                when (val res = commandGuard.run(serverId, cmd, requestedByAgent = true)) {
+                    is VmResult.Success -> ToolOutcome("Created and switched to branch $branch.", isError = false)
+                    is VmResult.Failure -> ToolOutcome(res.error.summaryWithReason(), isError = true)
+                }
+            }
+            "init" -> {
+                val cmd = "git init"
+                when (val res = commandGuard.run(serverId, cmd, requestedByAgent = true)) {
+                    is VmResult.Success -> ToolOutcome("Initialized empty Git repository.", isError = false)
+                    is VmResult.Failure -> ToolOutcome(res.error.summaryWithReason(), isError = true)
+                }
+            }
+            else -> ToolOutcome("Unknown git change action \"$action\".", isError = true)
+        }
+    }
+
+    private suspend fun updatePlan(
+        call: OmniRouteToolCall,
+        onPlanUpdated: suspend (List<PlanStep>) -> Unit,
+    ): ToolOutcome {
+        val root = runCatching { json.parseToJsonElement(call.argumentsJson) }.getOrNull() as? JsonObject
+            ?: return ToolOutcome("Invalid arguments JSON.", isError = true)
+        val stepsArray = root["steps"] as? JsonArray
+            ?: return ToolOutcome("Missing or invalid \"steps\" array.", isError = true)
+
+        val planSteps = stepsArray.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val desc = (obj["description"] as? JsonPrimitive)?.content
+                ?: (obj["step"] as? JsonPrimitive)?.content
+                ?: (obj["title"] as? JsonPrimitive)?.content
+                ?: return@mapNotNull null
+            val status = (obj["status"] as? JsonPrimitive)?.content ?: "pending"
+            PlanStep(step = desc, status = status)
+        }
+
+        if (planSteps.isEmpty()) {
+            return ToolOutcome("No valid plan steps provided.", isError = true)
+        }
+
+        onPlanUpdated(planSteps)
+        val summary = planSteps.joinToString("\n") { "- [${it.status}] ${it.step}" }
+        return ToolOutcome("Plan updated:\n$summary", isError = false)
+    }
+
+    private suspend fun webFetch(call: OmniRouteToolCall): ToolOutcome {
+        val url = argument(call.argumentsJson, "url")
+            ?: return ToolOutcome("Missing required argument \"url\".", isError = true)
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return ToolOutcome("Invalid URL: must start with http:// or https://", isError = true)
+        }
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Android; Mobile) VMStudioCode/0.4.0")
+            .get()
+            .build()
+
+        return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+            is VmResult.Failure -> ToolOutcome("Failed to fetch $url: ${result.error.summaryWithReason()}", isError = true)
+            is VmResult.Success -> {
+                val clean = result.value
+                    .replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<[^>]+>"), " ")
+                    .replace(Regex("&nbsp;"), " ")
+                    .replace(Regex("&amp;"), "&")
+                    .replace(Regex("&lt;"), "<")
+                    .replace(Regex("&gt;"), ">")
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                val truncated = if (clean.length > 8000) clean.take(8000) + "\n...[truncated]" else clean
+                ToolOutcome(truncated.ifBlank { "(empty page)" }, isError = false)
+            }
+        }
+    }
+
+    private suspend fun webSearch(call: OmniRouteToolCall): ToolOutcome {
+        val query = argument(call.argumentsJson, "query")
+            ?: return ToolOutcome("Missing required argument \"query\".", isError = true)
+
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val searchUrl = "https://html.duckduckgo.com/html/?q=$encodedQuery"
+        val request = Request.Builder()
+            .url(searchUrl)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .get()
+            .build()
+
+        return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+            is VmResult.Failure -> ToolOutcome("Search failed: ${result.error.summaryWithReason()}", isError = true)
+            is VmResult.Success -> {
+                val html = result.value
+                val snippetRegex = Regex("""<a class="result__snippet[^"]*"[^>]*>([\s\S]*?)</a>""", RegexOption.IGNORE_CASE)
+                val titleRegex = Regex("""<a class="result__url[^"]*"[^>]*>([\s\S]*?)</a>""", RegexOption.IGNORE_CASE)
+
+                val snippets = snippetRegex.findAll(html).map {
+                    it.groupValues[1].replace(Regex("<[^>]+>"), "").replace("&quot;", "\"").replace("&amp;", "&").trim()
+                }.take(5).toList()
+
+                val titles = titleRegex.findAll(html).map {
+                    it.groupValues[1].replace(Regex("<[^>]+>"), "").trim()
+                }.take(5).toList()
+
+                if (snippets.isEmpty()) {
+                    val clean = html.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
+                    val fallback = if (clean.length > 1000) clean.take(1000) + "..." else clean
+                    ToolOutcome(fallback.ifBlank { "(no search results found)" }, isError = false)
+                } else {
+                    val formatted = snippets.mapIndexed { idx, snippet ->
+                        val link = titles.getOrNull(idx)?.let { " [$it]" } ?: ""
+                        "${idx + 1}.$link $snippet"
+                    }.joinToString("\n\n")
+                    ToolOutcome(formatted, isError = false)
+                }
+            }
+        }
+    }
+
     // --- helpers -----------------------------------------------------------------
 
     private fun summarize(tool: OmniRouteTool?, toolName: String, path: String?): String = when (tool) {
@@ -507,6 +836,12 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.WRITE_FILE -> "Write ${path ?: "?"}"
         OmniRouteTool.EDIT_FILE -> "Edit ${path ?: "?"}"
         OmniRouteTool.RUN_COMMAND -> "Run command"
+        OmniRouteTool.DELETE_PATH -> "Delete ${path ?: "?"}"
+        OmniRouteTool.GIT_INSPECT -> "Git inspect"
+        OmniRouteTool.GIT_CHANGE -> "Git change"
+        OmniRouteTool.UPDATE_PLAN -> "Update plan"
+        OmniRouteTool.WEB_FETCH -> "Fetch web page"
+        OmniRouteTool.WEB_SEARCH -> "Web search"
         null -> toolName
     }
 

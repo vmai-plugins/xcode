@@ -44,6 +44,30 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "Run a shell command on the server and return its output. Subject to the " +
             "same safety review as a command a person types.",
     ),
+    DELETE_PATH(
+        "delete_path",
+        "Delete a file or directory at a given path in the project.",
+    ),
+    GIT_INSPECT(
+        "git_inspect",
+        "Inspect Git repository state: status, diff, staged_diff, log, branches.",
+    ),
+    GIT_CHANGE(
+        "git_change",
+        "Perform Git operations: commit (stages all changes), checkout/create branch, pull, push, init.",
+    ),
+    UPDATE_PLAN(
+        "update_plan",
+        "Create or update a step-by-step implementation plan with checklist status (pending, in_progress, completed).",
+    ),
+    WEB_FETCH(
+        "web_fetch",
+        "Fetch a web page or API URL and return its text content.",
+    ),
+    WEB_SEARCH(
+        "web_search",
+        "Search the web for documentation, solutions, error lookups, and library usages.",
+    ),
     ;
 
     companion object {
@@ -133,6 +157,104 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             }
         }
         putJsonArray("required") { add("command") }
+    }
+
+    OmniRouteTool.DELETE_PATH -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("path") {
+                put("type", "string")
+                put("description", "Absolute or working-directory-relative path of the file or directory to delete.")
+            }
+            putJsonObject("recursive") {
+                put("type", "boolean")
+                put("description", "Whether to delete directory recursively. Defaults to false.")
+            }
+        }
+        putJsonArray("required") { add("path") }
+    }
+
+    OmniRouteTool.GIT_INSPECT -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("action") {
+                put("type", "string")
+                put("description", "Git inspection action: status, diff, staged_diff, log, branches.")
+            }
+            putJsonObject("target") {
+                put("type", "string")
+                put("description", "Optional target file path, branch name, or commit reference.")
+            }
+        }
+        putJsonArray("required") { add("action") }
+    }
+
+    OmniRouteTool.GIT_CHANGE -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("action") {
+                put("type", "string")
+                put("description", "Git change action: commit, checkout, branch, pull, push, init.")
+            }
+            putJsonObject("message") {
+                put("type", "string")
+                put("description", "Commit message (required when action is commit).")
+            }
+            putJsonObject("target") {
+                put("type", "string")
+                put("description", "Target branch name or file path.")
+            }
+        }
+        putJsonArray("required") { add("action") }
+    }
+
+    OmniRouteTool.UPDATE_PLAN -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("steps") {
+                put("type", "array")
+                put("description", "List of plan steps.")
+                putJsonObject("items") {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("id") { put("type", "string") }
+                        putJsonObject("description") { put("type", "string") }
+                        putJsonObject("status") {
+                            put("type", "string")
+                            put("description", "Status: pending, in_progress, completed, failed")
+                        }
+                    }
+                    putJsonArray("required") {
+                        add("id")
+                        add("description")
+                        add("status")
+                    }
+                }
+            }
+        }
+        putJsonArray("required") { add("steps") }
+    }
+
+    OmniRouteTool.WEB_FETCH -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("url") {
+                put("type", "string")
+                put("description", "URL of the webpage or API to fetch.")
+            }
+        }
+        putJsonArray("required") { add("url") }
+    }
+
+    OmniRouteTool.WEB_SEARCH -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("query") {
+                put("type", "string")
+                put("description", "Search query keywords.")
+            }
+        }
+        putJsonArray("required") { add("query") }
     }
 }
 

@@ -79,7 +79,12 @@ sealed interface AgentEvent {
      * nothing at all.
      */
     data class Diagnostic(val line: String, val isStderr: Boolean) : AgentEvent
+
+    data class PlanUpdated(val steps: List<PlanStep>) : AgentEvent
 }
+
+@kotlinx.serialization.Serializable
+data class PlanStep(val step: String, val status: String = "pending")
 
 /** How much freedom the agent has for a run. Maps onto the provider's own controls. */
 enum class AgentPermissionMode {

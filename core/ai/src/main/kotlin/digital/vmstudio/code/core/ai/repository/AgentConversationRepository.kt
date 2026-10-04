@@ -307,6 +307,8 @@ class DefaultAgentConversationRepository @Inject constructor(
                 // Diagnostics are shown live but not persisted: they are transport
                 // noise, and keeping them would bloat every stored transcript.
                 is AgentEvent.Diagnostic -> Unit
+
+                is AgentEvent.PlanUpdated -> Unit
             }
             Unit
         }

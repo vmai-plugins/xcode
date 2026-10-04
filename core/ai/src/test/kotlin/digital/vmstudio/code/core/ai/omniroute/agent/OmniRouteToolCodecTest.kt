@@ -150,4 +150,31 @@ class OmniRouteToolCodecTest {
 
         assertTrue(turn is OmniRouteTurn.ParseFailed)
     }
+
+    @Test
+    fun `all 12 tools produce valid schemas and appear in wire payloads`() {
+        assertEquals(12, OmniRouteTool.entries.size)
+
+        for (tool in OmniRouteTool.entries) {
+            val openAiJson = tool.toOpenAiToolJson()
+            assertEquals("function", openAiJson["type"]?.toString()?.trim('"'))
+            val fn = openAiJson["function"] as kotlinx.serialization.json.JsonObject
+            assertEquals(tool.toolName, fn["name"]?.toString()?.trim('"'))
+
+            val anthropicJson = tool.toAnthropicToolJson()
+            assertEquals(tool.toolName, anthropicJson["name"]?.toString()?.trim('"'))
+            assertTrue(anthropicJson.containsKey("input_schema"))
+        }
+
+        val openAiBody = OmniRouteToolCodec.buildRequestBody(
+            dialect = OmniRouteDialect.OPENAI_CHAT,
+            model = "test-model",
+            systemPrompt = "sys",
+            history = listOf(OmniRouteMessage.User("hi")),
+            maxTokens = 500,
+        )
+        for (tool in OmniRouteTool.entries) {
+            assertTrue("Expected OpenAI payload to include ${tool.toolName}", openAiBody.contains("\"name\":\"${tool.toolName}\""))
+        }
+    }
 }
