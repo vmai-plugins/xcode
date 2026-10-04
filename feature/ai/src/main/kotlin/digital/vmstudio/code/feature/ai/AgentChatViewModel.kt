@@ -10,6 +10,7 @@ import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
 import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
+import digital.vmstudio.code.core.ai.model.ConversationTurn
 import digital.vmstudio.code.core.ai.model.toPermissionMode
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModelCatalog
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
@@ -428,6 +429,11 @@ class AgentChatViewModel @Inject constructor(
                 resumeSessionId = state.providerSessionId,
                 permissionMode = state.permissionMode,
                 model = state.selectedModel,
+                history = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
+                    emptyList()
+                } else {
+                    state.transcript.toConversationTurns()
+                },
                 autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
             )
 
@@ -685,3 +691,12 @@ private fun StoredEntry.toTranscriptItem(nextId: () -> String): TranscriptItem =
 private fun AiProviderRegistry.forModel(model: String): AiProvider = forKind(
     if (ClaudeCodeModels.isClaudeCode(model)) AiProviderKind.CLAUDE_CODE_CLI else AiProviderKind.OMNIROUTE,
 )
+
+/** The visible exchange, for a backend that has to be told what was said before. */
+private fun List<TranscriptItem>.toConversationTurns(): List<ConversationTurn> = mapNotNull { item ->
+    when (item) {
+        is TranscriptItem.UserPrompt -> ConversationTurn(fromUser = true, text = item.text)
+        is TranscriptItem.AssistantText -> ConversationTurn(fromUser = false, text = item.text)
+        else -> null
+    }
+}

@@ -122,6 +122,12 @@ data class AgentRunConfig(
      * Optional system prompt appended to the session.
      */
     val systemPrompt: String? = DEFAULT_MOBILE_PROMPT,
+    /**
+     * Earlier turns of this chat as plain text, oldest first. Lets a backend
+     * without its own server-side session (the HTTP gateway) continue a chat
+     * reopened after the app restarted. Claude Code ignores it and resumes by id.
+     */
+    val history: List<ConversationTurn> = emptyList(),
 ) {
     companion object {
         /**
@@ -135,3 +141,6 @@ data class AgentRunConfig(
                 "with your task tools and update each task's status as you go."
     }
 }
+
+/** One message of an earlier exchange, as the user saw it. */
+data class ConversationTurn(val fromUser: Boolean, val text: String)

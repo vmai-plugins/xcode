@@ -3,6 +3,7 @@ package digital.vmstudio.code.core.ai.omniroute.agent
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
+import digital.vmstudio.code.core.ai.model.ConversationTurn
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteDialect
 import digital.vmstudio.code.core.ai.omniroute.applyOmniRouteAuth
 import digital.vmstudio.code.core.common.error.VmError
@@ -82,7 +83,10 @@ class OmniRouteAgentLoop @Inject constructor(
         // still holds it; otherwise start fresh, exactly as a new chat would.
         val sessionId = config.resumeSessionId?.takeIf { sessions.get(it) != null }
             ?: (SESSION_PREFIX + UUID.randomUUID())
-        val previous = sessions.get(sessionId)
+        // In-memory history keeps tool calls; after a restart only the visible
+        // transcript the chat screen sends along is left, which is still enough
+        // for the model to follow the conversation.
+        val previous = sessions.get(sessionId) ?: config.history.toMessages()
 
         try {
             emit(
@@ -730,3 +734,27 @@ private class SessionMemory(private val capacity: Int) {
         const val LOAD_FACTOR = 0.75f
     }
 }
+
+/**
+ * Rebuilds plain-text history. Consecutive turns from the same side are merged,
+ * because the Anthropic dialect rejects two user (or two assistant) messages in a
+ * row, which a failed or stopped run leaves behind.
+ */
+internal fun List<ConversationTurn>.toMessages(): List<OmniRouteMessage> =
+    filter { it.text.isNotBlank() }
+        .fold(mutableListOf<ConversationTurn>()) { merged, turn ->
+            val last = merged.lastOrNull()
+            if (last != null && last.fromUser == turn.fromUser) {
+                merged[merged.lastIndex] = last.copy(text = last.text + "\n\n" + turn.text)
+            } else {
+                merged += turn
+            }
+            merged
+        }
+        .map { turn ->
+            if (turn.fromUser) {
+                OmniRouteMessage.User(turn.text)
+            } else {
+                OmniRouteMessage.Assistant(text = turn.text, toolCalls = emptyList())
+            }
+        }
