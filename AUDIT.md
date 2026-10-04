@@ -14,6 +14,17 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
 | Home dashboard | `:feature:dashboard` module | Deleted (update banner already lives in Settings) |
 | Connectors | Hub sync card + MCP tool list + Drive + runner | Drive backup + SSH runner only |
 
+## Chat restyle (second pass)
+
+- One quiet top bar: menu, project title, files, new chat. Status text only while connecting.
+- Removed the workspace card (it showed a hardcoded "main" branch), the permission chip row
+  and the gradient send button.
+- Replies are plain text on the page; your messages sit in a soft rounded block.
+- Composer: folder, permission mode and model pickers live inside it; round send button.
+- Model picker now offers `sonnet` / `opus` / `haiku` (aliases the CLI accepts) instead of
+  stale 3.x ids and an OmniRoute option that sent an invalid `--model`.
+- Theme: warm neutrals and a clay accent in place of cold grey and blue.
+
 ## Findings still open
 
 **Security (act on these first)**
@@ -26,14 +37,9 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
    in a private repo or behind env vars with no default.
 
 **UI**
-4. `AgentChatScreen.kt` is 1,859 lines. The top bar stacks a project dropdown, a status
-   badge and a model pill, which is the main remaining clutter. Next step: one title,
-   model picker inside the composer, status only on error.
-5. Model list is stale (`claude-3-7-sonnet-latest`, 3.5, GPT-4o via OmniRoute). Replace
-   with the aliases the installed Claude Code CLI accepts and drop OmniRoute from the
-   picker if it is not part of the product.
-6. Servers/Projects/Settings still use the older Material cards. They need the same
-   restyle as the chat (flat surfaces, one accent, no coloured server tiles).
+4. `AgentChatScreen.kt` is still ~1,500 lines; split transcript rows and composer out.
+5. Servers/Projects/Settings still use the older cards (they pick up the new colours but
+   not the flat layout), and tool-call/diff rows were not restyled.
 7. `ConnectorsScreen` has no entry point (it had none before either). Either link it
    from Settings or delete it.
 8. Tablet: the rail is gone; a permanent drawer at expanded width would use the space.

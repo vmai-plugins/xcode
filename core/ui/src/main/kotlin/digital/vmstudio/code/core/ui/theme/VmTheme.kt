@@ -14,11 +14,11 @@ import androidx.compose.runtime.remember
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 private val DarkColorScheme: ColorScheme = darkColorScheme(
-    primary = Palette.Blue70,
+    primary = Palette.Clay70,
     onPrimary = Palette.Neutral04,
-    primaryContainer = Palette.Blue30,
-    onPrimaryContainer = Palette.Blue90,
-    inversePrimary = Palette.Blue40,
+    primaryContainer = Palette.Clay30,
+    onPrimaryContainer = Palette.Clay90,
+    inversePrimary = Palette.Clay40,
 
     secondary = Palette.Teal70,
     onSecondary = Palette.Neutral04,
@@ -56,11 +56,11 @@ private val DarkColorScheme: ColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme: ColorScheme = lightColorScheme(
-    primary = Palette.Blue40,
+    primary = Palette.Clay40,
     onPrimary = Palette.Neutral100,
-    primaryContainer = Palette.Blue90,
-    onPrimaryContainer = Palette.Blue20,
-    inversePrimary = Palette.Blue70,
+    primaryContainer = Palette.Clay90,
+    onPrimaryContainer = Palette.Clay20,
+    inversePrimary = Palette.Clay70,
 
     secondary = Palette.Teal40,
     onSecondary = Palette.Neutral100,
@@ -72,9 +72,9 @@ private val LightColorScheme: ColorScheme = lightColorScheme(
     tertiaryContainer = Palette.Violet90,
     onTertiaryContainer = Palette.Violet20,
 
-    background = Palette.Neutral100,
+    background = Palette.Neutral97,
     onBackground = Palette.Neutral10,
-    surface = Palette.Neutral100,
+    surface = Palette.Neutral97,
     onSurface = Palette.Neutral10,
     surfaceVariant = Palette.Neutral97,
     onSurfaceVariant = Palette.Neutral50,

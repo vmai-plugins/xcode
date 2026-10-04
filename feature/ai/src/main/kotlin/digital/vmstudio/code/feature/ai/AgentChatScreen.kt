@@ -11,6 +11,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,12 +35,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -44,17 +46,12 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Difference
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.WarningAmber
@@ -82,7 +79,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -128,19 +124,10 @@ fun AgentChatScreen(
     var composerText by remember { mutableStateOf("") }
     var showDirectoryDialog by remember { mutableStateOf(false) }
     var showProjectMenu by remember { mutableStateOf(false) }
-    var showModelMenu by remember { mutableStateOf(false) }
 
     val currentProjectName = remember(state.workingDirectory, state.availableProjects) {
         state.availableProjects.firstOrNull { it.remotePath == state.workingDirectory }?.name
             ?: state.workingDirectory.trimEnd('/').substringAfterLast('/').ifBlank { "AI Agent" }
-    }
-
-    val currentModelLabel = when (state.selectedModel) {
-        "claude-3-7-sonnet-latest" -> "Claude 3.7"
-        "claude-3-5-sonnet-latest" -> "Claude 3.5"
-        "omniroute/gpt-4o" -> "GPT-4o"
-        "claude-3-5-haiku-latest" -> "Haiku 3.5"
-        else -> "Claude 3.7"
     }
 
     val groupedTranscript = remember(state.transcript) { groupTranscript(state.transcript) }
@@ -175,25 +162,22 @@ fun AgentChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        // Project Selector Row
-                        Box {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable(enabled = state.availableProjects.isNotEmpty() && !state.isRunning) {
-                                        showProjectMenu = true
-                                    }
-                                    .padding(vertical = 2.dp, horizontal = 2.dp),
-                            ) {
+                    Box {
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = state.availableProjects.isNotEmpty() && !state.isRunning) {
+                                    showProjectMenu = true
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = currentProjectName,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 160.dp),
+                                    modifier = Modifier.widthIn(max = 200.dp),
                                 )
                                 if (state.availableProjects.isNotEmpty()) {
                                     Icon(
@@ -204,65 +188,59 @@ fun AgentChatScreen(
                                     )
                                 }
                             }
-
-                            DropdownMenu(
-                                expanded = showProjectMenu,
-                                onDismissRequest = { showProjectMenu = false },
-                            ) {
-                                state.availableProjects.forEach { proj ->
-                                    val isSelected = proj.remotePath == state.workingDirectory
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text(
-                                                    text = proj.name,
-                                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    ),
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                                )
-                                                Text(
-                                                    text = proj.remotePath,
-                                                    style = VmTheme.code.mono.copy(fontSize = 10.sp),
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                            }
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Folder,
-                                                contentDescription = null,
-                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        },
-                                        onClick = {
-                                            viewModel.selectProject(proj)
-                                            showProjectMenu = false
-                                        },
-                                    )
-                                }
+                            // Status is shown only when something is wrong or in flight.
+                            val statusText = when {
+                                state.isCheckingHealth -> "Connecting…"
+                                else -> null
+                            }
+                            statusText?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
 
-                        // Subtitle status row
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        DropdownMenu(
+                            expanded = showProjectMenu,
+                            onDismissRequest = { showProjectMenu = false },
                         ) {
-                            val status = when {
-                                state.isCheckingHealth -> VmStatus.CONNECTING
-                                state.health?.isAvailable == true -> VmStatus.CONNECTED
-                                else -> VmStatus.DISCONNECTED
+                            state.availableProjects.forEach { proj ->
+                                val isSelected = proj.remotePath == state.workingDirectory
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                text = proj.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                ),
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            )
+                                            Text(
+                                                text = proj.remotePath,
+                                                style = VmTheme.code.mono.copy(fontSize = 10.sp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Folder,
+                                            contentDescription = null,
+                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.selectProject(proj)
+                                        showProjectMenu = false
+                                    },
+                                )
                             }
-                            val label = when {
-                                state.isCheckingHealth -> "Probing runtime..."
-                                state.health?.isAvailable == true -> "Server online"
-                                else -> "CLI offline"
-                            }
-                            VmStatusBadge(status = status, label = label)
                         }
                     }
                 },
@@ -278,88 +256,9 @@ fun AgentChatScreen(
                     }
                 },
                 actions = {
-                    // Model Selector Dropdown Pill
-                    Box {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = VmTheme.colors.agentContainer,
-                            border = BorderStroke(1.dp, VmTheme.colors.agent.copy(alpha = 0.4f)),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable(enabled = !state.isRunning) { showModelMenu = true },
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Psychology,
-                                    contentDescription = null,
-                                    tint = VmTheme.colors.agent,
-                                    modifier = Modifier.size(13.dp),
-                                )
-                                Text(
-                                    text = currentModelLabel,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = VmTheme.colors.onAgentContainer,
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    tint = VmTheme.colors.agent,
-                                    modifier = Modifier.size(15.dp),
-                                )
-                            }
-                        }
-
-                        DropdownMenu(
-                            expanded = showModelMenu,
-                            onDismissRequest = { showModelMenu = false },
-                        ) {
-                            listOf(
-                                Triple("claude-3-7-sonnet-latest", "Claude 3.7 Sonnet", "Hybrid reasoning · Recommended"),
-                                Triple("claude-3-5-sonnet-latest", "Claude 3.5 Sonnet", "High speed & coding accuracy"),
-                                Triple("omniroute/gpt-4o", "OmniRoute GPT-4o", "Multi-provider gateway"),
-                                Triple("claude-3-5-haiku-latest", "Claude 3.5 Haiku", "Fast & cost-efficient"),
-                            ).forEach { (id, name, desc) ->
-                                val isSelected = state.selectedModel == id
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(
-                                                text = name,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                ),
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                            )
-                                            Text(
-                                                text = desc,
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                    },
-                                    leadingIcon = {
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        viewModel.selectModel(id)
-                                        showModelMenu = false
-                                    },
-                                )
-                            }
-                        }
+                    IconButton(onClick = onOpenFiles) {
+                        Icon(Icons.Default.Folder, contentDescription = "Files")
                     }
-
                     if (state.transcript.isNotEmpty()) {
                         IconButton(onClick = viewModel::startNewConversation) {
                             Icon(Icons.Default.Add, contentDescription = "New conversation")
@@ -367,7 +266,7 @@ fun AgentChatScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.background,
                 ),
             )
         },
@@ -380,14 +279,6 @@ fun AgentChatScreen(
         ) {
             // Sleek collapsible health banner
             HealthBanner(state = state, onRetry = viewModel::checkHealth)
-
-            // Ultra-compact project workspace context bar (replaces the bulky 90dp textfield)
-            WorkspaceContextBar(
-                state = state,
-                onEditDirectory = { showDirectoryDialog = true },
-                onOpenFiles = onOpenFiles,
-                onPullGit = { composerText = "git pull origin main" },
-            )
 
             state.error?.let { error ->
                 VmErrorPanel(
@@ -419,7 +310,7 @@ fun AgentChatScreen(
                         .weight(1f)
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(spacing.md),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(groupedTranscript, key = { it.id }) { rowItem ->
                         when (rowItem) {
@@ -446,14 +337,6 @@ fun AgentChatScreen(
                 onRefresh = viewModel::refreshBackgroundRuns,
             )
 
-            // Sleek mode selector docked above composer
-            ModeSelectorRow(
-                currentMode = state.permissionMode,
-                enabled = !state.isRunning,
-                onModeSelect = viewModel::setPermissionMode,
-            )
-
-            // Redesigned modern composer
             ModernComposer(
                 text = composerText,
                 onTextChange = { composerText = it },
@@ -461,190 +344,16 @@ fun AgentChatScreen(
                 isRunning = state.isRunning,
                 isResuming = state.isResuming,
                 isStartingBackgroundRun = state.isStartingBackgroundRun,
+                permissionMode = state.permissionMode,
+                onPermissionModeChange = viewModel::setPermissionMode,
+                selectedModel = state.selectedModel,
+                onModelChange = viewModel::selectModel,
+                workingDirectory = state.workingDirectory,
+                onEditDirectory = { showDirectoryDialog = true },
                 onSend = viewModel::send,
                 onSendInBackground = viewModel::sendInBackground,
                 onStop = viewModel::stop,
             )
-        }
-    }
-}
-
-/**
- * Sleek, modern Workspace Context Bar replacing the huge outlined text field.
- * Displays remote directory with quick tap-to-edit.
- */
-@Composable
-private fun WorkspaceContextBar(
-    state: AgentChatUiState,
-    onEditDirectory: () -> Unit,
-    onOpenFiles: () -> Unit,
-    onPullGit: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = VmTheme.spacing
-    val dirName = remember(state.workingDirectory) {
-        val trimmed = state.workingDirectory.trimEnd('/')
-        trimmed.substringAfterLast('/', trimmed)
-    }
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.md, vertical = 2.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, VmTheme.colors.divider),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.md, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            // Top Row: Project Title & Branch Status
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Text(
-                        text = dirName.ifBlank { "Remote Workspace" },
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                // Git Branch Badge
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = VmTheme.colors.successContainer.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, VmTheme.colors.success.copy(alpha = 0.3f)),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "🌿 main",
-                            style = VmTheme.code.mono.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
-                            color = VmTheme.colors.success,
-                        )
-                    }
-                }
-            }
-
-            // Bottom Row: Path & Quick Action Chips (Files, Pull, Edit)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = state.workingDirectory.ifBlank { "Tap to set path" },
-                    style = VmTheme.code.mono.copy(fontSize = 10.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable(enabled = !state.isRunning, onClick = onEditDirectory),
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Files Chip
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(onClick = onOpenFiles),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = "Files",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(11.dp),
-                            )
-                            Text(
-                                text = "Files",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-
-                    // Git Pull Chip
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(onClick = onPullGit),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Pull",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(11.dp),
-                            )
-                            Text(
-                                text = "Pull",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-
-                    // Edit Path Chip
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(enabled = !state.isRunning, onClick = onEditDirectory),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit directory",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(11.dp),
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -686,81 +395,7 @@ private fun EditDirectoryDialog(
     }
 }
 
-/**
- * Modern, styled segmented pill selector for agent permission modes.
- */
-@Composable
-private fun ModeSelectorRow(
-    currentMode: AgentPermissionMode,
-    enabled: Boolean,
-    onModeSelect: (AgentPermissionMode) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = VmTheme.spacing
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = spacing.md, vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AgentPermissionMode.entries.forEach { mode ->
-            val isSelected = currentMode == mode
-            val (icon, label) = when (mode) {
-                AgentPermissionMode.PLAN -> Icons.Default.Shield to "Plan only"
-                AgentPermissionMode.ACCEPT_EDITS -> Icons.Default.AutoFixHigh to "Auto-edit"
-                AgentPermissionMode.MANUAL -> Icons.Default.HelpOutline to "Ask first"
-                AgentPermissionMode.BYPASS -> Icons.Default.RocketLaunch to "Full auto"
-            }
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (isSelected) {
-                    VmTheme.colors.agentContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainer
-                },
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isSelected) VmTheme.colors.agent else VmTheme.colors.divider,
-                ),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable(enabled = enabled) { onModeSelect(mode) },
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = if (isSelected) VmTheme.colors.agent else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(13.dp),
-                    )
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        ),
-                        color = if (isSelected) {
-                            VmTheme.colors.onAgentContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Beautiful AI Welcome hero with curated action cards when transcript is empty.
- */
+/** Empty state: a greeting and a few quiet starting points. */
 @Composable
 private fun EmptyChatHero(
     workingDirectory: String,
@@ -769,8 +404,7 @@ private fun EmptyChatHero(
 ) {
     val spacing = VmTheme.spacing
     val dirName = remember(workingDirectory) {
-        val trimmed = workingDirectory.trimEnd('/')
-        trimmed.substringAfterLast('/', "Repository")
+        workingDirectory.trimEnd('/').substringAfterLast('/', "").ifBlank { "your server" }
     }
 
     Column(
@@ -780,131 +414,48 @@ private fun EmptyChatHero(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // Glowing Sparkle Avatar
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF8B5CF6).copy(alpha = 0.35f),
-                            Color(0xFF6366F1).copy(alpha = 0.15f),
-                            Color.Transparent,
-                        )
-                    )
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = CircleShape,
-                color = VmTheme.colors.agentContainer,
-                border = BorderStroke(1.5.dp, VmTheme.colors.agent),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = VmTheme.colors.agent,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-        }
-
+        Icon(
+            imageVector = Icons.Default.AutoAwesome,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(36.dp),
+        )
         Text(
-            text = "AI Coding Partner",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            text = "What should we work on?",
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(top = spacing.sm),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = spacing.md),
         )
-
         Text(
-            text = "Connected to $dirName",
-            style = VmTheme.code.mono.copy(fontSize = 11.sp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 2.dp, bottom = spacing.md),
+            text = dirName,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, bottom = spacing.lg),
         )
 
-        // Suggestion Action Cards
         val suggestions = listOf(
-            Triple(
-                Icons.Default.AccountTree,
-                "Explain Architecture",
-                "Analyze project structure, dependencies, and key entrypoints.",
-            ),
-            Triple(
-                Icons.Default.BugReport,
-                "Audit & Find Bugs",
-                "Scan recent files for potential syntax bugs and runtime issues.",
-            ),
-            Triple(
-                Icons.Default.Science,
-                "Generate Unit Tests",
-                "Create comprehensive test cases for core application flows.",
-            ),
-            Triple(
-                Icons.Default.Difference,
-                "Review Git Status",
-                "Inspect uncommitted changes and summarize local modifications.",
-            ),
+            "Explain this project" to "Explain the structure of this project, its dependencies and key entry points.",
+            "Find bugs" to "Review recent changes for bugs and runtime issues.",
+            "Write tests" to "Write tests for the core flows of this project.",
+            "Git status" to "Summarize the uncommitted changes in this repository.",
         )
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            suggestions.forEach { (icon, title, prompt) ->
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            suggestions.forEach { (label, prompt) ->
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.Transparent,
                     border = BorderStroke(1.dp, VmTheme.colors.divider),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .clickable { onSuggestionClick(prompt) },
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            modifier = Modifier.size(32.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = prompt,
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
                 }
             }
         }
@@ -1301,88 +852,36 @@ private fun TranscriptRow(
             horizontalArrangement = Arrangement.End,
         ) {
             Surface(
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.widthIn(max = 320.dp),
             ) {
                 Text(
                     text = item.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                )
-            }
-        }
-
-        is TranscriptItem.AssistantText -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = VmTheme.colors.agentContainer,
-                modifier = Modifier
-                    .size(26.dp)
-                    .padding(top = 2.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = VmTheme.colors.agent,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
-            Surface(
-                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                border = BorderStroke(1.dp, VmTheme.colors.divider),
-                modifier = Modifier.weight(1f),
-            ) {
-                Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    MarkdownText(markdown = item.text)
-                }
-            }
-        }
-
-        is TranscriptItem.StreamingText -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = VmTheme.colors.agentContainer,
-                modifier = Modifier
-                    .size(26.dp)
-                    .padding(top = 2.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = VmTheme.colors.agent,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
-            Surface(
-                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                border = BorderStroke(1.dp, VmTheme.colors.divider),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(
-                    text = item.text + "▌",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 )
             }
         }
+
+        // The reply is plain text on the page, not a bubble.
+        is TranscriptItem.AssistantText -> Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+        ) {
+            MarkdownText(markdown = item.text)
+        }
+
+        is TranscriptItem.StreamingText -> Text(
+            text = item.text + "▌",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+        )
 
         is TranscriptItem.Reasoning -> CollapsibleReasoning(item)
 
@@ -1636,10 +1135,20 @@ private fun ToolRow(
     }
 }
 
-/**
- * Modern floating composer with multi-line text field, background run trigger,
- * and high-contrast circular gradient action button.
- */
+private val MODEL_CHOICES = listOf(
+    Triple("sonnet", "Sonnet", "Everyday coding"),
+    Triple("opus", "Opus", "Hardest problems"),
+    Triple("haiku", "Haiku", "Fast and light"),
+)
+
+private fun AgentPermissionMode.chatLabel(): String = when (this) {
+    AgentPermissionMode.PLAN -> "Plan only"
+    AgentPermissionMode.ACCEPT_EDITS -> "Auto-edit"
+    AgentPermissionMode.MANUAL -> "Ask first"
+    AgentPermissionMode.BYPASS -> "Full auto"
+}
+
+/** Flat, rounded input like Claude's: text on top, small pickers and send below. */
 @Composable
 private fun ModernComposer(
     text: String,
@@ -1648,34 +1157,40 @@ private fun ModernComposer(
     isRunning: Boolean,
     isResuming: Boolean,
     isStartingBackgroundRun: Boolean,
+    permissionMode: AgentPermissionMode,
+    onPermissionModeChange: (AgentPermissionMode) -> Unit,
+    selectedModel: String,
+    onModelChange: (String) -> Unit,
+    workingDirectory: String,
+    onEditDirectory: () -> Unit,
     onSend: (String) -> Unit,
     onSendInBackground: (String) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
+    var showModeMenu by remember { mutableStateOf(false) }
+    var showModelMenu by remember { mutableStateOf(false) }
+    val canSend = enabled && text.isNotBlank()
+    val modelLabel = MODEL_CHOICES.firstOrNull { it.first == selectedModel }?.second ?: "Sonnet"
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing.md, vertical = spacing.xs),
-        shape = RoundedCornerShape(22.dp),
+            .padding(horizontal = spacing.md, vertical = spacing.sm),
+        shape = RoundedCornerShape(26.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, VmTheme.colors.divider),
-        shadowElevation = 3.dp,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-        ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             TextField(
                 value = text,
                 onValueChange = onTextChange,
                 enabled = !isRunning,
                 placeholder = {
                     Text(
-                        text = if (isResuming) "Continue discussion..." else "Ask agent or describe changes...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                        text = if (isResuming) "Reply…" else "Message Claude Code",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
                 colors = TextFieldDefaults.colors(
@@ -1686,49 +1201,108 @@ private fun ModernComposer(
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
                 ),
-                maxLines = 5,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                maxLines = 6,
+                textStyle = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Detached Background Run Button
+                // Folder chip: the working directory, tap to change.
+                ComposerChip(
+                    label = workingDirectory.trimEnd('/').substringAfterLast('/')
+                        .ifBlank { "Set folder" },
+                    icon = Icons.Default.Folder,
+                    enabled = !isRunning,
+                    onClick = onEditDirectory,
+                )
+
+                Box {
+                    ComposerChip(
+                        label = permissionMode.chatLabel(),
+                        enabled = !isRunning,
+                        onClick = { showModeMenu = true },
+                    )
+                    DropdownMenu(expanded = showModeMenu, onDismissRequest = { showModeMenu = false }) {
+                        AgentPermissionMode.entries.forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(mode.chatLabel()) },
+                                leadingIcon = {
+                                    if (mode == permissionMode) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    onPermissionModeChange(mode)
+                                    showModeMenu = false
+                                },
+                            )
+                        }
+                    }
+                }
+
+                Box {
+                    ComposerChip(
+                        label = modelLabel,
+                        enabled = !isRunning,
+                        onClick = { showModelMenu = true },
+                    )
+                    DropdownMenu(expanded = showModelMenu, onDismissRequest = { showModelMenu = false }) {
+                        MODEL_CHOICES.forEach { (id, name, desc) ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(name)
+                                        Text(
+                                            text = desc,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    if (id == selectedModel) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    onModelChange(id)
+                                    showModelMenu = false
+                                },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                // Run detached on the server; survives closing the app.
                 IconButton(
                     onClick = {
                         val toSend = text
                         onTextChange("")
                         onSendInBackground(toSend)
                     },
-                    enabled = enabled && text.isNotBlank() && !isStartingBackgroundRun,
-                    modifier = Modifier.size(34.dp),
+                    enabled = canSend && !isStartingBackgroundRun,
+                    modifier = Modifier.size(40.dp),
                 ) {
                     if (isStartingBackgroundRun) {
-                        CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
                         Icon(
                             imageVector = Icons.Default.Schedule,
                             contentDescription = "Run in background",
-                            tint = if (enabled && text.isNotBlank()) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-                            },
-                            modifier = Modifier.size(19.dp),
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
 
                 if (isRunning) {
-                    // Glowing Red Stop Button
                     Surface(
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.errorContainer,
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -1737,32 +1311,23 @@ private fun ModernComposer(
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Stop,
-                                contentDescription = "Stop agent",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(19.dp),
+                                contentDescription = "Stop",
+                                tint = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier.size(18.dp),
                             )
                         }
                     }
                 } else {
-                    // Sleek gradient Send button
-                    val canSend = enabled && text.isNotBlank()
                     Surface(
                         shape = CircleShape,
-                        color = if (canSend) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        color = if (canSend) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        },
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .then(
-                                if (canSend) {
-                                    Modifier.background(
-                                        Brush.linearGradient(
-                                            listOf(Color(0xFF6366F1), Color(0xFFA855F7))
-                                        )
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
                             .clickable(enabled = canSend) {
                                 val toSend = text
                                 onTextChange("")
@@ -1771,16 +1336,54 @@ private fun ModernComposer(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                imageVector = Icons.Default.ArrowUpward,
                                 contentDescription = "Send",
-                                tint = if (canSend) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                                modifier = Modifier.size(16.dp),
+                                tint = if (canSend) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(18.dp),
                             )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ComposerChip(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector? = null,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 110.dp),
+        )
     }
 }
 

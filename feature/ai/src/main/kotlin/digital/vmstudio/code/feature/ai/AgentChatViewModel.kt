@@ -98,7 +98,7 @@ data class AgentChatUiState(
     val watchServerId: String? = null,
     val error: VmError? = null,
     val availableProjects: List<Project> = emptyList(),
-    val selectedModel: String = "claude-3-7-sonnet-latest",
+    val selectedModel: String = "sonnet",
 ) {
     /** The chat-only backend has no server or working directory to satisfy. */
     val canRun: Boolean
