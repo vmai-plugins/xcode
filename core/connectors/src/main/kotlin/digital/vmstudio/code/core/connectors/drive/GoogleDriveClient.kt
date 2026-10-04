@@ -11,6 +11,8 @@ import digital.vmstudio.code.core.network.http.VmHttpClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.putJsonArray
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.Request
@@ -21,7 +23,7 @@ import javax.inject.Singleton
 
 /**
  * Client for Google Drive REST API v3.
- * Supports listing files, uploading project archives/backups, and downloading.
+ * Supports listing files, uploading project archives/backups, exporting documents, and downloading.
  */
 @Singleton
 class GoogleDriveClient @Inject constructor(
@@ -33,9 +35,11 @@ class GoogleDriveClient @Inject constructor(
         accessToken: String,
         query: String? = null,
         pageSize: Int = 30,
+        pageToken: String? = null,
     ): VmResult<List<GoogleDriveFile>> {
         val qParam = query?.let { "&q=" + URLEncoder.encode(it, "UTF-8") } ?: ""
-        val url = "$DRIVE_API_BASE/files?pageSize=$pageSize&fields=files(id,name,mimeType,size,modifiedTime)$qParam"
+        val pageParam = pageToken?.let { "&pageToken=" + URLEncoder.encode(it, "UTF-8") } ?: ""
+        val url = "$DRIVE_API_BASE/files?pageSize=$pageSize&fields=files(id,name,mimeType,size,modifiedTime),nextPageToken$qParam$pageParam"
 
         val request = Request.Builder()
             .url(url)
@@ -63,7 +67,9 @@ class GoogleDriveClient @Inject constructor(
             put("name", filename)
             put("mimeType", mimeType)
             if (parentFolderId != null) {
-                // If specifying parents in Google Drive v3, it accepts a JSON array of folder IDs
+                putJsonArray("parents") {
+                    add(parentFolderId)
+                }
             }
         }.toString()
 
@@ -104,6 +110,48 @@ class GoogleDriveClient @Inject constructor(
             .url(url)
             .addHeader("Authorization", "Bearer $accessToken")
             .get()
+            .build()
+
+        return httpClient.execute(request, RetryPolicy())
+    }
+
+    suspend fun exportFile(
+        accessToken: String,
+        fileId: String,
+        exportMimeType: String = "text/plain",
+    ): VmResult<String> {
+        val encodedMime = URLEncoder.encode(exportMimeType, "UTF-8")
+        val url = "$DRIVE_API_BASE/files/$fileId/export?mimeType=$encodedMime"
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $accessToken")
+            .get()
+            .build()
+
+        return httpClient.execute(request, RetryPolicy())
+    }
+
+    suspend fun createResumableUploadSession(
+        accessToken: String,
+        filename: String,
+        mimeType: String,
+        parentFolderId: String? = null,
+    ): VmResult<String> {
+        val metadataJson = buildJsonObject {
+            put("name", filename)
+            put("mimeType", mimeType)
+            if (parentFolderId != null) {
+                putJsonArray("parents") {
+                    add(parentFolderId)
+                }
+            }
+        }.toString()
+
+        val request = Request.Builder()
+            .url("$DRIVE_UPLOAD_BASE/files?uploadType=resumable")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .addHeader("X-Upload-Content-Type", mimeType)
+            .post(metadataJson.toRequestBody("application/json; charset=UTF-8".toMediaType()))
             .build()
 
         return httpClient.execute(request, RetryPolicy())
