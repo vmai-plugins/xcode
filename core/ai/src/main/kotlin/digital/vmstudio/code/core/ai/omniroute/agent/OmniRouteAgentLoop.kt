@@ -6,11 +6,14 @@ import digital.vmstudio.code.core.ai.model.AgentRunConfig
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteDialect
 import digital.vmstudio.code.core.ai.omniroute.applyOmniRouteAuth
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.log.LogCategory
+import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.preferences.AgentAutonomyLevel
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
+import digital.vmstudio.code.core.network.http.VmHttpException
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandGuard
@@ -99,18 +102,17 @@ class OmniRouteAgentLoop @Inject constructor(
             repeat(MAX_ITERATIONS) {
                 currentCoroutineContext().ensureActive()
 
-                val request =
-                    buildRequest(baseUrl, key, dialect, model, workingDirectory, allowedTools, history)
-                val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))
-                val responseBody = when (result) {
-                    is VmResult.Failure -> {
-                        emit(AgentEvent.Failed(result.error))
-                        return@flow
+                val target = GatewayTarget(baseUrl, key, dialect, model)
+                val (turn, streamedText) =
+                    when (val next = nextTurn(target, workingDirectory, allowedTools, history)) {
+                        is VmResult.Failure -> {
+                            emit(AgentEvent.Failed(next.error))
+                            return@flow
+                        }
+                        is VmResult.Success -> next.value
                     }
-                    is VmResult.Success -> result.value
-                }
 
-                when (val turn = OmniRouteToolCodec.parseResponse(dialect, responseBody)) {
+                when (turn) {
                     is OmniRouteTurn.ParseFailed -> {
                         emit(
                             AgentEvent.Failed(
@@ -156,7 +158,12 @@ class OmniRouteAgentLoop @Inject constructor(
                             inputTokensTotal += input
                             outputTokensTotal += output
                         }
-                        history += OmniRouteMessage.Assistant(text = null, toolCalls = turn.calls)
+                        // Close the streamed draft before the tool rows appear under it.
+                        if (streamedText.isNotBlank()) emit(AgentEvent.AssistantMessage(streamedText))
+                        history += OmniRouteMessage.Assistant(
+                            text = streamedText.ifBlank { null },
+                            toolCalls = turn.calls,
+                        )
 
                         for (call in turn.calls) {
                             currentCoroutineContext().ensureActive()
@@ -197,6 +204,14 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private data class ToolOutcome(val output: String, val isError: Boolean)
 
+    /** Where and how one turn's request is sent. */
+    private data class GatewayTarget(
+        val baseUrl: String,
+        val key: Secret,
+        val dialect: OmniRouteDialect,
+        val model: String,
+    )
+
     /**
      * The same permission-mode selector the Claude Code CLI path honors
      * (--permission-mode plan / --restricted) must mean the same thing here:
@@ -218,27 +233,69 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private fun buildRequest(
-        baseUrl: String,
-        key: Secret,
-        dialect: OmniRouteDialect,
-        model: String,
+        target: GatewayTarget,
         workingDirectory: String,
         allowedTools: Set<OmniRouteTool>,
         history: List<OmniRouteMessage>,
+        stream: Boolean,
     ): Request {
-        val requestBody = OmniRouteToolCodec.buildRequestBody(
-            dialect = dialect,
-            model = model,
+        val body = OmniRouteToolCodec.buildRequestBody(
+            dialect = target.dialect,
+            model = target.model,
             systemPrompt = systemPrompt(workingDirectory, allowedTools),
             history = history,
             maxTokens = DEFAULT_MAX_TOKENS,
             tools = allowedTools.toList(),
-        )
+        ).let { if (stream) OmniRouteStreamAssembler.streamingBody(target.dialect, it) else it }
         return Request.Builder()
-            .url("$baseUrl/${dialect.chatPath}")
-            .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
-            .applyOmniRouteAuth(key, dialect)
+            .url("${target.baseUrl}/${target.dialect.chatPath}")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .applyOmniRouteAuth(target.key, target.dialect)
+            .apply { if (stream) header("Accept", "text/event-stream") }
             .build()
+    }
+
+    /**
+     * Asks the model for its next turn, streamed so the reply appears as it is
+     * written. Gateways and models differ in how well they stream tool calls, so a
+     * stream that fails or carries nothing usable is retried once without
+     * streaming. Returns the turn and any text already shown while streaming.
+     */
+    private suspend fun FlowCollector<AgentEvent>.nextTurn(
+        target: GatewayTarget,
+        workingDirectory: String,
+        allowedTools: Set<OmniRouteTool>,
+        history: List<OmniRouteMessage>,
+    ): VmResult<Pair<OmniRouteTurn, String>> {
+        val assembler = OmniRouteStreamAssembler(target.dialect)
+        val streamed = try {
+            httpClient.stream(buildRequest(target, workingDirectory, allowedTools, history, stream = true))
+                .collect { event ->
+                    assembler.accept(event.data)?.takeIf { it.isNotEmpty() }?.let {
+                        emit(AgentEvent.AssistantDelta(it))
+                    }
+                }
+            assembler.finish()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (streamFailure: VmHttpException) {
+            VmLog.i(
+                LogCategory.AI,
+                TAG,
+                "Streaming turn failed, retrying without: ${streamFailure.error.summary}",
+            )
+            null
+        }
+        if (streamed != null && streamed !is OmniRouteTurn.ParseFailed) {
+            return VmResult.Success(streamed to assembler.textSoFar)
+        }
+
+        val request = buildRequest(target, workingDirectory, allowedTools, history, stream = false)
+        return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+            is VmResult.Failure -> result
+            is VmResult.Success ->
+                VmResult.Success(OmniRouteToolCodec.parseResponse(target.dialect, result.value) to "")
+        }
     }
 
     /** Runs one tool call, emitting its start and finish, and returns the result for the history. */
@@ -642,6 +699,7 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "OmniRouteAgentLoop"
         const val SESSION_PREFIX = "omniroute-"
         const val MAX_ITERATIONS = 25
         const val MAX_SESSIONS = 16
