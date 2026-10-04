@@ -14,10 +14,12 @@ import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandGuard
+import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -64,20 +66,7 @@ class OmniRouteAgentLoop @Inject constructor(
         val workingDirectory = config.workingDirectory
         val startedAt = System.currentTimeMillis()
 
-        // The same permission-mode selector the Claude Code CLI path honors
-        // (--permission-mode plan / --restricted) must mean the same thing here:
-        // PLAN offers no tool that changes anything, and restricted drops the tool
-        // that runs commands, regardless of the user's standing autonomy level.
-        val allowedTools = buildSet {
-            add(OmniRouteTool.READ_FILE)
-            add(OmniRouteTool.LIST_DIRECTORY)
-            add(OmniRouteTool.GREP_SEARCH)
-            if (config.permissionMode != AgentPermissionMode.PLAN) {
-                add(OmniRouteTool.WRITE_FILE)
-                add(OmniRouteTool.EDIT_FILE)
-                if (!config.restricted) add(OmniRouteTool.RUN_COMMAND)
-            }
-        }
+        val allowedTools = allowedToolsFor(config)
 
         try {
             emit(
@@ -93,24 +82,13 @@ class OmniRouteAgentLoop @Inject constructor(
             var inputTokensTotal = 0L
             var outputTokensTotal = 0L
 
-            for (iteration in 1..MAX_ITERATIONS) {
+            repeat(MAX_ITERATIONS) {
                 currentCoroutineContext().ensureActive()
 
-                val requestBody = OmniRouteToolCodec.buildRequestBody(
-                    dialect = dialect,
-                    model = model,
-                    systemPrompt = systemPrompt(workingDirectory, allowedTools),
-                    history = history,
-                    maxTokens = DEFAULT_MAX_TOKENS,
-                    tools = allowedTools.toList(),
-                )
-                val request = Request.Builder()
-                    .url("$baseUrl/${dialect.chatPath}")
-                    .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
-                    .applyOmniRouteAuth(key, dialect)
-                    .build()
-
-                val responseBody = when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+                val request =
+                    buildRequest(baseUrl, key, dialect, model, workingDirectory, allowedTools, history)
+                val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))
+                val responseBody = when (result) {
                     is VmResult.Failure -> {
                         emit(AgentEvent.Failed(result.error))
                         return@flow
@@ -161,49 +139,7 @@ class OmniRouteAgentLoop @Inject constructor(
 
                         for (call in turn.calls) {
                             currentCoroutineContext().ensureActive()
-                            val tool = OmniRouteTool.fromToolName(call.name)
-                            val path = argument(call.argumentsJson, "path")
-                            // Resolved to an absolute path, not the raw model argument:
-                            // a model editing a repo-root file may well call this with
-                            // just "README.md", and DiffReviewViewModel derives the
-                            // directory to run git in from this path's dirname - a bare
-                            // filename with no "/" would make it try to cd into the
-                            // filename itself instead of the actual working directory.
-                            val resolvedPath = path?.let { resolvePath(workingDirectory, it) }
-
-                            emit(
-                                AgentEvent.ToolStarted(
-                                    toolUseId = call.id,
-                                    name = call.name,
-                                    summary = summarize(tool, call.name, path),
-                                    argumentsJson = call.argumentsJson,
-                                    affectedPath = resolvedPath,
-                                ),
-                            )
-
-                            val outcome = dispatch(
-                                tool = tool,
-                                call = call,
-                                serverId = serverId,
-                                workingDirectory = workingDirectory,
-                                autonomyLevel = autonomyLevel,
-                                permissionMode = config.permissionMode,
-                                allowedTools = allowedTools,
-                            )
-
-                            emit(
-                                AgentEvent.ToolFinished(
-                                    toolUseId = call.id,
-                                    isError = outcome.isError,
-                                    output = outcome.output,
-                                ),
-                            )
-                            history += OmniRouteMessage.ToolResult(
-                                toolCallId = call.id,
-                                toolName = call.name,
-                                content = outcome.output,
-                                isError = outcome.isError,
-                            )
+                            history += runToolCall(call, config, autonomyLevel, allowedTools)
                         }
                     }
                 }
@@ -240,6 +176,99 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private data class ToolOutcome(val output: String, val isError: Boolean)
 
+    /**
+     * The same permission-mode selector the Claude Code CLI path honors
+     * (--permission-mode plan / --restricted) must mean the same thing here:
+     * PLAN offers no tool that changes anything, and restricted drops the tool
+     * that runs commands, regardless of the user's standing autonomy level.
+     */
+    private fun allowedToolsFor(config: AgentRunConfig): Set<OmniRouteTool> = buildSet {
+        add(OmniRouteTool.READ_FILE)
+        add(OmniRouteTool.LIST_DIRECTORY)
+        add(OmniRouteTool.GREP_SEARCH)
+        if (config.permissionMode != AgentPermissionMode.PLAN) {
+            add(OmniRouteTool.WRITE_FILE)
+            add(OmniRouteTool.EDIT_FILE)
+            if (!config.restricted) add(OmniRouteTool.RUN_COMMAND)
+        }
+    }
+
+    private fun buildRequest(
+        baseUrl: String,
+        key: Secret,
+        dialect: OmniRouteDialect,
+        model: String,
+        workingDirectory: String,
+        allowedTools: Set<OmniRouteTool>,
+        history: List<OmniRouteMessage>,
+    ): Request {
+        val requestBody = OmniRouteToolCodec.buildRequestBody(
+            dialect = dialect,
+            model = model,
+            systemPrompt = systemPrompt(workingDirectory, allowedTools),
+            history = history,
+            maxTokens = DEFAULT_MAX_TOKENS,
+            tools = allowedTools.toList(),
+        )
+        return Request.Builder()
+            .url("$baseUrl/${dialect.chatPath}")
+            .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
+            .applyOmniRouteAuth(key, dialect)
+            .build()
+    }
+
+    /** Runs one tool call, emitting its start and finish, and returns the result for the history. */
+    private suspend fun FlowCollector<AgentEvent>.runToolCall(
+        call: OmniRouteToolCall,
+        config: AgentRunConfig,
+        autonomyLevel: AgentAutonomyLevel,
+        allowedTools: Set<OmniRouteTool>,
+    ): OmniRouteMessage.ToolResult {
+        val tool = OmniRouteTool.fromToolName(call.name)
+        val path = argument(call.argumentsJson, "path")
+        // Resolved to an absolute path, not the raw model argument:
+        // a model editing a repo-root file may well call this with
+        // just "README.md", and DiffReviewViewModel derives the
+        // directory to run git in from this path's dirname - a bare
+        // filename with no "/" would make it try to cd into the
+        // filename itself instead of the actual working directory.
+        val resolvedPath = path?.let { resolvePath(config.workingDirectory, it) }
+
+        emit(
+            AgentEvent.ToolStarted(
+                toolUseId = call.id,
+                name = call.name,
+                summary = summarize(tool, call.name, path),
+                argumentsJson = call.argumentsJson,
+                affectedPath = resolvedPath,
+            ),
+        )
+
+        val outcome = dispatch(
+            tool = tool,
+            call = call,
+            serverId = config.serverId,
+            workingDirectory = config.workingDirectory,
+            autonomyLevel = autonomyLevel,
+            permissionMode = config.permissionMode,
+            allowedTools = allowedTools,
+        )
+
+        emit(
+            AgentEvent.ToolFinished(
+                toolUseId = call.id,
+                isError = outcome.isError,
+                output = outcome.output,
+            ),
+        )
+        return OmniRouteMessage.ToolResult(
+            toolCallId = call.id,
+            toolName = call.name,
+            content = outcome.output,
+            isError = outcome.isError,
+        )
+    }
+
     private suspend fun dispatch(
         tool: OmniRouteTool?,
         call: OmniRouteToolCall,
@@ -266,13 +295,19 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.READ_FILE -> readFile(call, serverId, workingDirectory)
             OmniRouteTool.LIST_DIRECTORY -> listDirectory(call, serverId, workingDirectory)
             OmniRouteTool.GREP_SEARCH -> grepSearch(call, serverId, workingDirectory)
-            OmniRouteTool.WRITE_FILE -> writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
-            OmniRouteTool.EDIT_FILE -> editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
+            OmniRouteTool.WRITE_FILE ->
+                writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
+            OmniRouteTool.EDIT_FILE ->
+                editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId)
         }
     }
 
-    private suspend fun readFile(call: OmniRouteToolCall, serverId: String, workingDirectory: String): ToolOutcome {
+    private suspend fun readFile(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
         val path = argument(call.argumentsJson, "path")
             ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
         val resolved = resolvePath(workingDirectory, path)
@@ -317,7 +352,8 @@ class OmniRouteAgentLoop @Inject constructor(
         val flags = if (caseSensitive) "-rn" else "-rni"
         val escapedQuery = query.replace("'", "'\\''")
         val escapedPath = resolved.replace("'", "'\\''")
-        val command = "grep $flags --exclude-dir={.git,node_modules,build,.gradle} '$escapedQuery' '$escapedPath' | head -n 50"
+        val command = "grep $flags --exclude-dir={.git,node_modules,build,.gradle} " +
+            "'$escapedQuery' '$escapedPath' | head -n 50"
 
         return when (val result = commandGuard.run(serverId, command, requestedByAgent = true)) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
@@ -331,6 +367,36 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
+    /**
+     * Edits apply without asking only off production, never in MANUAL mode, and only
+     * when the run or the standing autonomy level already permits edits.
+     */
+    private fun canAutoApply(
+        server: Server,
+        permissionMode: AgentPermissionMode,
+        autonomyLevel: AgentAutonomyLevel,
+    ): Boolean = server.environment != ServerEnvironment.PRODUCTION &&
+        permissionMode != AgentPermissionMode.MANUAL &&
+        (
+            permissionMode == AgentPermissionMode.ACCEPT_EDITS ||
+                permissionMode == AgentPermissionMode.BYPASS ||
+                autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)
+        )
+
+    /** Why [target] cannot be replaced in [content], or null when it occurs exactly once. */
+    private fun uniqueMatchProblem(content: String, target: String, resolved: String): String? {
+        val occurrences = content.split(target).size - 1
+        return when {
+            occurrences == 0 ->
+                "Could not find the target_content in \"$resolved\". " +
+                    "Ensure target_content exactly matches the existing file contents."
+            occurrences > 1 ->
+                "target_content matches $occurrences times in \"$resolved\". " +
+                    "Please provide more surrounding context so the match is unique."
+            else -> null
+        }
+    }
+
     private suspend fun editFile(
         call: OmniRouteToolCall,
         serverId: String,
@@ -339,11 +405,16 @@ class OmniRouteAgentLoop @Inject constructor(
         permissionMode: AgentPermissionMode,
     ): ToolOutcome {
         val path = argument(call.argumentsJson, "path")
-            ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
         val target = argument(call.argumentsJson, "target_content")
-            ?: return ToolOutcome("Missing required argument \"target_content\".", isError = true)
         val replacement = argument(call.argumentsJson, "replacement_content")
-            ?: return ToolOutcome("Missing required argument \"replacement_content\".", isError = true)
+        if (path == null || target == null || replacement == null) {
+            val missing = when {
+                path == null -> "path"
+                target == null -> "target_content"
+                else -> "replacement_content"
+            }
+            return ToolOutcome("Missing required argument \"$missing\".", isError = true)
+        }
         val resolved = resolvePath(workingDirectory, path)
 
         val server = when (val result = serverRepository.get(serverId)) {
@@ -353,33 +424,19 @@ class OmniRouteAgentLoop @Inject constructor(
 
         val existingContent = when (val result = remoteFileSystem.readText(serverId, resolved)) {
             is VmResult.Success -> result.value
-            is VmResult.Failure -> return ToolOutcome("Failed to read file before edit: ${result.error.summaryWithReason()}", isError = true)
-        }
-
-        if (!existingContent.contains(target)) {
-            return ToolOutcome(
-                "Could not find the target_content in \"$resolved\". Ensure target_content exactly matches the existing file contents.",
+            is VmResult.Failure -> return ToolOutcome(
+                "Failed to read file before edit: ${result.error.summaryWithReason()}",
                 isError = true,
             )
         }
 
-        val occurrences = existingContent.split(target).size - 1
-        if (occurrences > 1) {
-            return ToolOutcome(
-                "target_content matches $occurrences times in \"$resolved\". Please provide more surrounding context so the match is unique.",
-                isError = true,
-            )
+        uniqueMatchProblem(existingContent, target, resolved)?.let { problem ->
+            return ToolOutcome(problem, isError = true)
         }
 
         val newContent = existingContent.replace(target, replacement)
 
-        val autoApply = server.environment != ServerEnvironment.PRODUCTION &&
-            permissionMode != AgentPermissionMode.MANUAL &&
-            (
-                permissionMode == AgentPermissionMode.ACCEPT_EDITS ||
-                    permissionMode == AgentPermissionMode.BYPASS ||
-                    autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)
-            )
+        val autoApply = canAutoApply(server, permissionMode, autonomyLevel)
 
         if (!autoApply) {
             val approved = fileEditApprovalGate.request(
@@ -427,13 +484,7 @@ class OmniRouteAgentLoop @Inject constructor(
         // ceiling." MANUAL asks for everything with an effect, by the user's own
         // per-run choice, regardless of the standing autonomy level. Everything else
         // (ACCEPT_EDITS, BYPASS, or DEVELOPER+/FULL_AGENT autonomy) may auto-apply.
-        val autoApply = server.environment != ServerEnvironment.PRODUCTION &&
-            permissionMode != AgentPermissionMode.MANUAL &&
-            (
-                permissionMode == AgentPermissionMode.ACCEPT_EDITS ||
-                    permissionMode == AgentPermissionMode.BYPASS ||
-                    autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)
-                )
+        val autoApply = canAutoApply(server, permissionMode, autonomyLevel)
 
         if (!autoApply) {
             // Existence is checked directly rather than inferred from whether the
@@ -466,7 +517,8 @@ class OmniRouteAgentLoop @Inject constructor(
         }
 
         return when (val result = remoteFileSystem.writeText(serverId, resolved, content)) {
-            is VmResult.Success -> ToolOutcome("Wrote ${content.length} characters to $resolved.", isError = false)
+            is VmResult.Success ->
+                ToolOutcome("Wrote ${content.length} characters to $resolved.", isError = false)
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
         }
     }
@@ -505,20 +557,26 @@ class OmniRouteAgentLoop @Inject constructor(
         if (path.startsWith("/") || path.startsWith("~")) path else "${workingDirectory.trimEnd('/')}/$path"
 
     private fun argument(argumentsJson: String, key: String): String? {
-        val root = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull() as? JsonObject ?: return null
+        val root = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull()
+            as? JsonObject ?: return null
         return (root[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
     }
 
     private fun VmError.summaryWithReason(): String = reason?.let { "$summary: $it" } ?: summary
 
-    private fun systemPrompt(workingDirectory: String, allowedTools: Set<OmniRouteTool>): String = buildString {
+    private fun systemPrompt(
+        workingDirectory: String,
+        allowedTools: Set<OmniRouteTool>,
+    ): String = buildString {
         append(
-            "You are VMStudio Code, an autonomous AI coding agent running inside $workingDirectory on a remote " +
-                "server, reached through tools. First inspect the project structure with list_directory, read_file, or grep_search. ",
+            "You are an autonomous AI coding agent working in $workingDirectory on a remote " +
+                "server, reached through tools. First inspect the project structure with " +
+                "list_directory, read_file, or grep_search. ",
         )
         if (OmniRouteTool.EDIT_FILE in allowedTools) {
             append(
-                "When modifying existing files, always prefer edit_file to replace targeted code sections precisely. ",
+                "When modifying existing files, always prefer edit_file to replace targeted " +
+                    "code sections precisely. ",
             )
         }
         if (OmniRouteTool.WRITE_FILE in allowedTools) {
@@ -527,7 +585,10 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
         if (OmniRouteTool.RUN_COMMAND in allowedTools) {
-            append("Use run_command to run build, test, git, and lint commands, inspect outputs, and self-correct any errors. ")
+            append(
+                "Use run_command to run build, test, git, and lint commands, inspect outputs, " +
+                    "and self-correct any errors. ",
+            )
         }
         if (OmniRouteTool.WRITE_FILE !in allowedTools) {
             append(

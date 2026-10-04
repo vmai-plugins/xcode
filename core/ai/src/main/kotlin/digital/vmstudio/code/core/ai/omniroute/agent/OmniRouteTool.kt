@@ -33,11 +33,13 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
     ),
     EDIT_FILE(
         "edit_file",
-        "Perform a targeted search-and-replace edit on an existing file. Replaces target_content with replacement_content.",
+        "Perform a targeted search-and-replace edit on an existing file. " +
+            "Replaces target_content with replacement_content.",
     ),
     GREP_SEARCH(
         "grep_search",
-        "Search for a pattern or regular expression across files in the project. Returns matching files and lines.",
+        "Search for a pattern or regular expression across files in the project. " +
+            "Returns matching files and lines.",
     ),
     RUN_COMMAND(
         "run_command",
@@ -91,7 +93,11 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             }
             putJsonObject("target_content") {
                 put("type", "string")
-                put("description", "The exact lines or block of code to find and replace. Must match existing file content exactly.")
+                put(
+                    "description",
+                    "The exact lines or block of code to find and replace. " +
+                        "Must match existing file content exactly.",
+                )
             }
             putJsonObject("replacement_content") {
                 put("type", "string")

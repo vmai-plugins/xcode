@@ -5,7 +5,6 @@ import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.VmResult
-import digital.vmstudio.code.core.common.result.flatMap
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.command.CommandLimits
 import kotlinx.coroutines.CoroutineDispatcher
@@ -26,12 +25,17 @@ class GoogleDriveManager @Inject constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
 
-    suspend fun listBackups(accessToken: String): VmResult<List<GoogleDriveFile>> = withContext(ioDispatcher) {
-        driveClient.listFiles(
-            accessToken = accessToken,
-            query = "name contains 'backup' or mimeType = 'application/gzip' or mimeType = 'application/zip'",
-        )
-    }
+    suspend fun listBackups(accessToken: String): VmResult<List<GoogleDriveFile>> =
+        withContext(ioDispatcher) {
+            driveClient.listFiles(
+                accessToken = accessToken,
+                query = "name contains 'backup' or mimeType = 'application/gzip' " +
+                    "or mimeType = 'application/zip'",
+            )
+        }
+
+    private suspend fun runOnServer(serverId: String, command: String) =
+        commandGuard.run(serverId, command, limits = CommandLimits(), requestedByAgent = false)
 
     /**
      * Creates a compressed tarball archive of [remotePath] on [serverId] and uploads it to Google Drive.
@@ -48,15 +52,16 @@ class GoogleDriveManager @Inject constructor(
         val tempRemoteArchive = "/tmp/$archiveName"
 
         // Create archive on the VPS server
-        val tarCommand = "tar -czf '$tempRemoteArchive' -C '$remotePath' --exclude='.git' --exclude='node_modules' --exclude='build' ."
-        val tarResult = commandGuard.run(serverId, tarCommand, limits = CommandLimits(), requestedByAgent = false)
+        val tarCommand = "tar -czf '$tempRemoteArchive' -C '$remotePath' " +
+            "--exclude='.git' --exclude='node_modules' --exclude='build' ."
+        val tarResult = runOnServer(serverId, tarCommand)
         if (tarResult is VmResult.Failure) {
             return@withContext tarResult
         }
 
         // Read base64 content of the archive from VPS
         val base64Command = "base64 -w 0 '$tempRemoteArchive'"
-        val base64Output = when (val base64Result = commandGuard.run(serverId, base64Command, limits = CommandLimits(), requestedByAgent = false)) {
+        val base64Output = when (val base64Result = runOnServer(serverId, base64Command)) {
             is VmResult.Success -> base64Result.value.stdout.trim()
             is VmResult.Failure -> return@withContext base64Result
         }
@@ -74,10 +79,14 @@ class GoogleDriveManager @Inject constructor(
         }
 
         // Clean up temp archive on server
-        commandGuard.run(serverId, "rm -f '$tempRemoteArchive'", limits = CommandLimits(), requestedByAgent = false)
+        runOnServer(serverId, "rm -f '$tempRemoteArchive'")
 
         // Upload to Google Drive
-        VmLog.i(LogCategory.CONNECTOR, TAG, "Uploading $archiveName (${archiveBytes.size} bytes) to Google Drive")
+        VmLog.i(
+            LogCategory.CONNECTOR,
+            TAG,
+            "Uploading $archiveName (${archiveBytes.size} bytes) to Google Drive",
+        )
         driveClient.uploadFile(
             accessToken = accessToken,
             filename = archiveName,

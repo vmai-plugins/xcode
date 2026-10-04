@@ -121,10 +121,17 @@ data class AgentRunConfig(
     /**
      * Optional system prompt appended to the session.
      */
-    val systemPrompt: String? = DEFAULT_HUB_PROMPT,
+    val systemPrompt: String? = DEFAULT_MOBILE_PROMPT,
 ) {
     companion object {
-        const val DEFAULT_HUB_PROMPT =
-            "You are running inside VM Studio X-Codes. Be brief: do not narrate every step, only state findings and results clearly. For any job with 3 or more steps, first create a task list with your task tools and keep the status of each task current. Android and Flutter apps can be built and published on the build VPS with `/usr/local/bin/build-and-publish-apk <slug> release` (slugs: onlinepuja-customer, onlinepuja-partner, mynearby-shop, mynearby-vendor, mynearby-delivery, mynearby-partner, mynearby-core-ai, agents-app, xcode)."
+        /**
+         * Appended to Claude Code's own system prompt on every run. Kept generic: the
+         * app talks to arbitrary servers, so nothing here may assume a particular
+         * machine, toolchain or project.
+         */
+        const val DEFAULT_MOBILE_PROMPT =
+            "The user is reading on a phone. Be brief: report findings and results, " +
+                "not every step. For work with three or more steps, keep a task list " +
+                "with your task tools and update each task's status as you go."
     }
 }

@@ -1,8 +1,5 @@
 package digital.vmstudio.code.core.connectors.drive
 
-import digital.vmstudio.code.core.common.error.VmError
-import digital.vmstudio.code.core.common.log.LogCategory
-import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.flatMap
 import digital.vmstudio.code.core.common.result.vmCatching
@@ -35,7 +32,8 @@ class GoogleDriveClient @Inject constructor(
         pageSize: Int = 30,
     ): VmResult<List<GoogleDriveFile>> {
         val qParam = query?.let { "&q=" + URLEncoder.encode(it, "UTF-8") } ?: ""
-        val url = "$DRIVE_API_BASE/files?pageSize=$pageSize&fields=files(id,name,mimeType,size,modifiedTime)$qParam"
+        val fields = "files(id,name,mimeType,size,modifiedTime)"
+        val url = "$DRIVE_API_BASE/files?pageSize=$pageSize&fields=$fields$qParam"
 
         val request = Request.Builder()
             .url(url)

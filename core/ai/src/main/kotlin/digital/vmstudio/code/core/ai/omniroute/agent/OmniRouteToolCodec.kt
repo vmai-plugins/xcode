@@ -54,7 +54,8 @@ object OmniRouteToolCodec {
         maxTokens: Int,
         tools: List<OmniRouteTool> = OmniRouteTool.entries,
     ): String = when (dialect) {
-        OmniRouteDialect.ANTHROPIC_MESSAGES -> buildAnthropicRequest(model, systemPrompt, history, maxTokens, tools)
+        OmniRouteDialect.ANTHROPIC_MESSAGES ->
+            buildAnthropicRequest(model, systemPrompt, history, maxTokens, tools)
         OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN ->
             buildOpenAiRequest(model, systemPrompt, history, maxTokens, tools)
     }
@@ -226,7 +227,7 @@ object OmniRouteToolCodec {
         }
 
         is OmniRouteMessage.ToolResult ->
-            throw IllegalStateException("ToolResult is batched by buildAnthropicRequest, not rendered alone.")
+            error("ToolResult is batched by buildAnthropicRequest, not rendered alone.")
     }
 
     private fun OmniRouteMessage.ToolResult.toAnthropicToolResultJson(): JsonObject = buildJsonObject {
@@ -248,10 +249,12 @@ object OmniRouteToolCodec {
             when (block.stringOrNull("type")) {
                 "text" -> block.stringOrNull("text")?.let(text::append)
                 "tool_use" -> {
-                    val id = block.stringOrNull("id") ?: continue
-                    val name = block.stringOrNull("name") ?: continue
-                    val input = (block["input"] as? JsonObject) ?: JsonObject(emptyMap())
-                    toolCalls += OmniRouteToolCall(id, name, input.toString())
+                    val id = block.stringOrNull("id")
+                    val name = block.stringOrNull("name")
+                    if (id != null && name != null) {
+                        val input = (block["input"] as? JsonObject) ?: JsonObject(emptyMap())
+                        toolCalls += OmniRouteToolCall(id, name, input.toString())
+                    }
                 }
             }
         }
@@ -264,17 +267,17 @@ object OmniRouteToolCodec {
 
     private fun parseArgumentsOrEmpty(argumentsJson: String): JsonElement =
         runCatching { json.parseToJsonElement(argumentsJson) }.getOrDefault(JsonObject(emptyMap()))
-
-    private fun usageOf(root: JsonObject, inputKey: String, outputKey: String): Pair<Long, Long>? {
-        val usage = root["usage"] as? JsonObject ?: return null
-        val input = usage.longOrNull(inputKey) ?: return null
-        val output = usage.longOrNull(outputKey) ?: return null
-        return input to output
-    }
-
-    private fun JsonObject.stringOrNull(key: String): String? =
-        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-    private fun JsonObject.longOrNull(key: String): Long? =
-        (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 }
+
+private fun usageOf(root: JsonObject, inputKey: String, outputKey: String): Pair<Long, Long>? {
+    val usage = root["usage"] as? JsonObject ?: return null
+    val input = usage.longOrNull(inputKey) ?: return null
+    val output = usage.longOrNull(outputKey) ?: return null
+    return input to output
+}
+
+private fun JsonObject.stringOrNull(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+private fun JsonObject.longOrNull(key: String): Long? =
+    (this[key] as? JsonPrimitive)?.content?.toLongOrNull()

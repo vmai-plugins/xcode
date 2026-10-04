@@ -156,7 +156,8 @@ class OmniRouteProvider @Inject constructor(
             ?: detectDialect(baseUrl, key).also { detectedDialect = it }
 
         // Run as an autonomous agent loop whenever a project workspace is active on a server
-        if (config.workingDirectory.isNotBlank() && (settings.aiToolsEnabled || config.serverId.isNotBlank())) {
+        val canUseTools = settings.aiToolsEnabled || config.serverId.isNotBlank()
+        if (config.workingDirectory.isNotBlank() && canUseTools) {
             try {
                 emitAll(agentLoop.run(baseUrl, key, dialect, model, config, settings.agentAutonomyLevel))
             } finally {

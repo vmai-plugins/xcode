@@ -178,11 +178,4 @@ internal object ClaudeCodeCommandBuilder {
     /** The CLI documents --autocompact as accepting 100k-1M tokens. */
     const val AUTOCOMPACT_MIN = 100_000
     const val AUTOCOMPACT_MAX = 1_000_000
-
-    /**
-     * VM Studio ecosystem prompt: informs the agent of available repositories,
-     * build tools on VPS 2, and concise mobile formatting.
-     */
-    const val DEFAULT_HUB_PROMPT =
-        "You are running inside VM Studio X-Codes. Be brief: do not narrate every step, only state findings and results clearly. For any job with 3 or more steps, first create a task list with your task tools and keep the status of each task current. Android and Flutter apps can be built and published on the build VPS with `/usr/local/bin/build-and-publish-apk <slug> release` (slugs: onlinepuja-customer, onlinepuja-partner, mynearby-shop, mynearby-vendor, mynearby-delivery, mynearby-partner, mynearby-core-ai, agents-app, xcode)."
 }

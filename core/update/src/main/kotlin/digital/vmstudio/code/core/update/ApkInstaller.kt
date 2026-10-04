@@ -60,7 +60,10 @@ class ApkInstaller @Inject constructor(
     private fun archiveSigningCertificates(packageManager: PackageManager, apkFile: File): List<String> {
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             @Suppress("DEPRECATION")
-            packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+            packageManager.getPackageArchiveInfo(
+                apkFile.absolutePath,
+                PackageManager.GET_SIGNING_CERTIFICATES,
+            )
         } else {
             @Suppress("DEPRECATION")
             packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
@@ -79,7 +82,8 @@ class ApkInstaller @Inject constructor(
     }
 
     private fun signingFingerprints(info: PackageInfo): List<String> {
-        val signingInfo: SigningInfo? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.signingInfo else null
+        val signingInfo: SigningInfo? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.signingInfo else null
         val signatures: Array<Signature>? = when {
             signingInfo != null -> signingInfo.apkContentsSigners
             else -> @Suppress("DEPRECATION") info.signatures
