@@ -128,6 +128,11 @@ data class AgentRunConfig(
      * reopened after the app restarted. Claude Code ignores it and resumes by id.
      */
     val history: List<ConversationTurn> = emptyList(),
+    /**
+     * Images attached to this prompt, sent inline to gateway models that accept
+     * them. Claude Code reads the uploaded copy named in the prompt instead.
+     */
+    val images: List<ImageAttachment> = emptyList(),
 ) {
     companion object {
         /**
@@ -144,3 +149,6 @@ data class AgentRunConfig(
 
 /** One message of an earlier exchange, as the user saw it. */
 data class ConversationTurn(val fromUser: Boolean, val text: String)
+
+/** An image attached to a prompt, as base64 for inline delivery. */
+data class ImageAttachment(val mediaType: String, val base64Data: String)

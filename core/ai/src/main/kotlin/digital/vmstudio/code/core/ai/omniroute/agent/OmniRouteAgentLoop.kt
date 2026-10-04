@@ -99,7 +99,7 @@ class OmniRouteAgentLoop @Inject constructor(
             )
 
             val history = previous.orEmpty().toMutableList()
-            history += OmniRouteMessage.User(config.prompt)
+            history += OmniRouteMessage.User(config.prompt, config.images)
             var inputTokensTotal = 0L
             var outputTokensTotal = 0L
 
@@ -142,7 +142,12 @@ class OmniRouteAgentLoop @Inject constructor(
                             text = turn.text.ifBlank { "(no reply)" },
                             toolCalls = emptyList(),
                         )
-                        sessions.put(sessionId, history.toList())
+                        // Images are sent once; later turns keep only the text so the
+                        // conversation does not re-upload them on every request.
+                        sessions.put(
+                            sessionId,
+                            history.map { it.withoutImages() },
+                        )
                         emit(
                             AgentEvent.Completed(
                                 sessionId = sessionId,
@@ -734,6 +739,9 @@ private class SessionMemory(private val capacity: Int) {
         const val LOAD_FACTOR = 0.75f
     }
 }
+
+private fun OmniRouteMessage.withoutImages(): OmniRouteMessage =
+    if (this is OmniRouteMessage.User) copy(images = emptyList()) else this
 
 /**
  * Rebuilds plain-text history. Consecutive turns from the same side are merged,

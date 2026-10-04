@@ -1,5 +1,6 @@
 package digital.vmstudio.code.feature.ai
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -131,6 +132,7 @@ class AgentChatViewModel @Inject constructor(
     private val projectRepository: ProjectRepository,
     private val gitService: GitService,
     private val modelCatalog: OmniRouteModelCatalog,
+    private val attachmentStager: AttachmentStager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -388,7 +390,7 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(permissionMode = mode) }
     }
 
-    fun send(prompt: String) {
+    fun send(prompt: String, attachments: List<Uri> = emptyList()) {
         val state = _uiState.value
         val server = state.serverId ?: return
         if (prompt.isBlank() || state.isRunning) return
@@ -412,7 +414,35 @@ class AgentChatViewModel @Inject constructor(
                 _uiState.update { it.copy(isRunning = false) }
                 return@launch
             }
-            conversations.appendUserPrompt(conversationId, prompt)
+            val staged = if (attachments.isEmpty()) {
+                StagedAttachments(emptyList(), emptyList())
+            } else {
+                val result = attachmentStager.stage(server, state.workingDirectory.trim(), attachments)
+                when (result) {
+                    is VmResult.Failure -> {
+                        _uiState.update { it.copy(isRunning = false, error = result.error) }
+                        return@launch
+                    }
+                    is VmResult.Success -> result.value.also { files ->
+                        append(
+                            TranscriptItem.Diagnostic(
+                                id = nextId(),
+                                text = "Attached: " +
+                                    files.remotePaths.joinToString { it.substringAfterLast('/') },
+                                isStderr = false,
+                            ),
+                        )
+                    }
+                }
+            }
+            // The agent finds attachments by path, so the prompt names them.
+            val fullPrompt = if (staged.remotePaths.isEmpty()) {
+                prompt
+            } else {
+                prompt + "\n\nAttached files on the server:\n" +
+                    staged.remotePaths.joinToString("\n") { "- $it" }
+            }
+            conversations.appendUserPrompt(conversationId, fullPrompt)
 
             // The Tasks record (§28): one row per run when the agent works inside a
             // project. A run opened straight from a server stays conversation-only.
@@ -425,7 +455,8 @@ class AgentChatViewModel @Inject constructor(
             val config = AgentRunConfig(
                 serverId = server,
                 workingDirectory = state.workingDirectory.trim(),
-                prompt = prompt,
+                prompt = fullPrompt,
+                images = staged.images,
                 resumeSessionId = state.providerSessionId,
                 permissionMode = state.permissionMode,
                 model = state.selectedModel,

@@ -1,5 +1,6 @@
 package digital.vmstudio.code.feature.ai
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -110,6 +111,7 @@ fun AgentChatScreen(
 
     val canSwitchProject = state.availableProjects.isNotEmpty() && !state.isRunning
     val previewTarget = rememberHtmlPreview(state.serverId)
+    var attachments by remember { mutableStateOf(emptyList<Uri>()) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -322,7 +324,13 @@ fun AgentChatScreen(
                 onSyncModels = viewModel::syncModels,
                 workingDirectory = state.workingDirectory,
                 onEditDirectory = { showDirectoryDialog = true },
-                onSend = viewModel::send,
+                attachments = attachments,
+                onAttach = { uri -> attachments = (attachments + uri).distinct() },
+                onRemoveAttachment = { uri -> attachments = attachments - uri },
+                onSend = { text ->
+                    viewModel.send(text, attachments)
+                    attachments = emptyList()
+                },
                 onSendInBackground = viewModel::sendInBackground,
                 onStop = viewModel::stop,
             )

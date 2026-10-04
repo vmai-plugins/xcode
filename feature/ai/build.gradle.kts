@@ -12,4 +12,5 @@ dependencies {
     implementation(projects.core.sftp)
     implementation(projects.core.git)
     implementation(projects.core.project)
+    implementation(libs.androidx.activity.compose)
 }

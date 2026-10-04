@@ -1,31 +1,38 @@
 package digital.vmstudio.code.feature.ai
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
-import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,9 +49,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
+import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
+import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
 private fun AgentPermissionMode.chatLabel(): String = when (this) {
@@ -70,6 +81,9 @@ internal fun ModernComposer(
     omniModels: OmniRouteModels,
     isSyncingModels: Boolean,
     onSyncModels: () -> Unit,
+    attachments: List<Uri>,
+    onAttach: (Uri) -> Unit,
+    onRemoveAttachment: (Uri) -> Unit,
     workingDirectory: String,
     onEditDirectory: () -> Unit,
     onSend: (String) -> Unit,
@@ -91,6 +105,7 @@ internal fun ModernComposer(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            AttachmentChips(attachments = attachments, onRemove = onRemoveAttachment)
             TextField(
                 value = text,
                 onValueChange = onTextChange,
@@ -119,6 +134,7 @@ internal fun ModernComposer(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                AttachButton(enabled = !isRunning, onAttach = onAttach)
                 // Folder chip: the working directory, tap to change.
                 ComposerChip(
                     label = workingDirectory.trimEnd('/').substringAfterLast('/')
@@ -386,3 +402,63 @@ private const val MILLIS_PER_MINUTE = 60_000L
 private const val SYNC_LABEL = "Sync models now"
 private const val SET_UP_LABEL = "Set up OmniRoute in Settings"
 private const val MINUTES_PER_HOUR = 60L
+
+@Composable
+private fun AttachButton(enabled: Boolean, onAttach: (Uri) -> Unit) {
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        uris.forEach(onAttach)
+    }
+    IconButton(onClick = { picker.launch("*/*") }, enabled = enabled, modifier = Modifier.size(36.dp)) {
+        Icon(
+            imageVector = Icons.Default.AttachFile,
+            contentDescription = "Attach files",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/** Files picked for the next message, each removable before it is sent. */
+@Composable
+private fun AttachmentChips(attachments: List<Uri>, onRemove: (Uri) -> Unit) {
+    if (attachments.isEmpty()) return
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 4.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        attachments.forEach { uri ->
+            val name = remember(uri) { attachmentName(context, uri) }
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(start = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 140.dp),
+                )
+                IconButton(onClick = { onRemove(uri) }, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove $name",
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun attachmentName(context: Context, uri: Uri): String =
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')

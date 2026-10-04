@@ -43,12 +43,18 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
 | `https://host/v1` as base URL | Requests went to `/v1/v1/models` and failed | Trailing `/v1` and slashes are normalised |
 | Default gateway `https://ai.vmstudio.digital` | Every install pointed at a private gateway | No default; blank URL gets a clear "add your gateway" message |
 
+**Added after the audit**
+
+- `web_fetch` tool (public pages only; private/LAN addresses refused).
+- Streaming in the agent loop, with a non-streaming fallback per turn.
+- In-app preview of `.html` files the agent writes (sandboxed WebView).
+- Context survives app restarts (rebuilt from the saved transcript).
+- File and image attachments: uploaded to `.xcodes/attachments/`, paths added to the prompt; images ≤ 4 MB also sent inline to the gateway.
+
 **Still open, in priority order**
 
 1. **The "allow tools" switch does nothing in chat.** `OmniRouteProvider.run` enables the tool loop whenever a server is set (`aiToolsEnabled || serverId.isNotBlank()`), and the chat always has a server. Decide: either honour the switch or remove it from Settings.
-2. **Agent replies don't stream.** The tool loop uses one non-streaming request per turn, so text appears all at once after the model finishes. Plain chat mode streams; the loop should too.
 3. **Every health check sends two billed chat requests** (dialect probes with model `probe`). Cache the detected dialect per base URL instead of re-probing.
-4. **Conversation memory is in-memory only.** Reopening an OmniRoute chat after the app restarts continues without context. Rebuild history from the stored transcript instead.
 5. **No context trimming.** Long tool-heavy conversations grow until the gateway rejects them. Trim oldest turns while keeping tool-call/result pairs together.
 6. **Cost is always $0.** The gateway bills upstream; show tokens only, or read cost if the gateway reports it.
 
