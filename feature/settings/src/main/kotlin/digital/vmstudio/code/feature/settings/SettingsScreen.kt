@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.MaterialTheme
@@ -46,9 +50,13 @@ fun SettingsScreen(
     val context = LocalContext.current
     val spacing = VmTheme.spacing
     var confirmErase by remember { mutableStateOf(false) }
+    var googleDriveSyncEnabled by remember { mutableStateOf(true) }
+    var autoBackupProjects by remember { mutableStateOf(true) }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
         contentPadding = PaddingValues(
             horizontal = spacing.screenHorizontal,
             vertical = spacing.md,
@@ -146,6 +154,93 @@ fun SettingsScreen(
             }
         }
 
+        item { VmSectionHeader(title = "Servers & VPS Clusters") }
+
+        item {
+            VmCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("VPS 1 · Primary Agent", style = MaterialTheme.typography.titleSmall)
+                            androidx.compose.material3.Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                color = androidx.compose.ui.graphics.Color(0xFF10B981).copy(alpha = 0.2f),
+                            ) {
+                                Text(
+                                    text = "ACTIVE",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = androidx.compose.ui.graphics.Color(0xFF34D399),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                        Text(
+                            text = "195.35.45.36:8443 · OmniRoute Gateway & Hub Agent",
+                            style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("VPS 2 · Build Worker", style = MaterialTheme.typography.titleSmall)
+                            androidx.compose.material3.Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                color = androidx.compose.ui.graphics.Color(0xFF3B82F6).copy(alpha = 0.2f),
+                            ) {
+                                Text(
+                                    text = "READY",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = androidx.compose.ui.graphics.Color(0xFF60A5FA),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                        Text(
+                            text = "195.35.45.109:22 · Gradle Compiler & APK Publisher",
+                            style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        item { VmSectionHeader(title = "Cloud Storage & Google Drive") }
+
+        item {
+            VmCard {
+                ToggleRow(
+                    label = "Google Drive Workspace Sync",
+                    description = "Automatically snapshot remote code revisions and build artifacts to Google Drive cloud storage.",
+                    checked = googleDriveSyncEnabled,
+                    onCheckedChange = { googleDriveSyncEnabled = it },
+                )
+                ToggleRow(
+                    label = "Auto-backup Project Trees",
+                    description = "Creates daily timestamped backups of all project directories across VPS 1 and VPS 2.",
+                    checked = autoBackupProjects,
+                    onCheckedChange = { autoBackupProjects = it },
+                )
+            }
+        }
+
         item { VmSectionHeader(title = "Security") }
 
         item {
@@ -200,7 +295,7 @@ fun SettingsScreen(
                         onClick = {
                             val share = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "VMStudio Code diagnostics")
+                                putExtra(Intent.EXTRA_SUBJECT, "x-codes diagnostics")
                                 putExtra(Intent.EXTRA_TEXT, viewModel.exportDiagnostics())
                             }
                             context.startActivity(

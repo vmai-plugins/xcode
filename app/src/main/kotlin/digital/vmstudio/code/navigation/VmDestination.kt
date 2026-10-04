@@ -167,13 +167,14 @@ sealed class VmDestination(val route: String) {
          * Kept to five so the bar stays usable on a small phone; the remaining
          * sections are reached from Home and from within their parent section.
          */
-        val primaryDestinations: List<Primary> = listOf(
-            Home,
-            Projects,
-            Servers,
-            Agent,
-            Settings,
-        )
+        val primaryDestinations: List<Primary>
+            get() = listOf(
+                Home,
+                Projects,
+                Servers,
+                Agent,
+                Settings,
+            )
     }
 }
 

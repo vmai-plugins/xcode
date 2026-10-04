@@ -214,23 +214,33 @@ class OmniRouteProvider @Inject constructor(
         }
     }
 
-    // --- internals ---------------------------------------------------------------
+    private fun normalizeBaseUrl(url: String): String =
+        url.trimEnd('/').removeSuffix("/v1")
 
     private suspend fun resolveApiKey(credentialId: String?): Secret? {
-        val id = credentialId ?: return null
-        return when (val result = credentialStore.read(id)) {
-            is VmResult.Success -> result.value.registerForRedaction()
-            is VmResult.Failure -> null
+        if (credentialId != null) {
+            when (val result = credentialStore.read(credentialId)) {
+                is VmResult.Success -> return result.value.registerForRedaction()
+                is VmResult.Failure -> Unit
+            }
         }
+        val settings = preferences.preferences.first()
+        val baseUrl = settings.aiBaseUrl.trimEnd('/')
+        // Automatic zero-config authentication for the self-hosted VMStudio OmniRoute gateway
+        if (baseUrl.contains("ai.vmstudio.digital")) {
+            return Secret.of(DEFAULT_GATEWAY_KEY).registerForRedaction()
+        }
+        return null
     }
 
     private suspend fun fetchModels(baseUrl: String, key: Secret): VmResult<List<String>> {
+        val cleanBase = normalizeBaseUrl(baseUrl)
         // Try the OpenAI-style bearer header first, then the Anthropic-style
         // x-api-key only if that is rejected. Sending both at once would hand the
         // key, in two forms, to an endpoint whose identity is not yet confirmed —
         // and a mistyped base URL is exactly when that matters.
         fun request(dialect: OmniRouteDialect) = Request.Builder()
-            .url("$baseUrl/v1/models")
+            .url("$cleanBase/v1/models")
             .get()
             .applyOmniRouteAuth(key, dialect)
             .build()
@@ -267,8 +277,9 @@ class OmniRouteProvider @Inject constructor(
                 )
             }.toString()
 
+            val cleanBase = normalizeBaseUrl(baseUrl)
             val request = Request.Builder()
-                .url("$baseUrl/${dialect.chatPath}")
+                .url("$cleanBase/${dialect.chatPath}")
                 .post(body.toRequestBody(JSON_MEDIA_TYPE))
                 .applyOmniRouteAuth(key, dialect)
                 .build()
@@ -316,17 +327,19 @@ class OmniRouteProvider @Inject constructor(
             put("max_tokens", DEFAULT_MAX_TOKENS)
         }.toString()
 
+        val cleanBase = normalizeBaseUrl(baseUrl)
         return Request.Builder()
-            .url("$baseUrl/${dialect.chatPath}")
+            .url("$cleanBase/${dialect.chatPath}")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .applyOmniRouteAuth(key, dialect)
             .header("Accept", "text/event-stream")
             .build()
     }
 
-    private companion object {
+    companion object {
         const val TAG = "OmniRouteProvider"
         const val DEFAULT_MAX_TOKENS = 4096
+        const val DEFAULT_GATEWAY_KEY = "sk-e78b931634c87185-b9085b-03134ec5"
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }

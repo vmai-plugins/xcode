@@ -44,9 +44,13 @@ fun VmApp(
 
     val useRail = widthSizeClass != WindowWidthSizeClass.Compact
 
-    // Secondary screens (forms, detail) own the full width; showing the primary
-    // navigation there invites accidental context switches mid-edit.
-    val showPrimaryNavigation = VmDestination.primaryDestinations.any { destination ->
+    // Secondary screens and the full-screen AI Cockpit own the full viewport;
+    // hiding the bulky 5-tab bar in the AI chat gives an immersive, clutter-free
+    // canvas like Kimi and Claude Code mobile.
+    val isOnAgent = currentDestination.isOn(VmDestination.Agent) ||
+        currentDestination?.route?.startsWith("agent") == true ||
+        currentDestination?.route?.contains("/agent") == true
+    val showPrimaryNavigation = !isOnAgent && VmDestination.primaryDestinations.any { destination ->
         currentDestination?.hierarchy?.any { it.route == destination.route } == true
     }
 
@@ -81,6 +85,7 @@ fun VmApp(
 
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
+                contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
                 bottomBar = {
                     if (!useRail && showPrimaryNavigation) {
                         NavigationBar {
@@ -102,7 +107,11 @@ fun VmApp(
                     }
                 },
             ) { padding ->
-                Box(modifier = Modifier.padding(padding)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                ) {
                     VmNavHost(
                         navController = navController,
                         isOnline = isOnline,
@@ -118,5 +127,5 @@ fun VmApp(
     }
 }
 
-private fun androidx.navigation.NavDestination?.isOn(destination: VmDestination.Primary): Boolean =
-    this?.hierarchy?.any { it.route == destination.route } == true
+private fun androidx.navigation.NavDestination?.isOn(destination: VmDestination.Primary?): Boolean =
+    destination?.let { dest -> this?.hierarchy?.any { it.route == dest.route } } == true

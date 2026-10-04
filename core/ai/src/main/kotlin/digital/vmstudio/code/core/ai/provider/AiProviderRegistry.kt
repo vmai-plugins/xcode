@@ -93,7 +93,7 @@ class AiProviderRegistry @Inject constructor(
 
 /** What a backend is capable of, so the UI can set expectations honestly. */
 val AiProvider.supportsTools: Boolean
-    get() = kind == AiProviderKind.CLAUDE_CODE_CLI
+    get() = kind == AiProviderKind.CLAUDE_CODE_CLI || kind == AiProviderKind.OMNIROUTE
 
 val AiProvider.requiresServer: Boolean
     get() = kind == AiProviderKind.CLAUDE_CODE_CLI

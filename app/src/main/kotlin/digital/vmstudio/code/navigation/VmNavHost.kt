@@ -229,6 +229,15 @@ fun VmNavHost(
                 onOpenFiles = {
                     navController.navigate(VmDestination.ServerFiles.routeFor(agentServerId))
                 },
+                onNavigateToSettings = {
+                    navController.navigate(VmDestination.Settings.route)
+                },
+                onNavigateToServers = {
+                    navController.navigate(VmDestination.Servers.route)
+                },
+                onOpenTerminal = {
+                    navController.navigate(VmDestination.ServerTerminal.routeFor(agentServerId))
+                },
             )
         }
 
@@ -255,14 +264,15 @@ fun VmNavHost(
         // The two tabs answer different questions: Projects is *where* the agent
         // works, this is *what* was asked and what came back.
         composable(VmDestination.Agent.route) {
-            AgentConversationsScreen(
-                onOpenConversation = { conversationId ->
-                    navController.navigate(
-                        VmDestination.AgentConversation.routeFor(conversationId),
-                    )
+            AgentChatScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onWatchBackgroundRuns = startWatchingRuns,
+                onNavigateToSettings = {
+                    navController.navigate(VmDestination.Settings.route)
                 },
-                onNewConversation = { navController.navigate(VmDestination.Projects.route) },
-                onOpenTasks = { navController.navigate(VmDestination.Tasks.route) },
+                onNavigateToServers = {
+                    navController.navigate(VmDestination.Servers.route)
+                },
             )
         }
 
@@ -277,6 +287,12 @@ fun VmNavHost(
             AgentChatScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onWatchBackgroundRuns = startWatchingRuns,
+                onNavigateToSettings = {
+                    navController.navigate(VmDestination.Settings.route)
+                },
+                onNavigateToServers = {
+                    navController.navigate(VmDestination.Servers.route)
+                },
             )
         }
 

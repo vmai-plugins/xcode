@@ -18,6 +18,9 @@ import digital.vmstudio.code.core.ai.repository.StoredEntry
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.ai.provider.AiProviderKind
+import digital.vmstudio.code.core.common.preferences.UserPreferences
+import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.git.GitResult
@@ -32,6 +35,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+data class AgentModelItem(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val isFree: Boolean = false,
+    val provider: AiProviderKind = AiProviderKind.OMNIROUTE,
+)
 
 /** One rendered entry in the transcript. */
 sealed interface TranscriptItem {
@@ -86,6 +97,7 @@ data class AgentChatUiState(
     val transcript: List<TranscriptItem> = emptyList(),
     val isRunning: Boolean = false,
     val permissionMode: AgentPermissionMode = AgentPermissionMode.PLAN,
+    val selectedEngine: AiProviderKind = AiProviderKind.OMNIROUTE,
     val health: AiProviderHealth? = null,
     val isCheckingHealth: Boolean = false,
     val conversationId: String? = null,
@@ -103,14 +115,18 @@ data class AgentChatUiState(
     val watchServerId: String? = null,
     val error: VmError? = null,
     val availableProjects: List<Project> = emptyList(),
-    val selectedModel: String = "claude-3-7-sonnet-latest",
+    val selectedModel: String = "cl/DeepSeek V4 Flash (Free)",
+    val availableModels: List<AgentModelItem> = emptyList(),
+    val isSyncingModels: Boolean = false,
+    val recentConversations: List<ConversationSummary> = emptyList(),
 ) {
-    /** The chat-only backend has no server or working directory to satisfy. */
+    /** Universal AI App: OmniRoute chat runs freely without requiring a server or folder! */
     val canRun: Boolean
-        get() = serverId != null &&
-            workingDirectory.isNotBlank() &&
-            !isRunning &&
-            health?.isAvailable == true
+        get() = !isRunning && (
+            selectedEngine == AiProviderKind.OMNIROUTE || (
+                serverId != null && workingDirectory.isNotBlank() && health?.isAvailable == true
+            )
+        )
 
     val isResuming: Boolean get() = providerSessionId != null
 }
@@ -122,11 +138,13 @@ class AgentChatViewModel @Inject constructor(
     private val tasks: AgentTaskRepository,
     private val remoteFileSystem: RemoteFileSystem,
     private val backgroundRunner: BackgroundAgentRunner,
-    private val preferences: UserPreferencesSource,
+    private val preferencesRepository: UserPreferencesRepository,
     private val projectRepository: ProjectRepository,
     private val gitService: GitService,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    private val preferences: UserPreferencesSource get() = preferencesRepository
 
     private val serverId: String? = savedStateHandle[ARG_SERVER_ID]
 
@@ -145,8 +163,9 @@ class AgentChatViewModel @Inject constructor(
 
     init {
         applyStoredAutonomy()
-        checkHealth()
+        initAiEngineAndModels()
         observeProjects()
+        observeConversations()
         when {
             // Reopening a stored conversation: its own directory and session id are
             // authoritative, so nothing is probed or prefilled.
@@ -169,6 +188,33 @@ class AgentChatViewModel @Inject constructor(
             }
         }
     }
+
+    private fun observeConversations() {
+        viewModelScope.launch {
+            conversations.observeConversations().collect { list ->
+                val summaries = list.map { conv ->
+                    ConversationSummary(
+                        id = conv.id,
+                        title = conv.title,
+                        workingDirectory = conv.workingDirectory,
+                        serverId = conv.serverId,
+                        updatedAtMillis = conv.updatedAtMillis,
+                        totalTokens = conv.promptTokens + conv.completionTokens,
+                        isResumable = conv.isResumable,
+                    )
+                }
+                _uiState.update { current ->
+                    current.copy(recentConversations = summaries)
+                }
+            }
+        }
+    }
+
+
+    fun openConversation(conversationId: String) {
+        restoreConversation(conversationId)
+    }
+
 
     /**
      * Rebuilds a stored transcript so a conversation survives leaving the screen.
@@ -331,12 +377,92 @@ class AgentChatViewModel @Inject constructor(
         }
     }
 
-    fun checkHealth() {
+    private fun initAiEngineAndModels() {
+        viewModelScope.launch {
+            val prefs = preferencesRepository.preferences.first()
+            val initialEngine = if (prefs.aiProviderId == UserPreferences.PROVIDER_CLAUDE_CODE) {
+                AiProviderKind.CLAUDE_CODE_CLI
+            } else {
+                AiProviderKind.OMNIROUTE
+            }
+            val initialModel = prefs.aiSelectedModelId?.takeIf { it.isNotBlank() } ?: "cl/DeepSeek V4 Flash (Free)"
+            val models = buildModelList(prefs.aiAvailableModelIds)
+            _uiState.update {
+                it.copy(
+                    selectedEngine = initialEngine,
+                    selectedModel = initialModel,
+                    availableModels = models,
+                )
+            }
+            checkHealth()
+            syncModels()
+        }
+    }
+
+    fun selectEngine(engine: AiProviderKind) {
+        if (_uiState.value.isRunning) return
+        _uiState.update { it.copy(selectedEngine = engine) }
+        viewModelScope.launch {
+            val providerId = if (engine == AiProviderKind.OMNIROUTE) {
+                UserPreferences.PROVIDER_OMNIROUTE
+            } else {
+                UserPreferences.PROVIDER_CLAUDE_CODE
+            }
+            val baseUrl = if (engine == AiProviderKind.OMNIROUTE) "https://ai.vmstudio.digital/v1" else ""
+            preferencesRepository.setAiProvider(providerId, baseUrl)
+            if (engine == AiProviderKind.OMNIROUTE) {
+                preferencesRepository.setAiToolsEnabled(true)
+            }
+        }
+        checkHealth()
+    }
+
+    fun selectModel(model: String) {
+        val foundProvider = _uiState.value.availableModels.firstOrNull { it.id == model }?.provider
+        _uiState.update { current ->
+            current.copy(
+                selectedModel = model,
+                selectedEngine = foundProvider ?: current.selectedEngine,
+            )
+        }
+        viewModelScope.launch {
+            preferencesRepository.setAiModel(model, "balanced")
+        }
+    }
+
+    fun syncModels() {
+        _uiState.update { it.copy(isSyncingModels = true) }
+        viewModelScope.launch {
+            val omniRoute = providers.forKind(AiProviderKind.OMNIROUTE)
+            when (val result = providers.checkHealth(omniRoute, serverId, forceRefresh = true)) {
+                is VmResult.Success -> {
+                    val rawModels = result.value.availableModels
+                    if (rawModels.isNotEmpty()) {
+                        val models = buildModelList(rawModels)
+                        _uiState.update { it.copy(availableModels = models) }
+                        preferencesRepository.setAiModels(rawModels)
+                    }
+                }
+                is VmResult.Failure -> Unit
+            }
+            _uiState.update { it.copy(isSyncingModels = false) }
+        }
+    }
+
+    fun checkHealth(forceRefresh: Boolean = false) {
         _uiState.update { it.copy(isCheckingHealth = true) }
         viewModelScope.launch {
-            when (val result = providers.checkHealth(providers.active(), serverId)) {
-                is VmResult.Success -> _uiState.update {
-                    it.copy(health = result.value, isCheckingHealth = false)
+            val provider = providers.forKind(_uiState.value.selectedEngine)
+            when (val result = providers.checkHealth(provider, serverId, forceRefresh = forceRefresh)) {
+                is VmResult.Success -> {
+                    val health = result.value
+                    _uiState.update {
+                        it.copy(health = health, isCheckingHealth = false)
+                    }
+                    if (health.availableModels.isNotEmpty()) {
+                        val models = buildModelList(health.availableModels)
+                        _uiState.update { it.copy(availableModels = models) }
+                    }
                 }
                 is VmResult.Failure -> _uiState.update {
                     it.copy(isCheckingHealth = false, error = result.error)
@@ -345,25 +471,106 @@ class AgentChatViewModel @Inject constructor(
         }
     }
 
+    private fun buildModelList(rawIds: List<String>): List<AgentModelItem> {
+        val curated = listOf(
+            AgentModelItem(
+                id = "cl/DeepSeek V4 Flash (Free)",
+                name = "DeepSeek V4 Flash",
+                description = "High speed & intelligent coding · 100% Free",
+                isFree = true,
+                provider = AiProviderKind.OMNIROUTE,
+            ),
+            AgentModelItem(
+                id = "huggingchat/openai/gpt-oss-120b",
+                name = "GPT-OSS 120B",
+                description = "OpenAI 120B open weights · Deep reasoning · Free",
+                isFree = true,
+                provider = AiProviderKind.OMNIROUTE,
+            ),
+            AgentModelItem(
+                id = "huggingchat/Qwen/Qwen3.5-122B-A10B",
+                name = "Qwen 3.5 122B",
+                description = "State of the art coding & architecture · Free",
+                isFree = true,
+                provider = AiProviderKind.OMNIROUTE,
+            ),
+            AgentModelItem(
+                id = "huggingchat/zai-org/GLM-5.2",
+                name = "GLM 5.2",
+                description = "Extended thinking & tool calling · Free",
+                isFree = true,
+                provider = AiProviderKind.OMNIROUTE,
+            ),
+            AgentModelItem(
+                id = "huggingchat/stepfun-ai/Step-3.7-Flash",
+                name = "Step 3.7 Flash",
+                description = "Fast vision & reasoning · Free",
+                isFree = true,
+                provider = AiProviderKind.OMNIROUTE,
+            ),
+            AgentModelItem(
+                id = "omniroute/gpt-4o",
+                name = "OmniRoute GPT-4o",
+                description = "Multi-provider gateway",
+                isFree = false,
+                provider = AiProviderKind.OMNIROUTE,
+            ),
+            AgentModelItem(
+                id = "claude-3-7-sonnet-latest",
+                name = "Claude 3.7 Sonnet",
+                description = "Hybrid reasoning · Claude CLI",
+                isFree = false,
+                provider = AiProviderKind.CLAUDE_CODE_CLI,
+            ),
+            AgentModelItem(
+                id = "claude-3-5-sonnet-latest",
+                name = "Claude 3.5 Sonnet",
+                description = "High speed & coding accuracy",
+                isFree = false,
+                provider = AiProviderKind.CLAUDE_CODE_CLI,
+            ),
+            AgentModelItem(
+                id = "claude-3-5-haiku-latest",
+                name = "Claude 3.5 Haiku",
+                description = "Fast & cost-efficient",
+                isFree = false,
+                provider = AiProviderKind.CLAUDE_CODE_CLI,
+            ),
+        )
+
+        val curatedIds = curated.map { it.id }.toSet()
+        val dynamic = rawIds.filterNot { it in curatedIds }.map { id ->
+            val isFree = id.contains("free", ignoreCase = true) ||
+                id.startsWith("huggingchat/") ||
+                id.startsWith("cl/") ||
+                id.contains("oss", ignoreCase = true)
+            val cleanName = id.substringAfterLast('/').replace('-', ' ').replace('_', ' ')
+            AgentModelItem(
+                id = id,
+                name = cleanName.ifBlank { id },
+                description = if (isFree) "Synced Free Model" else "OmniRoute Model",
+                isFree = isFree,
+                provider = AiProviderKind.OMNIROUTE,
+            )
+        }
+        return curated + dynamic
+    }
+
     fun setWorkingDirectory(path: String) {
         _uiState.update { it.copy(workingDirectory = path) }
     }
 
-    fun selectProject(project: Project) {
+    fun selectProject(project: Project?) {
         if (_uiState.value.isRunning) return
         _uiState.update {
             it.copy(
-                serverId = project.serverId ?: it.serverId,
-                workingDirectory = project.remotePath,
+                serverId = project?.serverId ?: it.serverId,
+                workingDirectory = project?.remotePath ?: "",
                 conversationId = null,
                 providerSessionId = null,
             )
         }
         refreshBackgroundRuns()
-    }
-
-    fun selectModel(model: String) {
-        _uiState.update { it.copy(selectedModel = model) }
     }
 
     fun setPermissionMode(mode: AgentPermissionMode) {
@@ -372,7 +579,7 @@ class AgentChatViewModel @Inject constructor(
 
     fun send(prompt: String) {
         val state = _uiState.value
-        val server = state.serverId ?: return
+        val server = state.serverId ?: (state.availableProjects.firstOrNull()?.serverId ?: "omniroute-cloud")
         if (prompt.isBlank() || state.isRunning) return
 
         append(TranscriptItem.UserPrompt(nextId(), prompt))
@@ -404,9 +611,10 @@ class AgentChatViewModel @Inject constructor(
                 projectId = tasks.findProjectId(server, state.workingDirectory.trim()),
             )
 
+            val workingDir = state.workingDirectory.trim().ifBlank { "/workspace" }
             val config = AgentRunConfig(
                 serverId = server,
-                workingDirectory = state.workingDirectory.trim(),
+                workingDirectory = workingDir,
                 prompt = prompt,
                 resumeSessionId = state.providerSessionId,
                 permissionMode = state.permissionMode,
@@ -415,7 +623,8 @@ class AgentChatViewModel @Inject constructor(
             )
 
             try {
-                providers.active().run(config).collect { event ->
+                val provider = providers.forKind(state.selectedEngine)
+                provider.run(config).collect { event ->
                     if (runJob !== selfJob) return@collect
                     conversations.record(conversationId, event)
                     applyTaskEvent(taskId, event)
@@ -425,6 +634,10 @@ class AgentChatViewModel @Inject constructor(
                 // stop() cancels this job; the task row must not outlive it as RUNNING.
                 taskId?.let { tasks.cancel(it) }
                 throw cancelled
+            } catch (e: Throwable) {
+                val failure = VmError.Ai(summary = e.message ?: "Failed to execute prompt", provider = state.selectedEngine.name)
+                append(TranscriptItem.Failure(nextId(), failure))
+                _uiState.update { it.copy(error = failure, isRunning = false) }
             }
             _uiState.update { it.copy(isRunning = false) }
         }
@@ -496,8 +709,8 @@ class AgentChatViewModel @Inject constructor(
         when (
             val created = conversations.create(
                 title = state.workingDirectory.substringAfterLast('/').ifBlank { "Agent" },
-                providerId = providers.active().kind.name,
-                modelId = state.health?.version.orEmpty(),
+                providerId = state.selectedEngine.name,
+                modelId = state.selectedModel,
                 serverId = server,
                 workingDirectory = state.workingDirectory.trim(),
             )

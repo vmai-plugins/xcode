@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>x-codes · Universal Cloud IDE & Mobile Cockpit Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0f1d;
+      --panel-bg: rgba(15, 23, 42, 0.75);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.25);
+      --accent: #818cf8;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --phone-bg: #090d16;
+      --phone-surface: #111827;
+      --phone-card: #1e293b;
+      --phone-border: #334155;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background: radial-gradient(circle at 20% 20%, #172554 0%, #0a0f1d 70%);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Top Bar */
+    header.cockpit-header {
+      height: 56px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--panel-border);
+      background: rgba(10, 15, 29, 0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 14px;
+      color: #030712;
+      box-shadow: 0 0 16px var(--primary-glow);
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-tag {
+      font-size: 11px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--primary);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+
+    .vps-status-group {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+    }
+
+    .vps-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--panel-border);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+    .dot.green { background: #34d399; box-shadow: 0 0 8px #34d399; }
+    .dot.blue { background: #60a5fa; box-shadow: 0 0 8px #60a5fa; }
+
+    /* Main Layout */
+    .cockpit-body {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 56px);
+      overflow: hidden;
+    }
+
+    /* Screen Selector Sidebar */
+    .screen-navigator {
+      width: 320px;
+      background: var(--panel-bg);
+      border-right: 1px solid var(--panel-border);
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 16px;
+      gap: 8px;
+    }
+
+    .nav-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin: 12px 8px 4px;
+    }
+
+    .screen-tab {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .screen-tab:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .screen-tab.active {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.35);
+      color: var(--primary);
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(56, 189, 248, 0.1);
+    }
+
+    .screen-tab .icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+    }
+
+    .screen-badge {
+      margin-left: auto;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    /* Device Simulator Stage */
+    .simulator-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      background: radial-gradient(circle at center, rgba(56, 189, 248, 0.04) 0%, transparent 70%);
+      overflow: hidden;
+    }
+
+    /* Mobile Phone Shell */
+    .mobile-phone-frame {
+      width: 400px;
+      height: 840px;
+      background: var(--phone-bg);
+      border-radius: 46px;
+      border: 10px solid #1e293b;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8),
+                  0 0 0 1px rgba(255, 255, 255, 0.1),
+                  0 0 40px rgba(56, 189, 248, 0.15);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Island / Camera Notch */
+    .phone-island {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100px;
+      height: 24px;
+      background: #000;
+      border-radius: 20px;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+    }
+    .lens {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #0c1a2d;
+      border: 1px solid #1e3a5f;
+    }
+    .sensor {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #111;
+    }
+
+    /* Screen Container */
+    .phone-screen-viewport {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      margin-top: 14px;
+    }
+
+    /* App Top Bar */
+    .app-topbar {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--panel-border);
+      background: var(--phone-bg);
+      z-index: 10;
+    }
+
+    .top-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-main);
+      background: transparent;
+      border: none;
+      transition: background 0.15s;
+    }
+    .top-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+    .project-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Chat Viewport */
+    .chat-scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Chat Elements */
+    .tool-batch-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 12px;
+      font-size: 12px;
+    }
+
+    .tool-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      color: var(--warning);
+      margin-bottom: 8px;
+    }
+
+    .tool-chip-list {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tool-subchip {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--primary);
+    }
+
+    .bubble {
+      max-width: 88%;
+      padding: 12px 14px;
+      border-radius: 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: #2563eb;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .bubble.assistant {
+      align-self: flex-start;
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border-bottom-left-radius: 4px;
+    }
+
+    .code-block {
+      background: #0b1120;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      margin-top: 6px;
+      overflow-x: auto;
+    }
+
+    /* Thumb Dock & Composer */
+    .dock-wrapper {
+      padding: 6px 12px 12px;
+      background: linear-gradient(to top, var(--phone-bg) 80%, transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* Row 1: Action Quick Chips */
+    .action-chips-row {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      transition: all 0.25s ease;
+    }
+    .action-chips-row::-webkit-scrollbar { display: none; }
+
+    .action-chip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .action-chip:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.08); }
+    .action-chip.gold { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
+    .action-chip.emerald { background: rgba(16, 185, 129, 0.12); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
+    .action-chip.purple { background: rgba(139, 92, 246, 0.12); color: #a78bfa; border-color: rgba(139, 92, 246, 0.3); }
+
+    /* Row 2: Thumb HUD Pills */
+    .hud-pills-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+    }
+    .hud-pills-row::-webkit-scrollbar { display: none; }
+
+    .hud-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 9px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+    }
+    .hud-pill.free {
+      background: rgba(6, 78, 59, 0.6);
+      border-color: #10b981;
+      color: #6ee7b7;
+    }
+    .hud-pill.model {
+      background: rgba(124, 58, 237, 0.15);
+      border-color: rgba(139, 92, 246, 0.4);
+      color: #c4b5fd;
+    }
+    .hud-pill.web-on {
+      background: rgba(2, 132, 199, 0.25);
+      border-color: #38bdf8;
+      color: #38bdf8;
+    }
+
+    /* Composer */
+    .modern-composer {
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .composer-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    .composer-input::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+    .send-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #3b82f6;
+      border: none;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    /* Slide-out Sidebar Drawer Overlay */
+    .drawer-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 50;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .drawer-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .drawer-panel {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 82%;
+      height: 100%;
+      background: #0f172a;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 14px;
+      gap: 12px;
+      z-index: 51;
+      overflow-y: auto;
+    }
+    .drawer-overlay.open .drawer-panel {
+      transform: translateX(0);
+    }
+
+    .drawer-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--text-main);
+      cursor: pointer;
+    }
+    .drawer-item:hover { background: rgba(255, 255, 255, 0.05); }
+
+    /* Modal dialog */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 60;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal-card {
+      width: 100%;
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 80%;
+      overflow-y: auto;
+    }
+
+    /* Screen Specific Views (Explorer, Terminal, Editor, Settings, Diff) */
+    .screen-view {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+    }
+    .screen-view.active { display: flex; }
+
+    /* Terminal */
+    .terminal-body {
+      background: #020617;
+      color: #38bdf8;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 12px;
+      flex: 1;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+
+    /* Files Screen */
+    .file-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .file-row:hover { background: rgba(255, 255, 255, 0.03); }
+
+    /* Feature Cards on Right Panel */
+    .features-panel {
+      width: 320px;
+      background: var(--panel-bg);
+      border-left: 1px solid var(--panel-border);
+      backdrop-filter: blur(16px);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow-y: auto;
+    }
+
+    .pro-feature-card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 12px;
+    }
+    .pro-feature-card h4 {
+      color: var(--primary);
+      margin-bottom: 4px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Cockpit Header -->
+  <header class="cockpit-header">
+    <div class="brand">
+      <div class="brand-logo">x</div>
+      <div class="brand-title">x-codes</div>
+      <span class="brand-tag">Interactive Cockpit & UI Showcase</span>
+    </div>
+
+    <div class="vps-status-group">
+      <div class="vps-pill">
+        <span class="dot green"></span>
+        <span>VPS 1: OmniRoute · 100% Free</span>
+      </div>
+      <div class="vps-pill">
+        <span class="dot blue"></span>
+        <span>VPS 2: Build Worker · Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Body Layout -->
+  <div class="cockpit-body">
+
+    <!-- Screen Navigator Sidebar -->
+    <aside class="screen-navigator">
+      <div class="nav-section-title">Core Chat & AI Cockpit</div>
+      <div class="screen-tab active" onclick="switchScreen('chat')">
+        <span class="icon">💬</span>
+        <span>AI Chat Cockpit</span>
+        <span class="screen-badge">Main</span>
+      </div>
+      <div class="screen-tab" onclick="toggleDrawer()">
+        <span class="icon">☰</span>
+        <span>Left Sidebar Drawer</span>
+        <span class="screen-badge">Slide</span>
+      </div>
+      <div class="screen-tab" onclick="openModelModal()">
+        <span class="icon">🧠</span>
+        <span>Live Model Picker</span>
+        <span class="screen-badge">Modal</span>
+      </div>
+
+      <div class="nav-section-title">Developer Tools</div>
+      <div class="screen-tab" onclick="switchScreen('files')">
+        <span class="icon">📁</span>
+        <span>Remote File Explorer</span>
+      </div>
+      <div class="screen-tab" onclick="switchScreen('editor')">
+        <span class="icon">📝</span>
+        <span>Code Editor</span>
+      </div>
+      <div class="screen-tab" onclick="switchScreen('terminal')">
+        <span class="icon">💻</span>
+        <span>SSH Terminal (Dual-VPS)</span>
+      </div>
+      <div class="screen-tab" onclick="switchScreen('diff')">
+        <span class="icon">🔍</span>
+        <span>Git Diff & Review</span>
+      </div>
+
+      <div class="nav-section-title">System & Settings</div>
+      <div class="screen-tab" onclick="switchScreen('servers')">
+        <span class="icon">🖥️</span>
+        <span>Servers & VPS Clusters</span>
+      </div>
+      <div class="screen-tab" onclick="switchScreen('settings')">
+        <span class="icon">⚙️</span>
+        <span>Settings & Cloud Sync</span>
+      </div>
+      <div class="screen-tab" onclick="switchScreen('connectors')">
+        <span class="icon">☁️</span>
+        <span>VM Connectors</span>
+      </div>
+    </aside>
+
+    <!-- Center Phone Simulator -->
+    <main class="simulator-stage">
+      <div class="mobile-phone-frame">
+        <!-- Island Notch -->
+        <div class="phone-island">
+          <div class="lens"></div>
+          <div class="sensor"></div>
+        </div>
+
+        <!-- Viewport -->
+        <div class="phone-screen-viewport">
+
+          <!-- 1. AI CHAT SCREEN -->
+          <div id="screen-chat" class="screen-view active">
+            <!-- Clean Header -->
+            <div class="app-topbar">
+              <button class="top-btn" onclick="toggleDrawer()">☰</button>
+              <div class="app-title-clean" style="font-weight: 700; font-size: 15px; color: var(--text-primary); letter-spacing: -0.3px;">x-codes</div>
+              <button class="top-btn" onclick="newChat()">➕</button>
+            </div>
+
+            <!-- Chat Scroll Area -->
+            <div class="chat-scroll-area" id="chatArea">
+              <!-- Ran 3 tools card -->
+              <div class="tool-batch-card">
+                <div class="tool-header">
+                  <span>⚡ Ran 3 tools</span>
+                  <span style="font-size: 10px; color: var(--text-muted);">0.42s</span>
+                </div>
+                <div class="tool-chip-list">
+                  <span class="tool-subchip">🔧 edit_file</span>
+                  <span class="tool-subchip">🔍 grep_search</span>
+                  <span class="tool-subchip">⚡ terminal_exec</span>
+                </div>
+              </div>
+
+              <!-- Assistant Message with code snippet -->
+              <div class="bubble assistant">
+                I have streamlined the cockpit header, docked the AI controls directly above your thumb reach, and bound your VPS 1 OmniRoute Gateway. All models are 100% free with live synchronization.
+                <div class="code-block">&lt;?php
+// TripCrafters.co API Gateway
+return [
+  'gateway' => 'https://ai.vmstudio.digital',
+  'engine'  => 'omniroute-loop',
+  'free'    => true
+];</div>
+              </div>
+
+              <!-- User Message -->
+              <div class="bubble user">
+                Check git diff and compile release APK via VPS 2
+              </div>
+
+              <!-- Assistant Message -->
+              <div class="bubble assistant">
+                Dual-VPS build worker VPS 2 has completed Gradle compilation. The APK is ready and packaged.
+              </div>
+            </div>
+
+            <!-- Thumb Dock & Composer (Ultra-Clean, No Gimmicks) -->
+            <div class="dock-wrapper">
+              <!-- Thumb HUD Pills: Model, Autonomy, Web Toggle, Engine -->
+              <div class="hud-pills-row" style="margin-bottom: 6px;">
+                <!-- Model Selector Pill (Single Primary Model Selector) -->
+                <div class="hud-pill model" onclick="openModelModal()" id="modelPill">
+                  <span>🧠 DeepSeek V4 Flash</span>
+                  <span style="font-size: 9px;">▾</span>
+                </div>
+
+                <!-- Autonomy Mode Pill -->
+                <div class="hud-pill" onclick="toggleMode()" id="modePill">
+                  <span>🪄 Auto-edit</span>
+                </div>
+
+                <!-- Web Search Toggle Button -->
+                <div class="hud-pill web-on" onclick="toggleWebSearch()" id="webPill">
+                  <span>🌐 Web: ON</span>
+                </div>
+              </div>
+
+              <!-- Composer -->
+              <div class="modern-composer">
+                <input type="text" class="composer-input" id="composerInput" placeholder="Message x-codes..." onkeydown="if(event.key==='Enter') sendComposerMessage()">
+                <button class="send-btn" onclick="sendComposerMessage()">➤</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. FILE EXPLORER SCREEN -->
+          <div id="screen-files" class="screen-view">
+            <div class="app-topbar">
+              <button class="top-btn" onclick="switchScreen('chat')">←</button>
+              <div style="font-weight: 700; font-size: 14px;">Remote Files · /var/www/tripcrafters.co</div>
+              <button class="top-btn">➕</button>
+            </div>
+            <div style="flex: 1; overflow-y: auto;">
+              <div class="file-row" onclick="switchScreen('editor')">📁 app/src/main</div>
+              <div class="file-row" onclick="switchScreen('editor')">📁 feature/ai</div>
+              <div class="file-row" onclick="switchScreen('editor')">📄 AgentChatScreen.kt</div>
+              <div class="file-row" onclick="switchScreen('editor')">📄 OmniRouteAgentLoop.kt</div>
+              <div class="file-row" onclick="switchScreen('editor')">📄 build.gradle.kts</div>
+            </div>
+          </div>
+
+          <!-- 3. CODE EDITOR SCREEN -->
+          <div id="screen-editor" class="screen-view">
+            <div class="app-topbar">
+              <button class="top-btn" onclick="switchScreen('files')">←</button>
+              <div style="font-weight: 600; font-size: 13px; font-family: 'JetBrains Mono', monospace;">AgentChatScreen.kt</div>
+              <button class="top-btn" style="color: var(--primary);">💾</button>
+            </div>
+            <div style="flex: 1; background: #0b1120; color: #94a3b8; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 12px; line-height: 1.6; overflow-y: auto;">
+              <span style="color: #c084fc;">package</span> digital.vmstudio.code.feature.ai<br><br>
+              <span style="color: #60a5fa;">@Composable</span><br>
+              <span style="color: #38bdf8;">fun</span> <span style="color: #facc15;">AgentChatScreen</span>(...) {<br>
+              &nbsp;&nbsp;<span style="color: #38bdf8;">val</span> drawerState = rememberDrawerState()<br>
+              &nbsp;&nbsp;<span style="color: #22c55e;">// Ultra-clean single line header</span><br>
+              &nbsp;&nbsp;<span style="color: #facc15;">ModalNavigationDrawer</span>(...) { ... }<br>
+              }
+            </div>
+          </div>
+
+          <!-- 4. SSH TERMINAL SCREEN -->
+          <div id="screen-terminal" class="screen-view">
+            <div class="app-topbar">
+              <button class="top-btn" onclick="switchScreen('chat')">←</button>
+              <div style="font-weight: 700; font-size: 13px; font-family: 'JetBrains Mono', monospace;">root@vps1: /var/www</div>
+              <button class="top-btn" onclick="switchVpsTerminal()">🔄</button>
+            </div>
+            <div class="terminal-body" id="termOutput">
+              Welcome to Ubuntu 24.04 LTS (GNU/Linux 6.8.0 x86_64)<br>
+              OmniRoute Gateway active on port 8443.<br>
+              root@hostinger-vps1:~$ git status<br>
+              On branch feat/port-agent-layer<br>
+              Changes staged for commit: 9 files modified.<br>
+              root@hostinger-vps1:~$
+            </div>
+          </div>
+
+          <!-- 5. GIT DIFF SCREEN -->
+          <div id="screen-diff" class="screen-view">
+            <div class="app-topbar">
+              <button class="top-btn" onclick="switchScreen('chat')">←</button>
+              <div style="font-weight: 700; font-size: 13px;">Git Diff Review</div>
+              <button class="top-btn" style="color: var(--success);">✓</button>
+            </div>
+            <div style="flex: 1; padding: 12px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+              <div style="background: rgba(239, 68, 68, 0.15); color: #f87171; padding: 4px 8px; border-radius: 4px; margin-bottom: 2px;">- val primaryDestinations: List&lt;Primary&gt; = listOf(...)</div>
+              <div style="background: rgba(34, 197, 94, 0.15); color: #4ade80; padding: 4px 8px; border-radius: 4px;">+ val primaryDestinations: List&lt;Primary&gt; get() = listOf(...)</div>
+            </div>
+          </div>
+
+          <!-- 6. SERVERS & CLUSTERS SCREEN -->
+          <div id="screen-servers" class="screen-view">
+            <div class="app-topbar">
+              <button class="top-btn" onclick="switchScreen('chat')">←</button>
+              <div style="font-weight: 700; font-size: 13px;">Servers & VPS Clusters</div>
+              <button class="top-btn">➕</button>
+            </div>
+            <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+              <div style="background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px;">
+                <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                  <span>VPS 1 · Primary Agent</span>
+                  <span style="color: #34d399; font-size: 11px;">ONLINE</span>
+                </div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); margin-top: 4px;">195.35.45.36:8443 · OmniRoute Gateway</div>
+              </div>
+              <div style="background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px;">
+                <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                  <span>VPS 2 · Build Worker</span>
+                  <span style="color: #60a5fa; font-size: 11px;">READY</span>
+                </div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); margin-top: 4px;">195.35.45.109:22 · Gradle Compiler</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 7. SETTINGS & CLOUD SYNC SCREEN -->
+          <div id="screen-settings" class="screen-view">
+            <div class="app-topbar">
+              <button class="top-btn" onclick="switchScreen('chat')">←</button>
+              <div style="font-weight: 700; font-size: 13px;">Settings & Cloud Storage</div>
+              <div></div>
+            </div>
+            <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;">
+              <div style="background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px;">
+                <div style="font-weight: 700; margin-bottom: 6px;">Google Drive Integration</div>
+                <div style="display: flex; justify-content: space-between; font-size: 12px; align-items: center;">
+                  <span>Workspace Snapshot Sync</span>
+                  <input type="checkbox" checked>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 12px; align-items: center; margin-top: 8px;">
+                  <span>Auto-backup Daily</span>
+                  <input type="checkbox" checked>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Slide-out Drawer Overlay & Panel -->
+          <div class="drawer-overlay" id="drawerOverlay" onclick="toggleDrawer()">
+            <div class="drawer-panel" onclick="event.stopPropagation()">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-weight: 800; font-size: 16px; letter-spacing: -0.5px;">x-codes</div>
+                  <div style="font-size: 11px; color: var(--primary);">Universal AI Assistant</div>
+                </div>
+                <span class="vps-pill" style="font-size: 10px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 6px; font-weight: 700;">100% Free</span>
+              </div>
+              <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 8px 0;">
+
+              <!-- + New Chat -->
+              <button style="background: #2563eb; color: #fff; border: none; padding: 10px 14px; border-radius: 12px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);" onclick="newChat(); toggleDrawer();">
+                <span style="font-size: 16px;">+</span> New Chat
+              </button>
+
+              <!-- Section 1: Workspaces / Projects -->
+              <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px;">Workspace / Project</div>
+
+              <!-- General AI Mode (Default - No folder needed!) -->
+              <div id="drawerProjectGeneral" class="drawer-item active" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); cursor: pointer;" onclick="selectProjectMode(null); toggleDrawer();">
+                <span style="font-size: 16px;">ðŸŒ</span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-weight: 700; font-size: 12px; color: #fff;">General AI (No Project)</div>
+                  <div style="font-size: 10px; color: var(--text-muted);">Chat, brainstorm, ask anything freely</div>
+                </div>
+                <span id="generalCheck" style="color: var(--primary); font-size: 12px; font-weight: bold;">âœ“</span>
+              </div>
+
+              <!-- Attached Projects -->
+              <div id="drawerProject1" class="drawer-item" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer;" onclick="selectProjectMode('x-codes-android', '/home/codes/x-codes'); toggleDrawer();">
+                <span style="font-size: 14px; color: var(--text-muted);">ðŸ“</span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-weight: 600; font-size: 12px; color: var(--text-main);">x-codes-android</div>
+                  <div style="font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">/home/codes/x-codes</div>
+                </div>
+              </div>
+
+              <div id="drawerProject2" class="drawer-item" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer;" onclick="selectProjectMode('cloud-backend', '/var/www/omniroute'); toggleDrawer();">
+                <span style="font-size: 14px; color: var(--text-muted);">ðŸ“</span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-weight: 600; font-size: 12px; color: var(--text-main);">cloud-backend</div>
+                  <div style="font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">/var/www/omniroute</div>
+                </div>
+              </div>
+
+              <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 6px 0;">
+
+              <!-- Section 2: Recent Chats -->
+              <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Recent Chats</div>
+              <div style="display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto;">
+                <div class="drawer-item" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; cursor: pointer;" onclick="loadRecentChat('How do I configure SSH tunnels?'); toggleDrawer();">
+                  <span>ðŸ’¬</span>
+                  <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">How do I configure SSH tunnels?</div>
+                </div>
+                <div class="drawer-item" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; cursor: pointer;" onclick="loadRecentChat('Fix Gradle daemon crash'); toggleDrawer();">
+                  <span>ðŸ’¬</span>
+                  <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Fix Gradle daemon crash</div>
+                </div>
+                <div class="drawer-item" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; cursor: pointer;" onclick="loadRecentChat('OmniRoute WebSocket latency audit'); toggleDrawer();">
+                  <span>ðŸ’¬</span>
+                  <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">OmniRoute WebSocket latency audit</div>
+                </div>
+                <div class="drawer-item" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; cursor: pointer;" onclick="loadRecentChat('Redesign mobile cockpit to Kimi style'); toggleDrawer();">
+                  <span>ðŸ’¬</span>
+                  <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Redesign mobile cockpit to Kimi style</div>
+                </div>
+              </div>
+
+              <!-- Bottom Anchor: Settings Only! -->
+              <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <div class="drawer-item" style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); padding: 10px 12px; border-radius: 12px; cursor: pointer;" onclick="switchScreen('settings'); toggleDrawer();">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 18px; color: var(--primary);">âš™ï¸</span>
+                    <div>
+                      <div style="font-weight: 700; font-size: 12px; color: var(--text-main);">Settings & Integrations</div>
+                      <div style="font-size: 10px; color: var(--text-muted);">Servers, Google Drive, AI Providers</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Model Selection Modal -->
+          <div class="modal-overlay" id="modelModal" onclick="closeModelModal()">
+            <div class="modal-card" onclick="event.stopPropagation()">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-weight: 700; font-size: 14px;">Select AI Model</div>
+                <button class="top-btn" onclick="closeModelModal()">✕</button>
+              </div>
+              <input type="text" placeholder="Search live models..." style="background: #1e293b; border: 1px solid var(--panel-border); border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 12px; outline: none;">
+              <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
+                <div style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 10px; padding: 10px; cursor: pointer;" onclick="selectModel('DeepSeek V4 Flash')">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">
+                    <span>DeepSeek V4 Flash</span>
+                    <span style="background: #065f46; color: #34d399; font-size: 9px; padding: 2px 6px; border-radius: 4px;">FREE</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Ultra-fast reasoning · OmniRoute gateway</div>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px; cursor: pointer;" onclick="selectModel('Claude 3.7 Sonnet')">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">
+                    <span>Claude 3.7 Sonnet</span>
+                    <span style="color: var(--primary); font-size: 11px;">CLI 2.1</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Autonomous architectural coding</div>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px; cursor: pointer;" onclick="selectModel('GPT-4o Omniroute')">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">
+                    <span>GPT-4o Omniroute</span>
+                    <span style="background: #065f46; color: #34d399; font-size: 9px; padding: 2px 6px; border-radius: 4px;">FREE</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">High speed multimodal reasoning</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Features & Architecture Panel -->
+    <aside class="features-panel">
+      <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px;">x-codes Capabilities</div>
+      <div style="font-size: 12px; color: var(--text-muted);">Master architecture audit & suggested advanced features:</div>
+
+      <div class="pro-feature-card">
+        <h4>⚡ 1. Dual-VPS Build Loop</h4>
+        <div>VPS 1 autonomously edits code while VPS 2 builds Gradle APKs in the background, feeding compile errors back to VPS 1 to auto-heal.</div>
+      </div>
+
+      <div class="pro-feature-card">
+        <h4>🌐 2. Web Access Toggle</h4>
+        <div>Toggle live internet documentation scraping & web search on the fly directly inside the thumb dock.</div>
+      </div>
+
+      <div class="pro-feature-card">
+        <h4>📱 3. Auto-Hiding Footer Dock</h4>
+        <div>Action chips automatically tuck away when typing or reading long chat transcripts to maximize screen real estate.</div>
+      </div>
+
+      <div class="pro-feature-card">
+        <h4>☁️ 4. Google Drive Auto-Sync</h4>
+        <div>Nightly snapshots and build artifacts auto-saved to Google Drive directly from VPS 1 and VPS 2.</div>
+      </div>
+
+      <div class="pro-feature-card">
+        <h4>📲 5. OTA APK Streaming</h4>
+        <div>Deploy APK directly to Android devices via QR code scan or auto wireless adb over port 45565.</div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    let webEnabled = true;
+    let actionChipsVisible = true;
+    let currentEngine = 'hub';
+    let currentMode = 'auto';
+
+    function switchScreen(screenId) {
+      document.querySelectorAll('.screen-view').forEach(el => el.classList.remove('active'));
+      const target = document.getElementById('screen-' + screenId);
+      if (target) target.classList.add('active');
+
+      document.querySelectorAll('.screen-tab').forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.innerText.toLowerCase().includes(screenId)) {
+          tab.classList.add('active');
+        }
+      });
+    }
+
+        let currentProjectMode = null;
+
+    function selectProjectMode(name, path) {
+      currentProjectMode = name;
+      const genItem = document.getElementById('drawerProjectGeneral');
+      const p1 = document.getElementById('drawerProject1');
+      const p2 = document.getElementById('drawerProject2');
+      const genCheck = document.getElementById('generalCheck');
+      const topTitle = document.getElementById('activeProjectName');
+
+      if (!name) {
+        genItem.style.background = 'rgba(56, 189, 248, 0.15)';
+        genItem.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+        if (p1) p1.style.background = 'transparent';
+        if (p2) p2.style.background = 'transparent';
+        if (genCheck) genCheck.style.display = 'inline';
+        if (topTitle) topTitle.innerText = 'x-codes Â· Universal AI';
+      } else {
+        genItem.style.background = 'transparent';
+        genItem.style.borderColor = 'transparent';
+        if (genCheck) genCheck.style.display = 'none';
+        if (p1) p1.style.background = name === 'x-codes-android' ? 'rgba(56, 189, 248, 0.15)' : 'transparent';
+        if (p2) p2.style.background = name === 'cloud-backend' ? 'rgba(56, 189, 248, 0.15)' : 'transparent';
+        if (topTitle) topTitle.innerText = name;
+      }
+    }
+
+    function loadRecentChat(title) {
+      newChat();
+      const area = document.getElementById('chatScrollArea');
+      area.innerHTML += 
+        <div class="bubble user"></div>
+        <div class="bubble assistant">Resumed past conversation. What would you like to explore next?</div>
+      ;
+      area.scrollTop = area.scrollHeight;
+    }
+
+    function toggleDrawer() {
+      const drawer = document.getElementById('drawerOverlay');
+      drawer.classList.toggle('open');
+    }
+
+    function openModelModal() {
+      document.getElementById('modelModal').classList.add('open');
+    }
+
+    function closeModelModal() {
+      document.getElementById('modelModal').classList.remove('open');
+    }
+
+    function selectModel(name) {
+      document.getElementById('modelPill').innerHTML = `<span>🧠 ${name}</span><span style="font-size: 9px;">▾</span>`;
+      closeModelModal();
+    }
+
+    function toggleWebSearch() {
+      webEnabled = !webEnabled;
+      const pill = document.getElementById('webPill');
+      if (webEnabled) {
+        pill.className = 'hud-pill web-on';
+        pill.innerHTML = '<span>🌐 Web: ON</span>';
+      } else {
+        pill.className = 'hud-pill';
+        pill.innerHTML = '<span>🌐 Web: OFF</span>';
+      }
+    }
+
+    function toggleMode() {
+      const modes = ['🪄 Auto-edit', '🚀 Full auto', '❓ Ask first', '🛡️ Plan'];
+      const currentText = document.getElementById('modePill').innerText.trim();
+      let nextIdx = (modes.indexOf(currentText) + 1) % modes.length;
+      document.getElementById('modePill').innerHTML = `<span>${modes[nextIdx]}</span>`;
+    }
+
+    function sendPrompt(text) {
+      const chatArea = document.getElementById('chatArea');
+      const userBubble = document.createElement('div');
+      userBubble.className = 'bubble user';
+      userBubble.innerText = text;
+      chatArea.appendChild(userBubble);
+
+      const aiBubble = document.createElement('div');
+      aiBubble.className = 'bubble assistant';
+      aiBubble.innerText = '⚡ Executing requested action via OmniRoute Gateway...';
+      chatArea.appendChild(aiBubble);
+
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function sendComposerMessage() {
+      const input = document.getElementById('composerInput');
+      const val = input.value.trim();
+      if (!val) return;
+      sendPrompt(val);
+      input.value = '';
+      handleComposerInput('');
+    }
+
+    function newChat() {
+      const chatArea = document.getElementById('chatArea');
+      chatArea.innerHTML = `
+        <div class="bubble assistant">
+          Conversation reset. Master AI is standing by on <strong>x-codes</strong>. What would you like to build or diagnose today?
+        </div>
+      `;
+    }
+
+    function switchVpsTerminal() {
+      const term = document.getElementById('termOutput');
+      term.innerHTML += `<br>root@hostinger-vps2:~$ gradle --version<br>Gradle 8.7 active on VPS 2.<br>root@hostinger-vps2:~$ `;
+      term.scrollTop = term.scrollHeight;
+    }
+  </script>
+</body>
+</html>

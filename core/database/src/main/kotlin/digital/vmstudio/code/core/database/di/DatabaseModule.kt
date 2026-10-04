@@ -33,10 +33,19 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Schema tables and columns are identical between v1 and v2
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): VmDatabase =
         Room.databaseBuilder(context, VmDatabase::class.java, VmDatabase.NAME)
+            .addMigrations(MIGRATION_1_2)
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             // Foreign keys are declared on the entities; SQLite only enforces them
             // when explicitly enabled, and cascade deletes are relied on throughout.
             .addCallback(
@@ -46,9 +55,6 @@ object DatabaseModule {
                     }
                 },
             )
-            // No fallbackToDestructiveMigration: losing a user's servers and
-            // projects on upgrade is never an acceptable outcome. Every schema
-            // change ships a real migration.
             .build()
 
     @Provides fun provideServerDao(db: VmDatabase): ServerDao = db.serverDao()

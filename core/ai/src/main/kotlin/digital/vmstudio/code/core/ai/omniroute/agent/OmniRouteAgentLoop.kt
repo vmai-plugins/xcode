@@ -118,8 +118,9 @@ class OmniRouteAgentLoop @Inject constructor(
                     maxTokens = DEFAULT_MAX_TOKENS,
                     tools = allowedTools.toList(),
                 )
+                val cleanBase = baseUrl.trimEnd('/').removeSuffix("/v1")
                 val request = Request.Builder()
-                    .url("$baseUrl/${dialect.chatPath}")
+                    .url("$cleanBase/${dialect.chatPath}")
                     .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
                     .applyOmniRouteAuth(key, dialect)
                     .build()

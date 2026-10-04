@@ -22,7 +22,6 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             }
             buildTypes {
                 getByName("debug") {
-                    applicationIdSuffix = ".debug"
                     isMinifyEnabled = false
                 }
                 getByName("release") {
