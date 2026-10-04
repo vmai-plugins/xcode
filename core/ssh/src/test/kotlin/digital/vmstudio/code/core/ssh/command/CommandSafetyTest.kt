@@ -313,6 +313,45 @@ class CommandSafetyTest {
     }
 
     @Test
+    fun `bulk deletion and destructive tooling are destructive`() {
+        listOf(
+            "find /var/log -name '*.gz' -delete",
+            "find . -type f -exec rm {} +",
+            "ls | xargs rm",
+            "rsync -a --delete src/ dst/",
+            "shred -u secrets.txt",
+            "truncate -s 0 app.log",
+            "python3 -c 'import shutil; shutil.rmtree(\"/srv/app\")'",
+            "node -e \"require('fs').rmSync('dist',{recursive:true})\"",
+            "redis-cli flushall",
+            "userdel deploy",
+            "ufw disable",
+            "crontab -r",
+            "kubectl delete pod web-1",
+            "terraform destroy",
+            "npm publish",
+        ).forEach { command ->
+            val result = assess(command)
+            assertEquals("$command must be DESTRUCTIVE", CommandRisk.DESTRUCTIVE, result.risk)
+            assertTrue("$command must prompt", result.requiresConfirmation)
+        }
+    }
+
+    @Test
+    fun `commands that merely mention destructive words stay quiet`() {
+        listOf(
+            "grep -r rmtree src/",
+            "find . -name '*.kt'",
+            "rsync -a src/ dst/",
+            "npm run publish-docs-preview",
+            "kubectl get pods",
+            "cat notes-about-userdel.txt",
+        ).forEach { command ->
+            assertEquals("$command should stay SAFE", CommandRisk.SAFE, assess(command).risk)
+        }
+    }
+
+    @Test
     fun `every finding explains itself and names its rule`() {
         val result = assess("sudo rm -rf /var/lib/mysql && systemctl restart mysql")
 
@@ -329,5 +368,37 @@ class CommandSafetyTest {
         val result = assess("npm install && rm -rf /")
 
         assertEquals(CommandRisk.BLOCKED, result.findings.first().risk)
+    }
+
+    @Test
+    fun `bulk deletion via find or xargs or rsync delete is destructive`() {
+        listOf(
+            "find . -name '*.log' -delete",
+            "find /tmp -type f -exec rm -f {} +",
+            "cat files.txt | xargs rm -f",
+            "rsync -avz --delete ./dist/ user@server:/var/www/",
+        ).forEach { command ->
+            val result = assess(command)
+            assertEquals("$command should be DESTRUCTIVE", CommandRisk.DESTRUCTIVE, result.risk)
+            assertTrue("$command requires confirmation", result.requiresConfirmation)
+        }
+    }
+
+    @Test
+    fun `scripted deletions and destructive database commands are flagged`() {
+        listOf(
+            "python3 -c 'import shutil; shutil.rmtree(\"/tmp/test\")'",
+            "node -e 'fs.rmSync(\"/tmp/data\", { recursive: true })'",
+            "redis-cli flushall",
+            "mysql -u root -p -e 'drop table users'",
+            "git update-ref -d refs/heads/feature",
+            "ufw disable",
+            "npm publish --access public",
+            "cat keys.pub > ~/.ssh/authorized_keys",
+        ).forEach { command ->
+            val result = assess(command)
+            assertEquals("$command should be DESTRUCTIVE", CommandRisk.DESTRUCTIVE, result.risk)
+            assertTrue("$command requires confirmation", result.requiresConfirmation)
+        }
     }
 }

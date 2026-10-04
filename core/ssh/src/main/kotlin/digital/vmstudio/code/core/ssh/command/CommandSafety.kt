@@ -574,6 +574,50 @@ object CommandSafety {
             explanation = "Deletes a branch even if it has unmerged commits.",
         ),
         rule(
+            id = "bulk-delete",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\bfind\\b[^|;]*(\\s-delete\\b|-exec\\s+(rm|shred)\\b)|\\bxargs\\s+(-\\S+\\s+)*(rm|shred)\\b|\\brsync\\b[^|;]*--delete",
+            explanation = "Deletes many files at once; the set is decided by the command, not listed.",
+        ),
+        rule(
+            id = "shred-or-truncate-file",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "^(sudo |doas )?(shred\\b|truncate\\s+-s\\s*0\\b)",
+            explanation = "Irrecoverably destroys or empties a file.",
+        ),
+        rule(
+            id = "scripted-delete",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\b(python3?|node|ruby|php|perl)\\b[^|;]*(rmtree|os\\.remove|os\\.unlink|rmSync|rimraf|rm_rf|unlink\\()",
+            explanation = "An inline script deletes files, bypassing the checks applied to rm.",
+        ),
+        rule(
+            id = "datastore-flush",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\bredis-cli\\b[^|;]*\\bflush(all|db)\\b|\\bdropDatabase\\b|\\.drop\\(\\)",
+            explanation = "Wipes a datastore.",
+        ),
+        rule(
+            id = "account-or-firewall-change",
+            risk = CommandRisk.DESTRUCTIVE,
+            // Anchored to the start of a command so a file or argument that merely contains
+            // one of these words (`cat notes-about-userdel.txt`) is not flagged.
+            pattern = "^(sudo |doas )?((userdel|deluser|groupdel|passwd)\\b|ufw\\s+(disable|reset|deny|delete)\\b|crontab\\s+-r\\b)",
+            explanation = "Changes accounts, the firewall or scheduled jobs in ways that can lock you out.",
+        ),
+        rule(
+            id = "orchestrator-destroy",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\bkubectl\\s+(delete|drain|cordon)\\b|\\bhelm\\s+(uninstall|delete)\\b|\\bterraform\\s+(apply|destroy)\\b|\\bpulumi\\s+(up|destroy)\\b",
+            explanation = "Changes or destroys deployed infrastructure.",
+        ),
+        rule(
+            id = "public-publish",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\b(npm|yarn|pnpm)\\s+publish\\b|\\bcargo\\s+publish\\b|\\btwine\\s+upload\\b",
+            explanation = "Publishes a package publicly; releases generally cannot be unpublished.",
+        ),
+        rule(
             id = "docker-prune",
             risk = CommandRisk.DESTRUCTIVE,
             pattern = "\\bdocker\\s+(system|volume|image|container)\\s+prune\\b",
@@ -627,6 +671,60 @@ object CommandSafety {
             pattern = ">\\s*[^\\s>]*authorized_keys",
             explanation = "Overwrites authorized_keys; a mistake here locks you out of the host. " +
                 "Use >> to append.",
+        ),
+        rule(
+            id = "bulk-delete-find",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\bfind\\b[^|;]*(\\s-delete\\b|-exec\\s+(rm|shred)\\b)",
+            explanation = "Deletes matched files in bulk using find.",
+        ),
+        rule(
+            id = "bulk-delete-xargs",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\bxargs\\b[^|;]*\\b(rm|shred)\\b",
+            explanation = "Deletes files piped to xargs in bulk.",
+        ),
+        rule(
+            id = "rsync-delete",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\brsync\\b[^|;]*--delete\\b",
+            explanation = "Deletes files at destination that do not exist at source.",
+        ),
+        rule(
+            id = "scripted-delete",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\b(shutil\\.rmtree|os\\.remove|os\\.rmdir|fs\\.rm(Sync)?|fs\\.unlink(Sync)?|rimraf|FileUtils\\.rm_rf?)\\b",
+            explanation = "Deletes files or directories programmatically from an inline script.",
+        ),
+        rule(
+            id = "git-update-ref-delete",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\bgit\\s+update-ref\\s+-d\\b",
+            explanation = "Deletes a Git ref directly, bypassing standard safety checks.",
+        ),
+        rule(
+            id = "db-cli-destructive",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\b(psql|mysql|mariadb|sqlite3|mongosh?|redis-cli)\\b[^|;]*\\b(flushall|flushdb|drop\\s+(database|schema|table))\\b",
+            explanation = "Executes a destructive database statement or flush via CLI.",
+        ),
+        rule(
+            id = "firewall-alteration",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\b(ufw|firewall-cmd)\\s+(disable|reset|reload)\\b",
+            explanation = "Disables or resets firewall rules, which can expose the host or lock you out.",
+        ),
+        rule(
+            id = "package-publish",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "\\b(npm|yarn|pnpm|cargo)\\s+publish\\b|\\btwine\\s+upload\\b",
+            explanation = "Publishes package or artifacts to a public repository.",
+        ),
+        rule(
+            id = "access-control-sensitive-files",
+            risk = CommandRisk.DESTRUCTIVE,
+            pattern = "(?<![\\w/])(/etc/(passwd|shadow|sudoers|ssh/sshd_config)|~?/?\\.ssh/authorized_keys)\\b",
+            explanation = "Touches sensitive system authentication and authorization files.",
         ),
 
         // --- caution -----------------------------------------------------------
