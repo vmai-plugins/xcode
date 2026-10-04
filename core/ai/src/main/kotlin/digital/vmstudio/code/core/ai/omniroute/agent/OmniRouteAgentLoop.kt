@@ -82,6 +82,7 @@ class OmniRouteAgentLoop @Inject constructor(
             add(OmniRouteTool.UPDATE_PLAN)
             add(OmniRouteTool.WEB_FETCH)
             add(OmniRouteTool.WEB_SEARCH)
+            add(OmniRouteTool.BROWSE_PAGE)
             add(OmniRouteTool.GIT_INSPECT)
             if (config.permissionMode != AgentPermissionMode.PLAN) {
                 add(OmniRouteTool.WRITE_FILE)
@@ -290,6 +291,7 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.UPDATE_PLAN -> updatePlan(call, onPlanUpdated)
             OmniRouteTool.WEB_FETCH -> webFetch(call)
             OmniRouteTool.WEB_SEARCH -> webSearch(call)
+            OmniRouteTool.BROWSE_PAGE -> browsePage(call)
         }
     }
 
@@ -827,6 +829,61 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
+    private suspend fun browsePage(call: OmniRouteToolCall): ToolOutcome {
+        val url = argument(call.argumentsJson, "url")
+            ?: return ToolOutcome("Missing required argument \"url\".", isError = true)
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return ToolOutcome("Invalid URL: must start with http:// or https://", isError = true)
+        }
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0 (Android; Mobile) VMStudioCode/0.4.0")
+            .get()
+            .build()
+
+        return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+            is VmResult.Failure -> ToolOutcome("Failed to browse $url: ${result.error.summaryWithReason()}", isError = true)
+            is VmResult.Success -> {
+                val html = result.value
+                val titleRegex = Regex("<title[^>]*>(.*?)</title>", RegexOption.IGNORE_CASE)
+                val title = titleRegex.find(html)?.groupValues?.getOrNull(1)?.trim() ?: "No title"
+
+                val linkRegex = Regex("<a\\s+(?:[^>]*?\\s+)?href=\"([^\"]*)\"[^>]*>(.*?)</a>", RegexOption.IGNORE_CASE)
+                val links = linkRegex.findAll(html).mapNotNull {
+                    val href = it.groupValues[1].trim()
+                    val text = it.groupValues[2].replace(Regex("<[^>]+>"), "").trim()
+                    if (href.isNotBlank() && !href.startsWith("#") && !href.startsWith("javascript:")) {
+                        "- $text ($href)"
+                    } else null
+                }.distinct().take(10).joinToString("\n")
+
+                val clean = html
+                    .replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("<[^>]+>"), " ")
+                    .replace(Regex("&nbsp;"), " ")
+                    .replace(Regex("&amp;"), "&")
+                    .replace(Regex("&lt;"), "<")
+                    .replace(Regex("&gt;"), ">")
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                val summary = if (clean.length > 3000) clean.take(3000) + "\n...[truncated]" else clean
+
+                val report = buildString {
+                    appendLine("🌐 Browse Result: $url")
+                    appendLine("Title: $title")
+                    if (links.isNotBlank()) {
+                        appendLine("\nKey Page Links:")
+                        appendLine(links)
+                    }
+                    appendLine("\nPage Content:")
+                    appendLine(summary.ifBlank { "(empty page)" })
+                }
+                ToolOutcome(report, isError = false)
+            }
+        }
+    }
+
     // --- helpers -----------------------------------------------------------------
 
     private fun summarize(tool: OmniRouteTool?, toolName: String, path: String?): String = when (tool) {
@@ -842,6 +899,7 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.UPDATE_PLAN -> "Update plan"
         OmniRouteTool.WEB_FETCH -> "Fetch web page"
         OmniRouteTool.WEB_SEARCH -> "Web search"
+        OmniRouteTool.BROWSE_PAGE -> "Browse ${path ?: "page"}"
         null -> toolName
     }
 

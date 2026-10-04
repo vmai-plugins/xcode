@@ -152,8 +152,8 @@ class OmniRouteToolCodecTest {
     }
 
     @Test
-    fun `all 12 tools produce valid schemas and appear in wire payloads`() {
-        assertEquals(12, OmniRouteTool.entries.size)
+    fun `all 13 tools produce valid schemas and appear in wire payloads`() {
+        assertEquals(13, OmniRouteTool.entries.size)
 
         for (tool in OmniRouteTool.entries) {
             val openAiJson = tool.toOpenAiToolJson()

@@ -68,6 +68,10 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "web_search",
         "Search the web for documentation, solutions, error lookups, and library usages.",
     ),
+    BROWSE_PAGE(
+        "browse_page",
+        "Inspect a web application page or URL, capturing page title, headers, links, and content.",
+    ),
     ;
 
     companion object {
@@ -255,6 +259,17 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             }
         }
         putJsonArray("required") { add("query") }
+    }
+
+    OmniRouteTool.BROWSE_PAGE -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("url") {
+                put("type", "string")
+                put("description", "URL of the webpage to browse (e.g. http://localhost:3000, http://vps:8080, https://...).")
+            }
+        }
+        putJsonArray("required") { add("url") }
     }
 }
 
