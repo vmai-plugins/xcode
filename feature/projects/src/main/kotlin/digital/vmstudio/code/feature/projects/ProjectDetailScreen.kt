@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -86,19 +85,6 @@ fun ProjectDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    if (state.isAuditing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    } else {
-                        IconButton(onClick = viewModel::auditProject) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "Run Audit")
-                        }
-                    }
-                },
             )
         },
     ) { padding ->
@@ -118,29 +104,6 @@ fun ProjectDetailScreen(
                         error = err,
                         actions = listOf(VmErrorAction("Dismiss", viewModel::dismissMessage)),
                     )
-                }
-            }
-
-            state.auditMessage?.let { msg ->
-                item(key = "audit-msg") {
-                    VmCard(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(spacing.md),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = msg,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            IconButton(onClick = viewModel::dismissMessage) {
-                                Text("OK", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
                 }
             }
 
@@ -274,7 +237,7 @@ fun ProjectDetailScreen(
                 item(key = "no-tasks") {
                     VmCard(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = "No tasks yet for this project. Tap '+' or run an AI audit to generate a task backlog.",
+                            text = "No tasks yet for this project. Tap '+' to add one.",
                             modifier = Modifier.padding(spacing.md),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

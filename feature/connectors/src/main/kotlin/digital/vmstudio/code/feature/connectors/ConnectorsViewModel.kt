@@ -4,12 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.result.VmResult
-import digital.vmstudio.code.core.connectors.api.ProjectsHubClient
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveFile
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveManager
-import digital.vmstudio.code.core.connectors.model.HubMcpTool
-import digital.vmstudio.code.core.connectors.sync.HubSyncState
-import digital.vmstudio.code.core.connectors.sync.ProjectsHubSyncManager
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,20 +18,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ConnectorsUiState(
-    val syncState: HubSyncState = HubSyncState(),
     val servers: List<Server> = emptyList(),
-    val mcpTools: List<HubMcpTool> = emptyList(),
-    val isLoadingMcp: Boolean = false,
-    val mcpError: String? = null,
     val driveBackups: List<GoogleDriveFile> = emptyList(),
     val isBackingUpDrive: Boolean = false,
     val driveStatusMessage: String? = null,
 )
 
 private data class ExtraState(
-    val mcpTools: List<HubMcpTool> = emptyList(),
-    val isLoadingMcp: Boolean = false,
-    val mcpError: String? = null,
     val driveBackups: List<GoogleDriveFile> = emptyList(),
     val isBackingUpDrive: Boolean = false,
     val driveStatusMessage: String? = null,
@@ -43,8 +32,6 @@ private data class ExtraState(
 
 @HiltViewModel
 class ConnectorsViewModel @Inject constructor(
-    private val hubClient: ProjectsHubClient,
-    private val syncManager: ProjectsHubSyncManager,
     private val googleDriveManager: GoogleDriveManager,
     serverRepository: ServerRepository,
 ) : ViewModel() {
@@ -52,16 +39,11 @@ class ConnectorsViewModel @Inject constructor(
     private val extraState = MutableStateFlow(ExtraState())
 
     val uiState: StateFlow<ConnectorsUiState> = combine(
-        syncManager.syncState,
         serverRepository.servers,
         extraState,
-    ) { sync, srvs, extra ->
+    ) { srvs, extra ->
         ConnectorsUiState(
-            syncState = sync,
             servers = srvs,
-            mcpTools = extra.mcpTools,
-            isLoadingMcp = extra.isLoadingMcp,
-            mcpError = extra.mcpError,
             driveBackups = extra.driveBackups,
             isBackingUpDrive = extra.isBackingUpDrive,
             driveStatusMessage = extra.driveStatusMessage,
@@ -71,31 +53,6 @@ class ConnectorsViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = ConnectorsUiState(),
     )
-
-    init {
-        loadMcpTools()
-    }
-
-    fun syncNow() {
-        viewModelScope.launch {
-            syncManager.syncAll()
-            loadMcpTools()
-        }
-    }
-
-    fun loadMcpTools() {
-        viewModelScope.launch {
-            extraState.update { it.copy(isLoadingMcp = true, mcpError = null) }
-            when (val result = hubClient.getMcpTools()) {
-                is VmResult.Success -> {
-                    extraState.update { it.copy(mcpTools = result.value, isLoadingMcp = false) }
-                }
-                is VmResult.Failure -> {
-                    extraState.update { it.copy(mcpError = result.error.summary, isLoadingMcp = false) }
-                }
-            }
-        }
-    }
 
     fun refreshDriveBackups(token: String) {
         if (token.isBlank()) return

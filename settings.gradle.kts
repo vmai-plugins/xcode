@@ -46,7 +46,6 @@ include(":core:connectors")
 include(":core:update")
 
 // Feature layer — flat; features never depend on each other.
-include(":feature:dashboard")
 include(":feature:projects")
 include(":feature:servers")
 include(":feature:files")

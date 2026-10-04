@@ -1,19 +1,5 @@
 package digital.vmstudio.code.navigation
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.AccountTree
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Workspaces
-import androidx.compose.ui.graphics.vector.ImageVector
-
 /**
  * Every screen the app can navigate to.
  *
@@ -23,18 +9,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
  */
 sealed class VmDestination(val route: String) {
 
-    /** Destinations reachable from the primary navigation surface. */
-    sealed class Primary(
-        route: String,
-        val label: String,
-        val icon: ImageVector,
-    ) : VmDestination(route)
+    /** Start screen: resolves to a fresh chat on the most recently used server. */
+    data object NewChat : VmDestination("new")
 
-    data object Home : Primary("home", "Home", Icons.Default.Home)
-    data object Projects : Primary("projects", "Projects", Icons.Default.Workspaces)
-    data object Servers : Primary("servers", "Servers", Icons.Default.Dns)
-    data object Agent : Primary("agent", "AI Agent", Icons.Default.AutoAwesome)
-    data object Settings : Primary("settings", "Settings", Icons.Default.Settings)
+    data object Servers : VmDestination("servers")
+
+    data object Projects : VmDestination("projects")
+
+    data object Settings : VmDestination("settings")
+
+    /** Every stored conversation, with delete; the drawer only shows the latest few. */
+    data object Chats : VmDestination("chats")
 
     // Secondary destinations, reached from within a section.
     data object ServerAdd : VmDestination("servers/new")
@@ -151,8 +136,6 @@ sealed class VmDestination(val route: String) {
 
     data object Connectors : VmDestination("connectors")
 
-    data object Onboarding : VmDestination("onboarding")
-
     data object Tasks : VmDestination("tasks")
 
     data object Diagnostics : VmDestination("settings/diagnostics")
@@ -160,30 +143,4 @@ sealed class VmDestination(val route: String) {
     data object Appearance : VmDestination("settings/appearance")
 
     data object SecuritySettings : VmDestination("settings/security")
-
-    companion object {
-        /**
-         * Order matters: this is the order shown in the navigation bar and rail.
-         * Kept to five so the bar stays usable on a small phone; the remaining
-         * sections are reached from Home and from within their parent section.
-         */
-        val primaryDestinations: List<Primary> = listOf(
-            Home,
-            Projects,
-            Servers,
-            Agent,
-            Settings,
-        )
-    }
-}
-
-/** Sections that exist but are not yet reachable as their own tab. */
-enum class VmSection(val title: String, val icon: ImageVector) {
-    WORKSPACE("Workspace", Icons.Default.AccountTree),
-    TERMINAL("Terminal", Icons.Default.Terminal),
-    FILES("Files", Icons.Default.Folder),
-    GIT("Git", Icons.Default.AccountTree),
-    CONNECTORS("Connectors", Icons.Default.Cloud),
-    TASKS("Tasks", Icons.AutoMirrored.Filled.List),
-    ACTIVITY("Activity", Icons.Default.History),
 }

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RocketLaunch
@@ -110,6 +111,8 @@ import digital.vmstudio.code.core.ui.theme.VmTheme
 fun AgentChatScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** When set, the top bar shows a menu button (opens the app drawer) instead of Back. */
+    onOpenMenu: (() -> Unit)? = null,
     /**
      * Invoked when a detached run starts, so the host can begin watching it. The
      * watcher is a service in the app module, which a feature must not reach into.
@@ -264,8 +267,14 @@ fun AgentChatScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (onOpenMenu != null) {
+                        IconButton(onClick = onOpenMenu) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    } else {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 actions = {
