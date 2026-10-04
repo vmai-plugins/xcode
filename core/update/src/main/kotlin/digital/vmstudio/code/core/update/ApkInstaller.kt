@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.Signature
-import android.content.pm.SigningInfo
 import android.os.Build
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -82,11 +81,13 @@ class ApkInstaller @Inject constructor(
     }
 
     private fun signingFingerprints(info: PackageInfo): List<String> {
-        val signingInfo: SigningInfo? =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.signingInfo else null
-        val signatures: Array<Signature>? = when {
-            signingInfo != null -> signingInfo.apkContentsSigners
-            else -> @Suppress("DEPRECATION") info.signatures
+        @Suppress("DEPRECATION")
+        val legacySignatures: Array<Signature>? = info.signatures
+        // The SDK check sits directly around the call so lint can see the guard.
+        val signatures: Array<Signature>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.signingInfo?.apkContentsSigners ?: legacySignatures
+        } else {
+            legacySignatures
         }
         return signatures.orEmpty().map { signature ->
             val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
