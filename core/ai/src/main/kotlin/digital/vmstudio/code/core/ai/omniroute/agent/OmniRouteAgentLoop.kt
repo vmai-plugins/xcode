@@ -356,14 +356,24 @@ class OmniRouteAgentLoop @Inject constructor(
             is VmResult.Failure -> return ToolOutcome("Failed to read file before edit: ${result.error.summaryWithReason()}", isError = true)
         }
 
-        if (!existingContent.contains(target)) {
-            return ToolOutcome(
-                "Could not find the target_content in \"$resolved\". Ensure target_content exactly matches the existing file contents.",
-                isError = true,
-            )
+        val (matchedContent, matchedTarget, replacementToApply) = when {
+            existingContent.contains(target) -> Triple(existingContent, target, replacement)
+            existingContent.replace("\r\n", "\n").contains(target.replace("\r\n", "\n")) -> {
+                Triple(
+                    existingContent.replace("\r\n", "\n"),
+                    target.replace("\r\n", "\n"),
+                    replacement.replace("\r\n", "\n"),
+                )
+            }
+            else -> {
+                return ToolOutcome(
+                    "Could not find the target_content in \"$resolved\". Ensure target_content exactly matches the existing file contents.",
+                    isError = true,
+                )
+            }
         }
 
-        val occurrences = existingContent.split(target).size - 1
+        val occurrences = matchedContent.split(matchedTarget).size - 1
         if (occurrences > 1) {
             return ToolOutcome(
                 "target_content matches $occurrences times in \"$resolved\". Please provide more surrounding context so the match is unique.",
@@ -371,7 +381,7 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
 
-        val newContent = existingContent.replace(target, replacement)
+        val newContent = matchedContent.replace(matchedTarget, replacementToApply)
 
         val autoApply = server.environment != ServerEnvironment.PRODUCTION &&
             permissionMode != AgentPermissionMode.MANUAL &&

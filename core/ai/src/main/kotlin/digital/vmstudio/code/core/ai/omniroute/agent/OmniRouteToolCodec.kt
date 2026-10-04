@@ -139,7 +139,7 @@ object OmniRouteToolCodec {
         val toolCalls = (message["tool_calls"] as? JsonArray)?.mapNotNull { element ->
             val call = element as? JsonObject ?: return@mapNotNull null
             val function = call["function"] as? JsonObject ?: return@mapNotNull null
-            val id = call.stringOrNull("id") ?: return@mapNotNull null
+            val id = call.stringOrNull("id")?.takeIf { it.isNotBlank() } ?: "call_${java.util.UUID.randomUUID().toString().take(12)}"
             val name = function.stringOrNull("name") ?: return@mapNotNull null
             val arguments = function.stringOrNull("arguments") ?: "{}"
             OmniRouteToolCall(id, name, arguments)
@@ -248,7 +248,7 @@ object OmniRouteToolCodec {
             when (block.stringOrNull("type")) {
                 "text" -> block.stringOrNull("text")?.let(text::append)
                 "tool_use" -> {
-                    val id = block.stringOrNull("id") ?: continue
+                    val id = block.stringOrNull("id")?.takeIf { it.isNotBlank() } ?: "toolu_${java.util.UUID.randomUUID().toString().take(12)}"
                     val name = block.stringOrNull("name") ?: continue
                     val input = (block["input"] as? JsonObject) ?: JsonObject(emptyMap())
                     toolCalls += OmniRouteToolCall(id, name, input.toString())
