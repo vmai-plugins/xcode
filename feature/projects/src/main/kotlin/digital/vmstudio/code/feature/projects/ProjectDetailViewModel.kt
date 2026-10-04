@@ -95,7 +95,7 @@ class ProjectDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val newTask = AgentTaskEntity(
-                id = "task_" + UUID.randomUUID().toString().take(8),
+                id = "task_" + UUID.randomUUID().toString().take(TASK_ID_LENGTH),
                 projectId = projectId,
                 conversationId = null,
                 title = title.trim(),
@@ -119,3 +119,5 @@ class ProjectDetailViewModel @Inject constructor(
         error.value = null
     }
 }
+
+private const val TASK_ID_LENGTH = 8

@@ -190,7 +190,11 @@ private fun ServerCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (server.isProduction) "${server.displayTarget} · Production" else server.displayTarget,
+                    text = if (server.isProduction) {
+                        "${server.displayTarget} · Production"
+                    } else {
+                        server.displayTarget
+                    },
                     style = VmTheme.code.mono,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

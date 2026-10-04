@@ -47,7 +47,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import digital.vmstudio.code.core.database.entity.AgentTaskEntity
 import digital.vmstudio.code.core.database.entity.AgentTaskStatus
 import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
@@ -70,6 +69,7 @@ fun ProjectDetailScreen(
     viewModel: ProjectDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val completedCount = state.tasks.count { it.status == AgentTaskStatus.COMPLETED }
     val spacing = VmTheme.spacing
     var showAddTaskDialog by remember { mutableStateOf(false) }
 
@@ -225,7 +225,7 @@ fun ProjectDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     VmSectionHeader(
-                        title = "Tasks (${state.tasks.count { it.status == AgentTaskStatus.COMPLETED }}/${state.tasks.size})",
+                        title = "Tasks ($completedCount/${state.tasks.size})",
                     )
                     IconButton(onClick = { showAddTaskDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = "Add Task")
@@ -256,18 +256,34 @@ fun ProjectDetailScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
-                                imageVector = if (isDone) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                imageVector = if (isDone) {
+                                    Icons.Default.CheckCircle
+                                } else {
+                                    Icons.Default.RadioButtonUnchecked
+                                },
                                 contentDescription = null,
-                                tint = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (isDone) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 modifier = Modifier.size(20.dp),
                             )
                             Spacer(Modifier.width(spacing.sm))
                             Text(
                                 text = task.title,
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
+                                    textDecoration = if (isDone) {
+                                        TextDecoration.LineThrough
+                                    } else {
+                                        TextDecoration.None
+                                    },
                                 ),
-                                color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                color = if (isDone) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 modifier = Modifier.weight(1f),
                             )
                             IconButton(onClick = { viewModel.deleteTask(task.id) }) {

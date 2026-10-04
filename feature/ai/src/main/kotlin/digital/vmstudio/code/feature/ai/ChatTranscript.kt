@@ -215,7 +215,11 @@ internal fun TranscriptRow(
             Text(
                 text = item.text,
                 style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                color = if (item.isStderr) VmTheme.colors.warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (item.isStderr) {
+                    VmTheme.colors.warning
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 modifier = Modifier.padding(spacing.sm),
             )
         }
@@ -317,28 +321,7 @@ private fun ToolRow(
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                when {
-                    item.isRunning -> CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                    )
-                    item.isError -> Icon(
-                        imageVector = Icons.Default.ErrorOutline,
-                        contentDescription = "Failed",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    else -> Icon(
-                        imageVector = if (item.name.contains("bash", ignoreCase = true)) {
-                            Icons.Default.Terminal
-                        } else {
-                            Icons.Default.Build
-                        },
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
+                ToolStatusIcon(item)
                 Text(
                     text = item.summary,
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
@@ -403,10 +386,14 @@ private fun ToolRow(
                         Column(modifier = Modifier.padding(6.dp)) {
                             outputLines.take(300).forEach { line ->
                                 val dim = MaterialTheme.colorScheme.onSurfaceVariant
+                                val colors = VmTheme.colors
                                 val (bg, textColor) = when {
-                                    line.startsWith("+++") || line.startsWith("---") -> Color.Transparent to dim
-                                    line.startsWith("+") -> VmTheme.colors.diffAddedBackground to VmTheme.colors.diffAddedGutter
-                                    line.startsWith("-") -> VmTheme.colors.diffRemovedBackground to VmTheme.colors.diffRemovedGutter
+                                    line.startsWith("+++") || line.startsWith("---") ->
+                                        Color.Transparent to dim
+                                    line.startsWith("+") ->
+                                        colors.diffAddedBackground to colors.diffAddedGutter
+                                    line.startsWith("-") ->
+                                        colors.diffRemovedBackground to colors.diffRemovedGutter
                                     line.startsWith("@@") -> Color.Transparent to dim
                                     else -> Color.Transparent to MaterialTheme.colorScheme.onSurface
                                 }
@@ -432,5 +419,32 @@ private fun ToolRow(
                 }
             }
         }
+    }
+}
+
+/** Spinner while running, error mark on failure, otherwise a terminal or tool glyph. */
+@Composable
+private fun ToolStatusIcon(item: TranscriptItem.ToolCall) {
+    when {
+        item.isRunning -> CircularProgressIndicator(
+            modifier = Modifier.size(14.dp),
+            strokeWidth = 2.dp,
+        )
+        item.isError -> Icon(
+            imageVector = Icons.Default.ErrorOutline,
+            contentDescription = "Failed",
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(14.dp),
+        )
+        else -> Icon(
+            imageVector = if (item.name.contains("bash", ignoreCase = true)) {
+                Icons.Default.Terminal
+            } else {
+                Icons.Default.Build
+            },
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(14.dp),
+        )
     }
 }

@@ -96,7 +96,8 @@ class ConnectorsViewModel @Inject constructor(
                     extraState.update {
                         it.copy(
                             isBackingUpDrive = false,
-                            driveStatusMessage = "Backup created: ${result.value.name} (${result.value.sizeBytes / 1024} KB)",
+                            driveStatusMessage = "Backup created: ${result.value.name} " +
+                                "(${result.value.sizeBytes / 1024} KB)",
                         )
                     }
                     refreshDriveBackups(token)

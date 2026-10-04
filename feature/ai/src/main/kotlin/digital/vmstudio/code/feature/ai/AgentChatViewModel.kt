@@ -141,7 +141,11 @@ class AgentChatViewModel @Inject constructor(
     init {
         applyStoredAutonomy()
         checkHealth()
-        observeProjects()
+        viewModelScope.launch {
+            projectRepository.observeAll().collect { projects ->
+                _uiState.update { it.copy(availableProjects = projects) }
+            }
+        }
         when {
             // Reopening a stored conversation: its own directory and session id are
             // authoritative, so nothing is probed or prefilled.
@@ -155,16 +159,6 @@ class AgentChatViewModel @Inject constructor(
         refreshBackgroundRuns()
     }
 
-    private fun observeProjects() {
-        viewModelScope.launch {
-            projectRepository.observeAll().collect { projects ->
-                _uiState.update { current ->
-                    current.copy(availableProjects = projects)
-                }
-            }
-        }
-    }
-
     /**
      * Rebuilds a stored transcript so a conversation survives leaving the screen.
      *
@@ -174,7 +168,7 @@ class AgentChatViewModel @Inject constructor(
     private fun restoreConversation(conversationId: String) {
         viewModelScope.launch {
             val stored = conversations.get(conversationId) ?: return@launch
-            val restored = conversations.transcript(conversationId).map { it.toTranscriptItem() }
+            val restored = conversations.transcript(conversationId).map { it.toTranscriptItem(::nextId) }
 
             _uiState.update {
                 it.copy(
@@ -185,31 +179,6 @@ class AgentChatViewModel @Inject constructor(
                 )
             }
         }
-    }
-
-    private fun StoredEntry.toTranscriptItem(): TranscriptItem = when (this) {
-        is StoredEntry.User -> TranscriptItem.UserPrompt(nextId(), text)
-
-        is StoredEntry.Assistant -> TranscriptItem.AssistantText(nextId(), text)
-
-        is StoredEntry.Reasoning -> TranscriptItem.Reasoning(nextId(), text)
-
-        is StoredEntry.Tool -> TranscriptItem.ToolCall(
-            id = "tool-$callId",
-            name = name,
-            // The human-readable summary is not persisted, so the tool name stands in.
-            summary = name,
-            affectedPath = null,
-            // Anything still in flight died with the process that ran it.
-            isRunning = false,
-            isError = isError,
-            output = output,
-        )
-
-        is StoredEntry.Failed -> TranscriptItem.Failure(
-            id = nextId(),
-            error = VmError.Ai(summary = summary, provider = "restored"),
-        )
     }
 
     // --- detached runs ----------------------------------------------------------
@@ -584,7 +553,9 @@ class AgentChatViewModel @Inject constructor(
                     _uiState.update { state ->
                         state.copy(
                             transcript = state.transcript.map { item ->
-                                if (item is TranscriptItem.ToolCall && (item.id == toolCallId || item.affectedPath == filePath)) {
+                                if (item is TranscriptItem.ToolCall &&
+                                    (item.id == toolCallId || item.affectedPath == filePath)
+                                ) {
                                     item.copy(isReverted = true)
                                 } else {
                                     item
@@ -629,4 +600,30 @@ class AgentChatViewModel @Inject constructor(
         /** Stable id so the in-progress reply keeps its place in the list. */
         private const val STREAMING_ID = "streaming-draft"
     }
+}
+
+/** Rebuilds a rendered row from what the conversation store persisted. */
+private fun StoredEntry.toTranscriptItem(nextId: () -> String): TranscriptItem = when (this) {
+    is StoredEntry.User -> TranscriptItem.UserPrompt(nextId(), text)
+
+    is StoredEntry.Assistant -> TranscriptItem.AssistantText(nextId(), text)
+
+    is StoredEntry.Reasoning -> TranscriptItem.Reasoning(nextId(), text)
+
+    is StoredEntry.Tool -> TranscriptItem.ToolCall(
+        id = "tool-$callId",
+        name = name,
+        // The human-readable summary is not persisted, so the tool name stands in.
+        summary = name,
+        affectedPath = null,
+        // Anything still in flight died with the process that ran it.
+        isRunning = false,
+        isError = isError,
+        output = output,
+    )
+
+    is StoredEntry.Failed -> TranscriptItem.Failure(
+        id = nextId(),
+        error = VmError.Ai(summary = summary, provider = "restored"),
+    )
 }

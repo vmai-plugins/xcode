@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Folder
@@ -84,7 +83,8 @@ internal fun EditDirectoryDialog(
         icon = Icons.Default.Folder,
     ) {
         Text(
-            text = "The AI agent executes commands, runs audits, and edits source code inside this remote directory.",
+            text = "The AI agent executes commands, runs audits, and edits source code " +
+                "inside this remote directory.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -141,7 +141,8 @@ internal fun EmptyChatHero(
         )
 
         val suggestions = listOf(
-            "Explain this project" to "Explain the structure of this project, its dependencies and key entry points.",
+            "Explain this project" to
+                "Explain the structure of this project, its dependencies and key entry points.",
             "Find bugs" to "Review recent changes for bugs and runtime issues.",
             "Write tests" to "Write tests for the core flows of this project.",
             "Git status" to "Summarize the uncommitted changes in this repository.",
@@ -278,8 +279,14 @@ internal fun HealthBanner(
                     }
                     Column {
                         Text(
-                            text = if (!health.isAvailable) "Claude Code CLI not found" else "Claude not authenticated",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            text = if (!health.isAvailable) {
+                                "Claude Code CLI not found"
+                            } else {
+                                "Claude not authenticated"
+                            },
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
                             color = Color(0xFFFDE68A),
                         )
                         Text(
@@ -349,8 +356,11 @@ internal fun HealthBanner(
                             )
                             IconButton(
                                 onClick = {
-                                    clipboardManager.setText(AnnotatedString("npm install -g @anthropic-ai/claude-code"))
-                                    Toast.makeText(context, "Command copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    clipboardManager.setText(
+                                        AnnotatedString("npm install -g @anthropic-ai/claude-code"),
+                                    )
+                                    Toast.makeText(context, "Command copied to clipboard", Toast.LENGTH_SHORT)
+                                        .show()
                                 },
                                 modifier = Modifier.size(26.dp),
                             ) {

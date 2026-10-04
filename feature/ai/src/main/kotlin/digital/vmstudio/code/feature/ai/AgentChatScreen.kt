@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import digital.vmstudio.code.core.ui.component.VmErrorAction
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
@@ -107,6 +108,8 @@ fun AgentChatScreen(
         )
     }
 
+    val canSwitchProject = state.availableProjects.isNotEmpty() && !state.isRunning
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -116,7 +119,7 @@ fun AgentChatScreen(
                         Column(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .clickable(enabled = state.availableProjects.isNotEmpty() && !state.isRunning) {
+                                .clickable(enabled = canSwitchProject) {
                                     showProjectMenu = true
                                 }
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
@@ -139,13 +142,9 @@ fun AgentChatScreen(
                                 }
                             }
                             // Status is shown only when something is wrong or in flight.
-                            val statusText = when {
-                                state.isCheckingHealth -> "Connecting…"
-                                else -> null
-                            }
-                            statusText?.let {
+                            if (state.isCheckingHealth) {
                                 Text(
-                                    text = it,
+                                    text = "Connecting…",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -164,9 +163,17 @@ fun AgentChatScreen(
                                             Text(
                                                 text = proj.name,
                                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    fontWeight = if (isSelected) {
+                                                        FontWeight.Bold
+                                                    } else {
+                                                        FontWeight.Normal
+                                                    },
                                                 ),
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                                color = if (isSelected) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                },
                                             )
                                             Text(
                                                 text = proj.remotePath,
@@ -179,9 +186,17 @@ fun AgentChatScreen(
                                     },
                                     leadingIcon = {
                                         Icon(
-                                            imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Folder,
+                                            imageVector = if (isSelected) {
+                                                Icons.Default.Check
+                                            } else {
+                                                Icons.Default.Folder
+                                            },
                                             contentDescription = null,
-                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (isSelected) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
                                             modifier = Modifier.size(18.dp),
                                         )
                                     },
@@ -235,6 +250,7 @@ fun AgentChatScreen(
                     error = error,
                     modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
                     onRetry = viewModel::checkHealth,
+                    actions = listOf(VmErrorAction("Dismiss", viewModel::dismissError)),
                 )
             }
 

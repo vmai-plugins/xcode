@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -100,13 +99,17 @@ fun ConnectorsScreen(
                                 )
                             }
                             VmStatusBadge(
-                                status = if (state.servers.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
+                                status = if (state.servers.isNotEmpty()) {
+                                    VmStatus.CONNECTED
+                                } else {
+                                    VmStatus.IDLE
+                                },
                                 label = if (state.servers.isNotEmpty()) "Configured" else "Inactive",
                             )
                         }
 
                         Text(
-                            text = "Direct non-interactive bash tool execution via workspace_exec_command and interactive terminal sessions on managed VPS instances.",
+                            text = "Runs commands and terminal sessions on your servers over SSH.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -151,13 +154,21 @@ fun ConnectorsScreen(
                                 )
                             }
                             VmStatusBadge(
-                                status = if (state.driveBackups.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
-                                label = if (state.driveBackups.isNotEmpty()) "Connected" else "Cloud Sync Ready",
+                                status = if (state.driveBackups.isNotEmpty()) {
+                                    VmStatus.CONNECTED
+                                } else {
+                                    VmStatus.IDLE
+                                },
+                                label = if (state.driveBackups.isNotEmpty()) {
+                                    "Connected"
+                                } else {
+                                    "Cloud Sync Ready"
+                                },
                             )
                         }
 
                         Text(
-                            text = "Archive, export, and restore full VPS projects and configurations to Google Drive cloud storage.",
+                            text = "Back up and restore server projects to Google Drive.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -187,7 +198,9 @@ fun ConnectorsScreen(
                         if (state.driveBackups.isNotEmpty()) {
                             Text(
                                 text = "Recent Drive Backups (${state.driveBackups.size}):",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                ),
                                 modifier = Modifier.padding(top = 4.dp),
                             )
                             state.driveBackups.take(5).forEach { backup ->
