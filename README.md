@@ -142,16 +142,16 @@ alongside a release build (`applicationId` suffix `.debug`).
   list, which is persisted and shown as selectable chips. A custom model-id field
   accepts any model the gateway supports beyond the synced list.
 
-- **AI agent** — Claude Code driven over SSH on the development machine, streaming its
-  events into a chat transcript: assistant messages, collapsible reasoning, each tool
-  call with a readable summary, and a run summary with duration, tokens and cost.
-  Conversations persist and resume. Permission mode is chosen per run and defaults to
-  plan-only. See [AI-AGENT.md](AI-AGENT.md) for why the agent is delegated rather than
-  reimplemented, and what that costs.
+- **AI agent** — Dual-engine architecture:
+  1. **Claude Code CLI** driven over SSH on the remote machine with resumable sessions surviving app restart.
+  2. **OmniRoute Autonomous Agent Loop** — 13-tool native agent loop (`read_file`, `write_file`, `edit_file`, `list_directory`, `grep_search`, `delete_path`, `git_inspect`, `git_change`, `update_plan`, `web_fetch`, `web_search`, `browse_page`, `run_command`).
+  - **Live Plan Checklist** — dynamic progress card rendered in the chat stream showing task breakdown and execution status.
+  - **Ask / Plan / Agent Modes** — quick segmented selector to toggle between strict review (`MANUAL`), read-only planning (`PLAN`), and autonomous edits (`ACCEPT_EDITS`).
+  - **Run-Level Rollback** — one-tap checkpoint undo that automatically identifies all files modified in a run and cleanly reverts them via Git.
+  - **Model Context Protocol (MCP)** — extensible JSON-RPC 2.0 client to connect external MCP tool servers dynamically.
+  - **Cloud Connectors** — Google Drive client with resumable uploads, Docs/Sheets exports, shared folders, and pagination.
 
-### Not yet implemented
-
-Connectors, the centralised transfer manager, tasks and notifications.
+### Documentation
 
 Sections whose backing subsystem does not exist yet say so on screen. The app does
 not render fabricated servers, metrics, file trees or AI responses.
