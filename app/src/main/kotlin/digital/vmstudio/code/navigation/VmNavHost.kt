@@ -188,6 +188,7 @@ fun VmNavHost(
                 },
                 onCreateProject = { navController.navigate(VmDestination.ProjectAdd.route) },
                 onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
+                onOpenMenu = onOpenMenu,
             )
         }
 
@@ -282,6 +283,7 @@ fun VmNavHost(
                 },
                 onNewConversation = { navigateToNewChat(navController) },
                 onOpenTasks = { navController.navigate(VmDestination.Tasks.route) },
+                onOpenMenu = onOpenMenu,
             )
         }
 
