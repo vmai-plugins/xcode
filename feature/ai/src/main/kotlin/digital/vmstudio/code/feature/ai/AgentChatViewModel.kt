@@ -92,6 +92,12 @@ data class AgentChatUiState(
     val isRunning: Boolean = false,
     val permissionMode: AgentPermissionMode = AgentPermissionMode.PLAN,
     val health: AiProviderHealth? = null,
+    /**
+     * The last Claude Code check on this server found no `claude`. Kept after
+     * switching to the gateway (whose own health replaces [health]), so the picker
+     * can still say the Claude models will not run here.
+     */
+    val isClaudeCodeMissing: Boolean = false,
     val isCheckingHealth: Boolean = false,
     val conversationId: String? = null,
     /** Present once a run reports one; enables continuing rather than starting cold. */
@@ -378,7 +384,16 @@ class AgentChatViewModel @Inject constructor(
             val provider = providers.forModel(_uiState.value.selectedModel)
             when (val result = providers.checkHealth(provider, serverId)) {
                 is VmResult.Success -> _uiState.update {
-                    it.copy(health = result.value, isCheckingHealth = false)
+                    val checkedClaude = result.value.kind == AiProviderKind.CLAUDE_CODE_CLI
+                    it.copy(
+                        health = result.value,
+                        isCheckingHealth = false,
+                        isClaudeCodeMissing = if (checkedClaude) {
+                            !result.value.isAvailable
+                        } else {
+                            it.isClaudeCodeMissing
+                        },
+                    )
                 }
                 is VmResult.Failure -> _uiState.update {
                     it.copy(isCheckingHealth = false, error = result.error)

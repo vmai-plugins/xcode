@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandMore
@@ -41,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -193,13 +195,7 @@ internal fun TranscriptRow(
         }
 
         // The reply is plain text on the page, not a bubble.
-        is TranscriptItem.AssistantText -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-        ) {
-            MarkdownText(markdown = item.text)
-        }
+        is TranscriptItem.AssistantText -> AssistantReply(item.text)
 
         is TranscriptItem.StreamingText -> Text(
             text = item.text + "▌",
@@ -482,3 +478,27 @@ private fun FileActions(
 
 internal fun isWebPage(path: String): Boolean =
     path.endsWith(".html", ignoreCase = true) || path.endsWith(".htm", ignoreCase = true)
+
+/** A reply as plain text on the page, with a copy button under it like Claude's apps. */
+@Composable
+private fun AssistantReply(text: String) {
+    val clipboard = LocalClipboardManager.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+    ) {
+        MarkdownText(markdown = text)
+        IconButton(
+            onClick = { clipboard.setText(AnnotatedString(text)) },
+            modifier = Modifier.size(32.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.ContentCopy,
+                contentDescription = "Copy reply",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
