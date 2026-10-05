@@ -64,8 +64,31 @@ object ServerValidator {
         else -> null
     }
 
+    /**
+     * The host as the user meant it. Phone keyboards and copy-paste slip in
+     * characters that look identical but are not ASCII: zero-width spaces and
+     * direction marks, full-width digits and dots, or a locale's own digits. An
+     * address like 200.234.41.231 then failed validation (or DNS) for no visible
+     * reason. Those are mapped to plain ASCII; real mistakes still fail.
+     */
+    fun normalizeHost(host: String): String = buildString {
+        for (char in host.trim()) {
+            when {
+                Character.getType(char) == Character.FORMAT.toInt() -> Unit
+                char in FULL_STOPS -> append('.')
+                char in FULL_WIDTH_ASCII -> append(char - FULL_WIDTH_OFFSET)
+                char.isDigit() && char !in '0'..'9' -> append(char.digitToInt().digitToChar())
+                else -> append(char)
+            }
+        }
+    }.trim()
+
+    private val FULL_STOPS = setOf('\u3002', '\uFF0E', '\uFF61')
+    private val FULL_WIDTH_ASCII = '\uFF01'..'\uFF5E'
+    private const val FULL_WIDTH_OFFSET = 0xFEE0
+
     private fun validateHost(host: String): VmError.Validation? {
-        val trimmed = host.trim()
+        val trimmed = normalizeHost(host)
         return when {
             trimmed.isBlank() -> VmError.Validation(
                 summary = "Host is required",

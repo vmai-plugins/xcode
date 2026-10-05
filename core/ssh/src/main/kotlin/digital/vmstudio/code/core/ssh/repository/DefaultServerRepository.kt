@@ -93,7 +93,7 @@ class DefaultServerRepository @Inject constructor(
         val entity = ServerEntity(
             id = draft.id ?: UUID.randomUUID().toString(),
             name = draft.name.trim(),
-            host = draft.host.trim(),
+            host = ServerValidator.normalizeHost(draft.host),
             port = draft.port.trim().toInt(),
             username = draft.username.trim(),
             authMethod = draft.authMethod,
