@@ -111,6 +111,13 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
+    suspend fun setLastChatModel(model: String) = edit { it[Keys.LAST_CHAT_MODEL] = model }
+
+    suspend fun setLastFolder(serverId: String, path: String) = edit {
+        val folders = parseFolders(it[Keys.LAST_FOLDERS]) + (serverId to path)
+        it[Keys.LAST_FOLDERS] = formatFolders(folders)
+    }
+
     suspend fun setAiModel(modelId: String?, preset: String) = edit {
         if (modelId == null) it.remove(Keys.AI_MODEL) else it[Keys.AI_MODEL] = modelId
         it[Keys.AI_MODEL_PRESET] = preset
@@ -171,6 +178,8 @@ class UserPreferencesRepository @Inject constructor(
             aiModelPreset = this[Keys.AI_MODEL_PRESET] ?: defaults.aiModelPreset,
             aiToolsEnabled = this[Keys.AI_TOOLS_ENABLED] ?: defaults.aiToolsEnabled,
             aiContextSize = this[Keys.AI_CONTEXT_SIZE] ?: defaults.aiContextSize,
+            lastChatModel = this[Keys.LAST_CHAT_MODEL],
+            lastFolders = parseFolders(this[Keys.LAST_FOLDERS]),
         )
     }
 
@@ -198,6 +207,8 @@ class UserPreferencesRepository @Inject constructor(
         val AI_MODEL_PRESET = stringPreferencesKey("ai_model_preset")
         val AI_TOOLS_ENABLED = booleanPreferencesKey("ai_tools_enabled")
         val AI_CONTEXT_SIZE = stringPreferencesKey("ai_context_size")
+        val LAST_CHAT_MODEL = stringPreferencesKey("last_chat_model")
+        val LAST_FOLDERS = stringPreferencesKey("last_folders")
     }
 
     private companion object {
@@ -226,3 +237,13 @@ internal fun sanitizeModelIds(raw: List<String>): List<String> = raw
 
 internal fun parseModelIds(raw: String?): List<String> =
     raw?.split(MODEL_ID_SEPARATOR)?.let(::sanitizeModelIds).orEmpty()
+
+/** `serverId<TAB>path` per line; entries that cannot be stored that way are skipped. */
+internal fun formatFolders(folders: Map<String, String>): String =
+    folders.filter { (id, path) -> id.none { it == '\t' || it == '\n' } && path.none { it == '\n' } }
+        .entries.joinToString("\n") { (id, path) -> "$id\t$path" }
+
+internal fun parseFolders(raw: String?): Map<String, String> =
+    raw.orEmpty().lineSequence()
+        .mapNotNull { line -> line.split('\t', limit = 2).takeIf { it.size == 2 && it[1].isNotBlank() } }
+        .associate { (id, path) -> id to path }

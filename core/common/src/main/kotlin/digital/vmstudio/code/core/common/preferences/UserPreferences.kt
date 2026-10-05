@@ -80,6 +80,10 @@ data class UserPreferences(
      * with short windows; large and huge suit models with long ones.
      */
     val aiContextSize: String = CONTEXT_LARGE,
+    /** The model last picked in a chat; a new chat starts on it. */
+    val lastChatModel: String? = null,
+    /** The folder last used in a chat, per server id; a new chat on that server opens there. */
+    val lastFolders: Map<String, String> = emptyMap(),
 ) {
     companion object {
         /** The project's own OmniRoute gateway, prefilled; any user can replace it in Settings. */

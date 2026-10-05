@@ -25,6 +25,7 @@ import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
 import digital.vmstudio.code.core.ai.repository.StoredEntry
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferences
+import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.git.GitResult
@@ -135,6 +136,7 @@ class AgentChatViewModel @Inject constructor(
     private val gitService: GitService,
     private val modelCatalog: OmniRouteModelCatalog,
     private val attachmentStager: AttachmentStager,
+    private val preferenceStore: UserPreferencesRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -177,11 +179,14 @@ class AgentChatViewModel @Inject constructor(
             // Defaults the agent's scope to the login home directory rather than `/`.
             else -> serverId?.let { server ->
                 viewModelScope.launch {
-                    val home = remoteFileSystem.homeDirectory(server)
-                    // A failure is not fatal; the user can type a path.
-                    if (home is VmResult.Success) {
+                    // The folder last used on this server, else the login home. A
+                    // failure is not fatal; the user can pick a folder.
+                    val remembered = preferences.preferences.first().lastFolders[server]
+                    val folder = remembered
+                        ?: (remoteFileSystem.homeDirectory(server) as? VmResult.Success)?.value
+                    if (folder != null) {
                         _uiState.update {
-                            if (it.workingDirectory.isBlank()) it.copy(workingDirectory = home.value) else it
+                            if (it.workingDirectory.isBlank()) it.copy(workingDirectory = folder) else it
                         }
                     }
                 }
@@ -352,10 +357,15 @@ class AgentChatViewModel @Inject constructor(
             } else {
                 null
             }
+            // The model last picked in a chat wins, as long as it still exists: a
+            // Claude Code alias, or a gateway model the last sync still reported.
+            val lastModel = prefs.lastChatModel?.takeIf { last ->
+                ClaudeCodeModels.isClaudeCode(last) || last in prefs.aiAvailableModelIds
+            }
             _uiState.update {
                 it.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
-                    selectedModel = omniModel ?: ClaudeCodeModels.DEFAULT,
+                    selectedModel = lastModel ?: omniModel ?: ClaudeCodeModels.DEFAULT,
                 )
             }
             checkHealth()
@@ -391,6 +401,9 @@ class AgentChatViewModel @Inject constructor(
                 it.copy(workingDirectory = path)
             }
         }
+        current.serverId?.let { server ->
+            viewModelScope.launch { preferenceStore.setLastFolder(server, path) }
+        }
         refreshBackgroundRuns()
     }
 
@@ -403,6 +416,9 @@ class AgentChatViewModel @Inject constructor(
                 conversationId = null,
                 providerSessionId = null,
             )
+        }
+        _uiState.value.serverId?.let { server ->
+            viewModelScope.launch { preferenceStore.setLastFolder(server, project.remotePath) }
         }
         refreshBackgroundRuns()
     }
@@ -422,6 +438,7 @@ class AgentChatViewModel @Inject constructor(
             )
         }
         if (switchesBackend) checkHealth()
+        viewModelScope.launch { preferenceStore.setLastChatModel(model) }
     }
 
     /** Refreshes the gateway's model list now, reporting a failure. */
