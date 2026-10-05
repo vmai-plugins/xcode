@@ -310,8 +310,15 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(isCheckingHealth = true) }
         viewModelScope.launch {
             val prefs = preferences.preferences.first()
-            val omniModel = prefs.aiSelectedModelId
-                ?.takeIf { prefs.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE }
+            val omniModel = if (prefs.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE) {
+                // The gateway is the default: use its chosen model, else its first
+                // synced one, syncing now if the list is still empty.
+                prefs.aiSelectedModelId
+                    ?: prefs.aiAvailableModelIds.firstOrNull()
+                    ?: (modelCatalog.sync() as? VmResult.Success)?.value?.firstOrNull()
+            } else {
+                null
+            }
             _uiState.update {
                 it.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),

@@ -61,6 +61,7 @@ fun AgentChatScreen(
     modifier: Modifier = Modifier,
     /** When set, the top bar shows a menu button (opens the app drawer) instead of Back. */
     onOpenMenu: (() -> Unit)? = null,
+    onOpenSettings: () -> Unit = {},
     /**
      * Invoked when a detached run starts, so the host can begin watching it. The
      * watcher is a service in the app module, which a feature must not reach into.
@@ -246,7 +247,7 @@ fun AgentChatScreen(
                 .imePadding(),
         ) {
             // Sleek collapsible health banner
-            HealthBanner(state = state, onRetry = viewModel::checkHealth)
+            HealthBanner(state = state, onRetry = viewModel::checkHealth, onOpenSettings = onOpenSettings)
 
             state.error?.let { error ->
                 VmErrorPanel(

@@ -139,6 +139,12 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
+    /** Forgets the synced model list, e.g. when the gateway it came from changes. */
+    suspend fun clearAiModels() = edit {
+        it.remove(Keys.AI_MODELS)
+        it.remove(Keys.AI_MODELS_SYNCED_AT)
+    }
+
     suspend fun setAiStreamingEnabled(enabled: Boolean) = edit {
         it[Keys.AI_STREAMING] = enabled
     }

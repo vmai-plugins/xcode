@@ -85,10 +85,16 @@ class AiSettingsViewModel @Inject constructor(
     }
 
     fun setBaseUrl(url: String) {
-        viewModelScope.launch {
-            preferencesRepository.setAiProvider(uiState.value.preferences.aiProviderId, url.trim())
-            health.value = null
-        }
+        viewModelScope.launch { commitBaseUrl(url) }
+    }
+
+    /** A different gateway serves different models, so the old list is dropped. */
+    private suspend fun commitBaseUrl(url: String) {
+        val current = uiState.value.preferences
+        if (url.trim() == current.aiBaseUrl) return
+        preferencesRepository.setAiProvider(current.aiProviderId, url.trim())
+        preferencesRepository.clearAiModels()
+        health.value = null
     }
 
     /**
@@ -97,29 +103,31 @@ class AiSettingsViewModel @Inject constructor(
      */
     fun saveApiKey(key: String) {
         if (key.isBlank()) return
-        viewModelScope.launch {
-            val previousId = uiState.value.preferences.aiApiKeyCredentialId
-            val secret = Secret.of(key.trim())
-            try {
-                when (
-                    val stored = credentialStore.put(
-                        type = SecretType.AI_API_KEY,
-                        label = "AI gateway key",
-                        secret = secret,
-                    )
-                ) {
-                    is VmResult.Success -> {
-                        preferencesRepository.setAiApiKeyCredentialId(stored.value.id)
-                        // Removed only after the new reference is committed, so a
-                        // failure cannot leave the app with no usable key.
-                        previousId?.let { credentialStore.delete(it) }
-                        health.value = null
-                    }
-                    is VmResult.Failure -> error.value = stored.error
+        viewModelScope.launch { commitApiKey(key) }
+    }
+
+    private suspend fun commitApiKey(key: String) {
+        val previousId = uiState.value.preferences.aiApiKeyCredentialId
+        val secret = Secret.of(key.trim())
+        try {
+            when (
+                val stored = credentialStore.put(
+                    type = SecretType.AI_API_KEY,
+                    label = "AI gateway key",
+                    secret = secret,
+                )
+            ) {
+                is VmResult.Success -> {
+                    preferencesRepository.setAiApiKeyCredentialId(stored.value.id)
+                    // Removed only after the new reference is committed, so a
+                    // failure cannot leave the app with no usable key.
+                    previousId?.let { credentialStore.delete(it) }
+                    health.value = null
                 }
-            } finally {
-                secret.wipe()
+                is VmResult.Failure -> error.value = stored.error
             }
+        } finally {
+            secret.wipe()
         }
     }
 
@@ -148,10 +156,14 @@ class AiSettingsViewModel @Inject constructor(
      * screen passes whichever it has so the test reports on the selected provider
      * rather than refusing.
      */
-    fun runConnectionTest(serverId: String?) {
+    fun runConnectionTest(serverId: String?, pendingUrl: String? = null, pendingKey: String? = null) {
         testing.value = true
         error.value = null
         viewModelScope.launch {
+            // "Run test" saves what was typed: testing the old saved values while
+            // the fields show new ones made the test report "no URL set".
+            pendingUrl?.let { commitBaseUrl(it) }
+            pendingKey?.takeIf { it.isNotBlank() }?.let { commitApiKey(it) }
             val provider = providers.forId(uiState.value.preferences.aiProviderId)
             // The user tapped "Run test": always probe live, never the cache the
             // agent screen's automatic check may have populated seconds ago.

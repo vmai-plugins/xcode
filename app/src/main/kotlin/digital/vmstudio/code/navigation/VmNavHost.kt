@@ -242,6 +242,7 @@ fun VmNavHost(
             AgentChatScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onOpenMenu = onOpenMenu,
+                onOpenSettings = { navController.navigate(VmDestination.Settings.route) },
                 onWatchBackgroundRuns = startWatchingRuns,
                 onOpenDiff = { filePath ->
                     navController.navigate(VmDestination.ServerDiff.routeFor(agentServerId, filePath))
@@ -295,6 +296,7 @@ fun VmNavHost(
             AgentChatScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onOpenMenu = onOpenMenu,
+                onOpenSettings = { navController.navigate(VmDestination.Settings.route) },
                 onWatchBackgroundRuns = startWatchingRuns,
             )
         }

@@ -58,6 +58,10 @@ fun AiSettingsSection(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
+    // Drafts live here so "Run test" can save whatever was typed before testing.
+    var urlDraft by remember(state.preferences.aiBaseUrl) { mutableStateOf(state.preferences.aiBaseUrl) }
+    var keyDraft by remember { mutableStateOf("") }
+    val isGateway = state.selectedKind == AiProviderKind.OMNIROUTE
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -96,12 +100,19 @@ fun AiSettingsSection(
             VmCard {
                 Text("Gateway", style = MaterialTheme.typography.titleSmall)
                 BaseUrlField(
-                    value = state.preferences.aiBaseUrl,
+                    value = urlDraft,
+                    saved = state.preferences.aiBaseUrl,
+                    onValueChange = { urlDraft = it },
                     onCommit = viewModel::setBaseUrl,
                 )
                 ApiKeyField(
+                    key = keyDraft,
+                    onKeyChange = { keyDraft = it },
                     hasStoredKey = state.hasStoredKey,
-                    onSave = viewModel::saveApiKey,
+                    onSave = {
+                        viewModel.saveApiKey(keyDraft)
+                        keyDraft = ""
+                    },
                     onClear = viewModel::clearApiKey,
                 )
             }
@@ -160,10 +171,10 @@ fun AiSettingsSection(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Tool use", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "Lets this model read, write and run commands on the " +
-                                "server, the same category of thing Claude Code CLI does " +
-                                "- off by default because reliability depends entirely on " +
-                                "the selected model's own tool-calling ability.",
+                            text = "Lets the model read, edit and search files, run " +
+                                "commands and fetch web pages on your server. Edits and " +
+                                "risky commands still ask first. How well it works " +
+                                "depends on the model's tool calling.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -185,7 +196,14 @@ fun AiSettingsSection(
                 Text("Connection test", style = MaterialTheme.typography.titleSmall)
                 VmButton(
                     text = "Run test",
-                    onClick = { viewModel.runConnectionTest(null) },
+                    onClick = {
+                        viewModel.runConnectionTest(
+                            serverId = null,
+                            pendingUrl = urlDraft.takeIf { isGateway },
+                            pendingKey = keyDraft.takeIf { isGateway },
+                        )
+                        keyDraft = ""
+                    },
                     style = VmButtonStyle.Secondary,
                     loading = state.isTesting,
                 )
@@ -225,7 +243,7 @@ fun AiSettingsSection(
 
                     // The endpoint is shown; the credential never is, not even masked
                     // with a length hint.
-                    health.endpoint?.let { ResultRow("Endpoint", it) }
+                    health.endpoint?.let { ResultRow("Endpoint", it.ifBlank { "Not set" }) }
                     health.version?.let { ResultRow("API", it) }
                     ResultRow(
                         "Authentication",
@@ -260,29 +278,33 @@ fun AiSettingsSection(
 }
 
 @Composable
-private fun BaseUrlField(value: String, onCommit: (String) -> Unit) {
-    var text by remember(value) { mutableStateOf(value) }
-
+private fun BaseUrlField(
+    value: String,
+    saved: String,
+    onValueChange: (String) -> Unit,
+    onCommit: (String) -> Unit,
+) {
     OutlinedTextField(
-        value = text,
-        onValueChange = { text = it },
-        label = { Text("Base URL") },
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text("Gateway URL") },
+        placeholder = { Text("https://your-gateway.example.com/v1") },
         singleLine = true,
         textStyle = VmTheme.code.mono,
         supportingText = {
             Text(
-                text = "The gateway must implement the Anthropic Messages API or the " +
-                    "OpenAI chat API. The connection test reports which it found.",
+                text = "Your OmniRoute (or any OpenAI- or Anthropic-compatible) gateway. " +
+                    "With or without /v1. Run test saves it.",
                 style = MaterialTheme.typography.bodySmall,
             )
         },
         modifier = Modifier.fillMaxWidth(),
     )
 
-    if (text != value) {
+    if (value.trim() != saved) {
         VmButton(
             text = "Save URL",
-            onClick = { onCommit(text) },
+            onClick = { onCommit(value) },
             style = VmButtonStyle.Tertiary,
         )
     }
@@ -290,16 +312,17 @@ private fun BaseUrlField(value: String, onCommit: (String) -> Unit) {
 
 @Composable
 private fun ApiKeyField(
+    key: String,
+    onKeyChange: (String) -> Unit,
     hasStoredKey: Boolean,
-    onSave: (String) -> Unit,
+    onSave: () -> Unit,
     onClear: () -> Unit,
 ) {
-    var key by remember { mutableStateOf("") }
     var revealed by remember { mutableStateOf(false) }
 
     OutlinedTextField(
         value = key,
-        onValueChange = { key = it },
+        onValueChange = onKeyChange,
         label = { Text(if (hasStoredKey) "Replace API key" else "API key") },
         singleLine = true,
         visualTransformation = if (revealed) {
@@ -332,10 +355,7 @@ private fun ApiKeyField(
     Row(horizontalArrangement = Arrangement.spacedBy(VmTheme.spacing.sm)) {
         VmButton(
             text = "Save key",
-            onClick = {
-                onSave(key)
-                key = ""
-            },
+            onClick = onSave,
             enabled = key.isNotBlank(),
             style = VmButtonStyle.Secondary,
         )

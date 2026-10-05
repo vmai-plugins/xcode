@@ -55,7 +55,8 @@ data class UserPreferences(
      */
     val agentMaxContextTokens: Int = 120_000,
     val confirmDestructiveCommands: Boolean = true,
-    val aiProviderId: String = PROVIDER_CLAUDE_CODE,
+    /** OmniRoute by default: it runs free gateway models; Claude Code needs a plan. */
+    val aiProviderId: String = PROVIDER_OMNIROUTE,
     val aiBaseUrl: String = DEFAULT_AI_BASE_URL,
     /** Credential reference id for the AI API key, or null when not configured. */
     val aiApiKeyCredentialId: String? = null,
@@ -71,12 +72,11 @@ data class UserPreferences(
     val aiModelPreset: String = "balanced",
     val aiStreamingEnabled: Boolean = true,
     /**
-     * Whether OmniRoute may call tools (read/write/list files, run commands)
-     * instead of only chatting. Off by default: reliability at real tool-calling
-     * depends entirely on the selected model, and this is never assumed - only
-     * turned on by an explicit, informed choice.
+     * Whether OmniRoute may call tools (read/write/edit files, search, run
+     * commands, fetch pages) instead of only chatting. On by default: the app is a
+     * coding agent, and every write and risky command still goes through approval.
      */
-    val aiToolsEnabled: Boolean = false,
+    val aiToolsEnabled: Boolean = true,
     val gitUserName: String = "",
     val gitUserEmail: String = "",
     val notifyOnTaskComplete: Boolean = true,
