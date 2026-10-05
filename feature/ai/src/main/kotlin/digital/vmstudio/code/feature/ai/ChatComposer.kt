@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -55,7 +54,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
-import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
@@ -227,7 +225,7 @@ internal fun ModernComposer(
 }
 
 @Composable
-private fun ComposerChip(
+internal fun ComposerChip(
     label: String,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -259,121 +257,6 @@ private fun ComposerChip(
         )
     }
 }
-
-/**
- * One picker for every model: Claude Code's aliases first, then whatever the
- * OmniRoute gateway serves, synced live. The chosen model decides the backend.
- */
-@Composable
-private fun ModelPicker(
-    selectedModel: String,
-    omniModels: OmniRouteModels,
-    isSyncing: Boolean,
-    enabled: Boolean,
-    onModelChange: (String) -> Unit,
-    onSync: () -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val label = ClaudeCodeModels.CHOICES.firstOrNull { it.id == selectedModel }?.label ?: selectedModel
-
-    fun pick(id: String) {
-        onModelChange(id)
-        expanded = false
-    }
-
-    Box {
-        ComposerChip(label = label, enabled = enabled, onClick = { expanded = true })
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.heightIn(max = 420.dp),
-        ) {
-            MenuSectionLabel("Claude Code")
-            ClaudeCodeModels.CHOICES.forEach { choice ->
-                ModelMenuItem(
-                    title = choice.label,
-                    subtitle = choice.description,
-                    selected = choice.id == selectedModel,
-                    onClick = { pick(choice.id) },
-                )
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            MenuSectionLabel(omniSectionTitle(omniModels, isSyncing))
-            omniModels.ids.forEach { id ->
-                ModelMenuItem(
-                    title = id,
-                    subtitle = null,
-                    selected = id == selectedModel,
-                    onClick = { pick(id) },
-                )
-            }
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = if (omniModels.isConfigured) SYNC_LABEL else SET_UP_LABEL,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                },
-                enabled = omniModels.isConfigured && !isSyncing,
-                onClick = onSync,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MenuSectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-    )
-}
-
-@Composable
-private fun ModelMenuItem(title: String, subtitle: String?, selected: Boolean, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = {
-            Column {
-                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        leadingIcon = {
-            if (selected) Icon(Icons.Default.Check, contentDescription = null)
-        },
-        onClick = onClick,
-    )
-}
-
-private fun omniSectionTitle(models: OmniRouteModels, isSyncing: Boolean): String = when {
-    isSyncing -> "OmniRoute · syncing…"
-    !models.isConfigured -> "OmniRoute · not set up"
-    models.syncedAtMillis == 0L -> "OmniRoute · not synced yet"
-    else -> "OmniRoute · synced ${relativeAge(models.syncedAtMillis)}"
-}
-
-private fun relativeAge(millis: Long): String {
-    val minutes = (System.currentTimeMillis() - millis) / MILLIS_PER_MINUTE
-    return when {
-        minutes < 1 -> "just now"
-        minutes < MINUTES_PER_HOUR -> "$minutes min ago"
-        else -> "${minutes / MINUTES_PER_HOUR} h ago"
-    }
-}
-
-private const val MILLIS_PER_MINUTE = 60_000L
-private const val SYNC_LABEL = "Sync models now"
-private const val SET_UP_LABEL = "Set up OmniRoute in Settings"
-private const val MINUTES_PER_HOUR = 60L
 
 /** The + menu: attach, folder, mode and background run, out of the way until needed. */
 @Suppress("LongParameterList")
