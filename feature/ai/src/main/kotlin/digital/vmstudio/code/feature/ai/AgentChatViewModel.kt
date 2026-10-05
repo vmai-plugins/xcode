@@ -739,7 +739,7 @@ private fun StoredEntry.toTranscriptItem(nextId: () -> String): TranscriptItem =
 
     is StoredEntry.Failed -> TranscriptItem.Failure(
         id = nextId(),
-        error = VmError.Ai(summary = summary, provider = "restored"),
+        error = VmError.Ai(summary = summary),
     )
 }
 

@@ -99,6 +99,8 @@ fun AgentChatScreen(
         }
     }
 
+    HostKeyPrompt(serverId = state.serverId)
+
     if (showDirectoryDialog) {
         DirectoryChooser(
             serverId = state.serverId,
