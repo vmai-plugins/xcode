@@ -1,12 +1,20 @@
 package digital.vmstudio.code.core.ai.omniroute.agent
 
+import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
-import digital.vmstudio.code.core.network.http.RetryPolicy
-import digital.vmstudio.code.core.network.http.VmHttpClient
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import java.io.IOException
+import java.net.InetAddress
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,42 +23,104 @@ import javax.inject.Singleton
  * returns its readable text.
  *
  * Fetched from the phone, not the server, so it works even when the server has no
- * outbound access. Private and loopback addresses are refused: the model chooses
- * the URL, and it must not be able to reach the user's home network through the
- * phone.
+ * outbound access. The model chooses the URL, so it must not be able to reach the
+ * user's home network through the phone: private hosts are refused by name, every
+ * DNS answer is checked (a public name can resolve to a private address), and
+ * redirects are followed by hand so each hop gets the same checks.
  */
 @Singleton
 class WebFetcher @Inject constructor(
-    private val httpClient: VmHttpClient,
+    baseClient: OkHttpClient,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
+    private val client = baseClient.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .dns(PublicOnlyDns)
+        .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
 
-    suspend fun fetch(rawUrl: String): VmResult<String> {
-        val url = rawUrl.trim().toHttpUrlOrNull()
-            ?: return refuse("\"$rawUrl\" is not an http or https URL.")
-        if (isPrivateHost(url)) return refuse("Private and local addresses cannot be fetched.")
+    suspend fun fetch(rawUrl: String): VmResult<String> = withContext(ioDispatcher) {
+        var url = rawUrl.trim().toHttpUrlOrNull()
+            ?: return@withContext refuse("\"$rawUrl\" is not an http or https URL.")
 
-        val request = Request.Builder()
-            .url(url)
-            .get()
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "text/html,text/plain,application/json;q=0.9,*/*;q=0.5")
-            .build()
-
-        return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
-            is VmResult.Failure -> result
-            is VmResult.Success -> VmResult.Success(readable(result.value).take(MAX_CHARS).let { text ->
-                if (text.length == MAX_CHARS) "$text\n\n[truncated at $MAX_CHARS characters]" else text
-            })
+        repeat(MAX_REDIRECTS + 1) {
+            if (isPrivateHost(url)) return@withContext refuse(PRIVATE_REFUSAL)
+            val result = try {
+                runInterruptible { client.newCall(request(url)).execute() }.use { response ->
+                    when {
+                        response.isRedirect -> response.header("Location")?.let(url::resolve)
+                            ?: return@withContext refuse("The page redirected without a location.")
+                        !response.isSuccessful ->
+                            return@withContext refuse("The server answered HTTP ${response.code}.")
+                        else -> return@withContext VmResult.Success(readable(readCapped(response)).limited())
+                    }
+                }
+            } catch (blocked: PrivateAddressException) {
+                return@withContext refuse(blocked.message)
+            } catch (io: IOException) {
+                return@withContext refuse(io.message ?: "The page could not be reached.")
+            }
+            url = result
         }
+        refuse("Too many redirects.")
     }
 
-    private fun refuse(reason: String): VmResult<String> =
+    private fun request(url: HttpUrl) = Request.Builder()
+        .url(url)
+        .get()
+        .header("User-Agent", USER_AGENT)
+        .header("Accept", "text/html,text/plain,application/json;q=0.9,*/*;q=0.5")
+        .build()
+
+    /** Reads at most [MAX_BODY_BYTES]: a huge page is cut, not loaded whole into memory. */
+    private fun readCapped(response: Response): String {
+        val source = response.body?.source() ?: return ""
+        source.request(MAX_BODY_BYTES)
+        val buffer = source.buffer
+        return buffer.readUtf8(minOf(buffer.size, MAX_BODY_BYTES))
+    }
+
+    private fun String.limited(): String =
+        if (length <= MAX_CHARS) this else take(MAX_CHARS) + "\n\n[truncated at $MAX_CHARS characters]"
+
+    private fun refuse(reason: String?): VmResult<String> =
         VmResult.Failure(VmError.Network(summary = "Cannot fetch this URL", reason = reason))
 
     private companion object {
         const val MAX_CHARS = 20_000
+        const val PRIVATE_REFUSAL = "Private and local addresses cannot be fetched."
+        const val MAX_BODY_BYTES = 1L * 1024 * 1024
+        const val MAX_REDIRECTS = 5
+        const val CALL_TIMEOUT_SECONDS = 30L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android) XCodes/1.0"
     }
+}
+
+private class PrivateAddressException(host: String) :
+    IOException("$host resolves to a private or local address and cannot be fetched.")
+
+/** Resolves normally, then refuses the host if any address it maps to is private. */
+private object PublicOnlyDns : Dns {
+    override fun lookup(hostname: String): List<InetAddress> {
+        val addresses = Dns.SYSTEM.lookup(hostname)
+        if (addresses.any(::isPrivateAddress)) throw PrivateAddressException(hostname)
+        return addresses
+    }
+}
+
+internal fun isPrivateAddress(address: InetAddress): Boolean {
+    val bytes = address.address
+    val first = bytes[0].toInt() and BYTE_MASK
+    val second = bytes.getOrNull(1)?.toInt()?.and(BYTE_MASK) ?: 0
+    return address.isLoopbackAddress ||
+        address.isAnyLocalAddress ||
+        address.isLinkLocalAddress ||
+        address.isSiteLocalAddress ||
+        address.isMulticastAddress ||
+        // Carrier-grade NAT (100.64.0.0/10) and IPv6 unique-local (fc00::/7).
+        (bytes.size == IPV4_OCTETS && first == CGNAT_FIRST && second in CGNAT_SECOND) ||
+        (bytes.size > IPV4_OCTETS && (first and ULA_MASK) == ULA_PREFIX)
 }
 
 /** True for loopback, link-local, private-range and `.local` hosts. */
@@ -102,6 +172,11 @@ private fun decodeEntities(text: String): String = text
     .replace("&amp;", "&")
 
 private const val IPV4_OCTETS = 4
+private const val BYTE_MASK = 0xFF
+private const val CGNAT_FIRST = 100
+private val CGNAT_SECOND = 64..127
+private const val ULA_MASK = 0xFE
+private const val ULA_PREFIX = 0xFC
 private val PRIVATE_SUFFIXES = listOf(".local", ".internal", ".localhost")
 private val PRIVATE_V6_PREFIXES = listOf("fc", "fd", "fe80")
 
