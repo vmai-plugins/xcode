@@ -18,6 +18,7 @@ import ipaddress
 import json
 import os
 import re
+import shlex
 import signal
 import socket
 import subprocess
@@ -27,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2"
+VERSION = "3"
 HOME = os.path.expanduser("~/.xcodes")
 RUNS = os.path.join(HOME, "runs")
 
@@ -50,8 +51,17 @@ DENIED = [
     r"\b(shutdown|reboot|halt|poweroff)\b",
     r":\(\)\s*\{\s*:\|:&\s*\};:",
     r">\s*/dev/sd[a-z]",
-    r"\bchmod\s+-R\s+[0-7]{3,4}\s+/(\s|$)",
+    r"\bch(mod|own)\s+-R\s+\S+\s+/(\s|$)",
+    r"\bfind\s+(/|~|\$HOME)(\s|$).*(-delete|-exec\s+rm)",
 ]
+WRAPPERS = {"sudo", "env", "nohup", "time", "command", "exec"}
+SYSTEM_DIR = re.compile(r"/(bin|boot|dev|etc|home|lib\w*|opt|proc|root|run|sbin|srv|sys|usr|var)/?\*?")
+HOME_LIKE = {"/", "/*", "~", "~/", "~/*", "$HOME", "$HOME/", "$HOME/*", "${HOME}", "${HOME}/"}
+
+# Files the agent may not read or change: a fetched page can tell it to leak these.
+SECRET_DIRS = {".ssh", ".gnupg", ".aws", ".kube", ".docker"}
+SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".kdbx")
+TEMPLATE_SUFFIXES = (".example", ".sample", ".template", ".dist")
 
 TOOLS = {
     "read_file": ("Read a text file's contents.", {"path": "Absolute or working-directory-relative path."}, ["path"]),
@@ -242,8 +252,26 @@ def parse_response(dialect, root):
 
 # --- tools ----------------------------------------------------------------------
 
+def is_secret(path):
+    parts = [p for p in path.split(os.sep) if p]
+    name = parts[-1].lower() if parts else ""
+    return (any(p in SECRET_DIRS for p in parts)
+            or (name.startswith(".env") and not name.endswith(TEMPLATE_SUFFIXES))
+            or name.startswith(("id_rsa", "id_ed25519", "id_ecdsa"))
+            or name.endswith(SECRET_SUFFIXES))
+
+
 def resolve(cwd, path):
-    return os.path.normpath(os.path.join(cwd, os.path.expanduser(path)))
+    """Resolves symlinks, and refuses anything outside the project folder or holding credentials."""
+    if path.startswith("~"):
+        raise PermissionError("Home-relative paths are not available. Use a path inside %s." % cwd)
+    root = os.path.realpath(cwd)
+    target = os.path.realpath(os.path.join(root, path))
+    if root != os.sep and target != root and not target.startswith(root + os.sep):
+        raise PermissionError("That path is outside the project folder (%s). File tools only work inside it." % root)
+    if is_secret(target):
+        raise PermissionError("That path holds credentials, so the agent may not read or change it.")
+    return target
 
 
 def cap(text, limit=MAX_TOOL_OUTPUT):
@@ -268,7 +296,9 @@ def tool_grep_search(cwd, args):
     path = resolve(cwd, args.get("path") or ".")
     result = subprocess.run(
         ["grep", "-rIn", "--exclude-dir=.git", "--exclude-dir=node_modules", "--exclude-dir=build",
-         "--exclude-dir=.gradle", "-e", args["query"], path],
+         "--exclude-dir=.gradle", "--exclude-dir=.ssh", "--exclude-dir=.aws", "--exclude=.env*",
+         "--exclude=*.pem", "--exclude=*.key", "--exclude=id_rsa*", "--exclude=id_ed25519*",
+         "-e", args["query"], path],
         capture_output=True, text=True, timeout=120)
     lines = result.stdout.splitlines()[:200]
     return "\n".join(lines) or "No matches.", False
@@ -295,11 +325,30 @@ def tool_edit_file(cwd, args):
     return "Edited %s." % path, False
 
 
+def blocked(command):
+    """Best-effort refusal of commands nobody would want run unattended. A guard rail, not a sandbox."""
+    if any(re.search(pattern, command) for pattern in DENIED):
+        return True
+    for segment in re.split(r"[;&|\n]+", command):
+        try:
+            words = shlex.split(segment)
+        except ValueError:
+            words = segment.split()
+        while words and (words[0] in WRAPPERS or re.fullmatch(r"\w+=.*", words[0])):
+            words = words[1:]
+        if not words or os.path.basename(words[0]) != "rm":
+            continue
+        recursive = any(w == "--recursive" or re.fullmatch(r"-[a-zA-Z]*[rR][a-zA-Z]*", w) for w in words[1:])
+        targets = [w for w in words[1:] if not w.startswith("-")]
+        if recursive and any(t in HOME_LIKE or SYSTEM_DIR.fullmatch(t) for t in targets):
+            return True
+    return False
+
+
 def tool_run_command(cwd, args):
     command = args["command"]
-    for pattern in DENIED:
-        if re.search(pattern, command):
-            return "Refused: this command is blocked for unattended runs.", True
+    if blocked(command):
+        return "Refused: this command is blocked for unattended runs.", True
     result = subprocess.run(["bash", "-lc", command], cwd=cwd, capture_output=True, text=True,
                             timeout=COMMAND_TIMEOUT, stdin=subprocess.DEVNULL)
     output = (result.stdout or "") + (("\n" + result.stderr) if result.stderr else "")

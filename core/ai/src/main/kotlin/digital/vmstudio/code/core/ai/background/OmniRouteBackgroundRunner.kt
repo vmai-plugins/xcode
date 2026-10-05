@@ -104,7 +104,11 @@ class OmniRouteBackgroundRunner @Inject constructor(
                 .then { execute(serverId, launchCommand(home, runDir, workingDirectory)) }
                 .let { result ->
                     when (result) {
-                        is VmResult.Failure -> result
+                        is VmResult.Failure -> {
+                            // A failed launch must not leave the gateway key on the server.
+                            execute(serverId, "rm -rf -- ${quote(runDir)}")
+                            result
+                        }
                         is VmResult.Success -> {
                             VmLog.i(LogCategory.AI, TAG, "Server-side run $runId started")
                             VmResult.Success(runId)
@@ -251,7 +255,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
     companion object {
         const val RUN_ID_PREFIX = "xo-"
         private const val TAG = "OmniRouteBackground"
-        private const val RUNNER_VERSION = "2"
+        private const val RUNNER_VERSION = "3"
         private const val RUNNER_RESOURCE = "/xcodes/xcodes_agent.py"
         private const val RUNNER_PATH = ".xcodes/bin/xcodes_agent.py"
         private const val RUNNER = "python3 ~/.xcodes/bin/xcodes_agent.py"

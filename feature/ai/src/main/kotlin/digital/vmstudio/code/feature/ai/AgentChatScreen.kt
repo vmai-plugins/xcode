@@ -335,7 +335,12 @@ fun AgentChatScreen(
                     viewModel.send(text, attachments)
                     attachments = emptyList()
                 },
-                onSendInBackground = viewModel::sendInBackground,
+                onSendInBackground = { text, cleared ->
+                    viewModel.sendInBackground(text, attachments) {
+                        attachments = emptyList()
+                        cleared()
+                    }
+                },
                 onStop = viewModel::stop,
             )
         }
