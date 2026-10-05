@@ -143,6 +143,22 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The emulator runner downloads its system image once and fails the job on
+      # a corrupt download ("Error on ZipFile unknown archive"), before any test
+      # runs. Installing it here first, with retries, keeps that infrastructure
+      # hiccup from reading as a test failure; the tests themselves are unchanged.
+      - name: Install emulator system image (with retries)
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          for attempt in 1 2 3; do
+            if yes | "$SDKMANAGER" --install emulator 'system-images;android-35;default;x86_64' > /dev/null; then
+              exit 0
+            fi
+            echo "System image install failed (attempt $attempt); retrying"
+            sleep 15
+          done
+          exit 1
+
       # These cover the parts that cannot be unit tested and that the whole
       # credential story depends on: the real Android Keystore and the real Room
       # schema with foreign keys enforced.
