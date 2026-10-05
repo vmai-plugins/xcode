@@ -250,7 +250,12 @@ fun AgentChatScreen(
                 .imePadding(),
         ) {
             // Sleek collapsible health banner
-            HealthBanner(state = state, onRetry = viewModel::checkHealth, onOpenSettings = onOpenSettings)
+            HealthBanner(
+                state = state,
+                onRetry = viewModel::checkHealth,
+                onOpenSettings = onOpenSettings,
+                onPickModel = viewModel::selectModel,
+            )
 
             state.error?.let { error ->
                 VmErrorPanel(

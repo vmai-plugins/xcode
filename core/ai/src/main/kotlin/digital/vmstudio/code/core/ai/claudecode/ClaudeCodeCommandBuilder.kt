@@ -171,7 +171,17 @@ internal object ClaudeCodeCommandBuilder {
         AgentPermissionMode.BYPASS -> "bypassPermissions"
     }
 
-    const val DEFAULT_BINARY = "claude"
+    /**
+     * `claude`, found where installers actually put it.
+     *
+     * The app's commands run in a non-interactive SSH shell, which skips ~/.bashrc
+     * and ~/.profile, so the PATH lines the native installer, npm prefixes and nvm
+     * add are missing and a working install reads as "not found". The usual
+     * locations are put in front for this one command; the user's PATH is kept.
+     */
+    const val DEFAULT_BINARY = "PATH=\"\$HOME/.local/bin:\$HOME/.claude/local:\$HOME/.npm-global/bin:" +
+        "\$HOME/.bun/bin:\$(ls -dr \"\$HOME\"/.nvm/versions/node/*/bin 2>/dev/null | tr \"\\n\" \":\")" +
+        "/usr/local/bin:\$PATH\" claude"
     const val MISSING_MARKER = "__VM_CLAUDE_MISSING__"
     const val AUTH_FAILED_MARKER = "__VM_CLAUDE_AUTH_FAILED__"
 

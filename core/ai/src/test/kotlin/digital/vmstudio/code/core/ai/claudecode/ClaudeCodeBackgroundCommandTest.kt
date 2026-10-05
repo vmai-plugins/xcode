@@ -107,4 +107,12 @@ class ClaudeCodeBackgroundCommandTest {
         assertFalse(command.contains("ANTHROPIC_API_KEY"))
         assertFalse(command.contains("ANTHROPIC_AUTH_TOKEN"))
     }
+
+    @Test
+    fun `claude is looked up where installers put it, not only on the bare ssh PATH`() {
+        val command = ClaudeCodeCommandBuilder.versionCommand()
+        assertTrue(command.contains("\$HOME/.local/bin"))
+        assertTrue(command.contains(".nvm/versions/node/*/bin"))
+        assertTrue(command.contains("\$PATH\" claude --version"))
+    }
 }

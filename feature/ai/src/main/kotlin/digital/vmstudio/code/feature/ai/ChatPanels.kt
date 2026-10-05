@@ -162,6 +162,7 @@ internal fun HealthBanner(
     state: AgentChatUiState,
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
+    onPickModel: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val health = state.health
@@ -227,6 +228,15 @@ internal fun HealthBanner(
                 VmButton(text = "Check again", onClick = onRetry, style = VmButtonStyle.Secondary)
                 if (isGateway) {
                     VmButton(text = "Open Settings", onClick = onOpenSettings, style = VmButtonStyle.Tertiary)
+                }
+                // Claude Code missing but the free gateway is ready: one tap instead of hunting the picker.
+                val gatewayModel = state.omniModels.ids.firstOrNull()
+                if (!isGateway && gatewayModel != null) {
+                    VmButton(
+                        text = "Use OmniRoute",
+                        onClick = { onPickModel(gatewayModel) },
+                        style = VmButtonStyle.Tertiary,
+                    )
                 }
             }
         }
