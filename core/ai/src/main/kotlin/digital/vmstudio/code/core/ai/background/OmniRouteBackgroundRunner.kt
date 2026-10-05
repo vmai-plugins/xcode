@@ -56,6 +56,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
         model: String,
         permissionMode: AgentPermissionMode,
         history: List<ConversationTurn>,
+        contextChars: Int,
     ): VmResult<String> = withContext(ioDispatcher) {
         val mode = when (val resolved = modeFor(serverId, permissionMode)) {
             is VmResult.Failure -> return@withContext resolved
@@ -80,6 +81,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
             put("prompt", prompt)
             put("cwd", workingDirectory)
             put("mode", mode)
+            put("context_chars", contextChars)
             put("system_prompt", systemPrompt(workingDirectory, mode))
             putJsonArray("history") {
                 history.filter { it.text.isNotBlank() }.forEach { turn ->
@@ -249,7 +251,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
     companion object {
         const val RUN_ID_PREFIX = "xo-"
         private const val TAG = "OmniRouteBackground"
-        private const val RUNNER_VERSION = "1"
+        private const val RUNNER_VERSION = "2"
         private const val RUNNER_RESOURCE = "/xcodes/xcodes_agent.py"
         private const val RUNNER_PATH = ".xcodes/bin/xcodes_agent.py"
         private const val RUNNER = "python3 ~/.xcodes/bin/xcodes_agent.py"

@@ -109,7 +109,8 @@ class OmniRouteAgentLoop @Inject constructor(
             repeat(MAX_ITERATIONS) {
                 currentCoroutineContext().ensureActive()
 
-                val target = GatewayTarget(baseUrl, key, dialect, model)
+                val budget = config.contextChars ?: MAX_HISTORY_CHARS
+                val target = GatewayTarget(baseUrl, key, dialect, model, budget)
                 val (turn, streamedText) =
                     when (val next = nextTurn(target, workingDirectory, allowedTools, history)) {
                         is VmResult.Failure -> {
@@ -222,6 +223,7 @@ class OmniRouteAgentLoop @Inject constructor(
         val key: Secret,
         val dialect: OmniRouteDialect,
         val model: String,
+        val historyBudget: Int,
     )
 
     /**
@@ -255,7 +257,7 @@ class OmniRouteAgentLoop @Inject constructor(
             dialect = target.dialect,
             model = target.model,
             systemPrompt = systemPrompt(workingDirectory, allowedTools),
-            history = trimHistory(history),
+            history = trimHistory(history, budget = target.historyBudget),
             maxTokens = DEFAULT_MAX_TOKENS,
             tools = allowedTools.toList(),
         ).let { if (stream) OmniRouteStreamAssembler.streamingBody(target.dialect, it) else it }

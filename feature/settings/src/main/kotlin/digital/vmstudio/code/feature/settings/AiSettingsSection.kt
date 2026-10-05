@@ -36,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ai.provider.AiProviderKind
 import digital.vmstudio.code.core.ai.provider.capabilitySummary
 import digital.vmstudio.code.core.ai.provider.displayName
+import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmCard
@@ -159,6 +160,13 @@ fun AiSettingsSection(
                 CustomModelField(
                     current = state.preferences.aiSelectedModelId,
                     onSelect = viewModel::selectModel,
+                )
+            }
+
+            VmCard {
+                ContextSizePicker(
+                    selected = state.preferences.aiContextSize,
+                    onSelect = viewModel::setContextSize,
                 )
             }
 
@@ -421,3 +429,37 @@ private fun ResultRow(label: String, value: String) {
 
 /** Enough to choose from without turning the card into a scrolling list. */
 private const val MAX_MODEL_CHIPS = 12
+
+/**
+ * How much conversation the agent keeps before trimming. Larger keeps more of a
+ * long task in view but costs more per request and needs a model with a long
+ * context window.
+ */
+@Composable
+private fun ContextSizePicker(selected: String, onSelect: (String) -> Unit) {
+    val options = listOf(
+        UserPreferences.CONTEXT_SMALL to "Small",
+        UserPreferences.CONTEXT_LARGE to "Large",
+        UserPreferences.CONTEXT_HUGE to "Huge",
+    )
+    Text("Context size", style = MaterialTheme.typography.titleSmall)
+    Text(
+        text = "How much of a long task the agent keeps in view. Small (about 25k tokens) " +
+            "for free models with short windows, Large (about 100k) for most strong models, " +
+            "Huge (about 300k) for long-context models. Larger costs more per step.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(
+        modifier = Modifier.padding(top = VmTheme.spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(VmTheme.spacing.xs),
+    ) {
+        options.forEach { (value, label) ->
+            FilterChip(
+                selected = selected == value,
+                onClick = { onSelect(value) },
+                label = { Text(label) },
+            )
+        }
+    }
+}

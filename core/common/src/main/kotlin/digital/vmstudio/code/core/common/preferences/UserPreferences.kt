@@ -77,6 +77,12 @@ data class UserPreferences(
      * coding agent, and every write and risky command still goes through approval.
      */
     val aiToolsEnabled: Boolean = true,
+    /**
+     * How much conversation the gateway agent keeps before trimming: one of
+     * [CONTEXT_SMALL], [CONTEXT_LARGE], [CONTEXT_HUGE]. Small protects free models
+     * with short windows; large and huge suit models with long ones.
+     */
+    val aiContextSize: String = CONTEXT_LARGE,
     val gitUserName: String = "",
     val gitUserEmail: String = "",
     val notifyOnTaskComplete: Boolean = true,
@@ -92,6 +98,21 @@ data class UserPreferences(
     companion object {
         /** The project's own OmniRoute gateway, prefilled; any user can replace it in Settings. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
+
+        const val CONTEXT_SMALL = "small"
+        const val CONTEXT_LARGE = "large"
+        const val CONTEXT_HUGE = "huge"
+
+        /** Characters of history kept for each context size (about 4 per token). */
+        fun contextChars(size: String): Int = when (size) {
+            CONTEXT_SMALL -> SMALL_CONTEXT_CHARS
+            CONTEXT_HUGE -> HUGE_CONTEXT_CHARS
+            else -> LARGE_CONTEXT_CHARS
+        }
+
+        private const val SMALL_CONTEXT_CHARS = 100_000
+        private const val LARGE_CONTEXT_CHARS = 400_000
+        private const val HUGE_CONTEXT_CHARS = 1_200_000
 
         /** Agentic backend: Claude Code driven over SSH. The default. */
         const val PROVIDER_CLAUDE_CODE = "claude-code"

@@ -17,7 +17,7 @@ class OmniRouteBackgroundRunnerTest {
     fun `the runner script ships with the app at the version the installer expects`() {
         val script = javaClass.getResourceAsStream("/xcodes/xcodes_agent.py")?.bufferedReader()?.readText()
         assertNotNull(script)
-        assertTrue(script!!.contains("VERSION = \"1\""))
+        assertTrue(script!!.contains("VERSION = \"2\""))
     }
 
     @Test

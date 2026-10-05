@@ -27,7 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1"
+VERSION = "2"
 HOME = os.path.expanduser("~/.xcodes")
 RUNS = os.path.join(HOME, "runs")
 
@@ -131,9 +131,9 @@ def size_of(message):
     return sum(len(json.dumps(v)) for v in message.values())
 
 
-def trim_history(history):
-    """Keeps the conversation inside a small model's context window."""
-    if sum(size_of(m) for m in history) <= MAX_HISTORY_CHARS:
+def trim_history(history, budget=MAX_HISTORY_CHARS):
+    """Keeps the conversation inside the model's context window."""
+    if sum(size_of(m) for m in history) <= budget:
         return history
     keep_from = max(len(history) - 6, 0)
     trimmed = []
@@ -141,7 +141,7 @@ def trim_history(history):
         if index < keep_from and message["role"] == "tool" and len(message["content"]) > TRIMMED_TOOL_OUTPUT:
             message = dict(message, content=message["content"][:TRIMMED_TOOL_OUTPUT] + "\n[trimmed]")
         trimmed.append(message)
-    while sum(size_of(m) for m in trimmed) > MAX_HISTORY_CHARS:
+    while sum(size_of(m) for m in trimmed) > budget:
         next_user = next((i for i, m in enumerate(trimmed) if i > 0 and m["role"] == "user"), None)
         if next_user is None:
             break
@@ -194,7 +194,8 @@ def build_request(task, history, tools):
 
 
 def call_model(task, key, history, tools):
-    path, body = build_request(task, trim_history(history), tools)
+    budget = int(task.get("context_chars") or MAX_HISTORY_CHARS)
+    path, body = build_request(task, trim_history(history, budget), tools)
     headers = {"Content-Type": "application/json"}
     if task["dialect"] == "anthropic":
         headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})

@@ -246,6 +246,7 @@ class AgentChatViewModel @Inject constructor(
                     model = state.selectedModel,
                     permissionMode = state.permissionMode,
                     history = state.transcript.toConversationTurns(),
+                    contextChars = preferences.contextChars(),
                 )
             }
             when (result) {
@@ -488,6 +489,7 @@ class AgentChatViewModel @Inject constructor(
                     state.transcript.toConversationTurns()
                 },
                 autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
+                contextChars = preferences.contextChars(),
             )
 
             try {
@@ -764,3 +766,7 @@ internal fun chatTitle(prompt: String): String {
 }
 
 private const val MAX_TITLE_CHARS = 48
+
+/** The history budget the user chose in Settings, in characters. */
+private suspend fun UserPreferencesSource.contextChars(): Int =
+    UserPreferences.contextChars(preferences.first().aiContextSize)

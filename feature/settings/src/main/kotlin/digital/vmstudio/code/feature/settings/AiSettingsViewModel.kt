@@ -145,6 +145,10 @@ class AiSettingsViewModel @Inject constructor(
         }
     }
 
+    fun setContextSize(size: String) {
+        viewModelScope.launch { preferencesRepository.setAiContextSize(size) }
+    }
+
     fun setToolsEnabled(enabled: Boolean) {
         viewModelScope.launch { preferencesRepository.setAiToolsEnabled(enabled) }
     }

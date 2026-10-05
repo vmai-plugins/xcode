@@ -145,6 +145,10 @@ class UserPreferencesRepository @Inject constructor(
         it.remove(Keys.AI_MODELS_SYNCED_AT)
     }
 
+    suspend fun setAiContextSize(size: String) = edit {
+        it[Keys.AI_CONTEXT_SIZE] = size
+    }
+
     suspend fun setAiStreamingEnabled(enabled: Boolean) = edit {
         it[Keys.AI_STREAMING] = enabled
     }
@@ -216,6 +220,7 @@ class UserPreferencesRepository @Inject constructor(
             aiModelPreset = this[Keys.AI_MODEL_PRESET] ?: defaults.aiModelPreset,
             aiStreamingEnabled = this[Keys.AI_STREAMING] ?: defaults.aiStreamingEnabled,
             aiToolsEnabled = this[Keys.AI_TOOLS_ENABLED] ?: defaults.aiToolsEnabled,
+            aiContextSize = this[Keys.AI_CONTEXT_SIZE] ?: defaults.aiContextSize,
             gitUserName = this[Keys.GIT_NAME] ?: defaults.gitUserName,
             gitUserEmail = this[Keys.GIT_EMAIL] ?: defaults.gitUserEmail,
             notifyOnTaskComplete = this[Keys.NOTIFY_TASK] ?: defaults.notifyOnTaskComplete,
@@ -255,6 +260,7 @@ class UserPreferencesRepository @Inject constructor(
         val AI_MODEL_PRESET = stringPreferencesKey("ai_model_preset")
         val AI_STREAMING = booleanPreferencesKey("ai_streaming")
         val AI_TOOLS_ENABLED = booleanPreferencesKey("ai_tools_enabled")
+        val AI_CONTEXT_SIZE = stringPreferencesKey("ai_context_size")
         val GIT_NAME = stringPreferencesKey("git_name")
         val GIT_EMAIL = stringPreferencesKey("git_email")
         val NOTIFY_TASK = booleanPreferencesKey("notify_task")
