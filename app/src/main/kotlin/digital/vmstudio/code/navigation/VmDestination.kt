@@ -137,10 +137,4 @@ sealed class VmDestination(val route: String) {
     data object Connectors : VmDestination("connectors")
 
     data object Tasks : VmDestination("tasks")
-
-    data object Diagnostics : VmDestination("settings/diagnostics")
-
-    data object Appearance : VmDestination("settings/appearance")
-
-    data object SecuritySettings : VmDestination("settings/security")
 }

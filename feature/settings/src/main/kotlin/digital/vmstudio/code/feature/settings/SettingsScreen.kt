@@ -87,17 +87,6 @@ fun SettingsScreen(
             }
         }
 
-        item {
-            VmCard {
-                ToggleRow(
-                    label = "Reduce motion",
-                    description = "Removes non-essential animation across the app.",
-                    checked = state.preferences.reduceMotion,
-                    onCheckedChange = viewModel::setReduceMotion,
-                )
-            }
-        }
-
         item { VmSectionHeader(title = "AI provider") }
 
         item { AiSettingsSection() }

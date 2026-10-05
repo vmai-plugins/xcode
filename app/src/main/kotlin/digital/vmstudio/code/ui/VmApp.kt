@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
@@ -159,6 +160,17 @@ fun VmApp(
                         icon = { Icon(Icons.Default.Folder, contentDescription = null) },
                         selected = currentRoute == VmDestination.Projects.route,
                         onClick = { openTopLevel(VmDestination.Projects) },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("Connectors") },
+                        icon = { Icon(Icons.Default.Cloud, contentDescription = null) },
+                        selected = currentRoute == VmDestination.Connectors.route,
+                        // Pushed rather than made top-level: the screen has a back arrow,
+                        // and back should return here instead of leaving the app.
+                        onClick = {
+                            closeDrawerThen { navController.navigate(VmDestination.Connectors.route) }
+                        },
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
