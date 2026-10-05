@@ -81,8 +81,8 @@ fun ProjectsScreen(
             },
         ) {
             Text(
-                text = "Removes it from this app. The folder and its files on the server " +
-                    "are not touched.",
+                text = "Removes it and its chats from this app. The folder and its files on " +
+                    "the server are not touched.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
