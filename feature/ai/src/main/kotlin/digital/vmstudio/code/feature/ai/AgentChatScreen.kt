@@ -100,10 +100,11 @@ fun AgentChatScreen(
     }
 
     if (showDirectoryDialog) {
-        EditDirectoryDialog(
+        DirectoryChooser(
+            serverId = state.serverId,
             currentDirectory = state.workingDirectory,
             onDismiss = { showDirectoryDialog = false },
-            onConfirm = { newDir ->
+            onChoose = { newDir ->
                 viewModel.setWorkingDirectory(newDir)
                 showDirectoryDialog = false
             },
@@ -336,5 +337,29 @@ fun AgentChatScreen(
                 onStop = viewModel::stop,
             )
         }
+    }
+}
+
+/** Browses the server's folders live when a server is chosen; typing the path is the fallback. */
+@Composable
+private fun DirectoryChooser(
+    serverId: String?,
+    currentDirectory: String,
+    onDismiss: () -> Unit,
+    onChoose: (String) -> Unit,
+) {
+    if (serverId != null) {
+        FolderPickerDialog(
+            serverId = serverId,
+            startPath = currentDirectory,
+            onDismiss = onDismiss,
+            onPick = onChoose,
+        )
+    } else {
+        EditDirectoryDialog(
+            currentDirectory = currentDirectory,
+            onDismiss = onDismiss,
+            onConfirm = onChoose,
+        )
     }
 }

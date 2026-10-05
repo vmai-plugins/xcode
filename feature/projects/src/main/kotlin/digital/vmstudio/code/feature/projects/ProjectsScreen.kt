@@ -2,6 +2,7 @@ package digital.vmstudio.code.feature.projects
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,9 +14,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Workspaces
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -26,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +41,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.ui.component.VmCard
+import digital.vmstudio.code.core.ui.component.VmDialog
 import digital.vmstudio.code.core.ui.component.VmEmptyState
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.theme.VmTheme
@@ -57,6 +65,26 @@ fun ProjectsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
+    var pendingDelete by remember { mutableStateOf<Project?>(null) }
+
+    pendingDelete?.let { project ->
+        VmDialog(
+            title = "Delete ${project.name}?",
+            onDismiss = { pendingDelete = null },
+            confirmLabel = "Delete",
+            destructive = true,
+            onConfirm = {
+                viewModel.delete(project)
+                pendingDelete = null
+            },
+        ) {
+            Text(
+                text = "Removes it from this app. The folder and its files on the server " +
+                    "are not touched.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -114,6 +142,7 @@ fun ProjectsScreen(
                             serverLabel = state.serverFor(project)?.name,
                             onOpen = { viewModel.open(project, onOpenProject) },
                             onToggleFavorite = { viewModel.toggleFavorite(project) },
+                            onDelete = { pendingDelete = project },
                         )
                     }
                 }
@@ -128,8 +157,10 @@ private fun ProjectRow(
     serverLabel: String?,
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val spacing = VmTheme.spacing
+    var menuOpen by remember { mutableStateOf(false) }
 
     VmCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
@@ -174,6 +205,20 @@ private fun ProjectRow(
                     },
                     modifier = Modifier.size(20.dp),
                 )
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More for ${project.name}")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        },
+                    )
+                }
             }
         }
     }
