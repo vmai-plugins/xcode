@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import digital.vmstudio.code.crash.CrashReportDialog
 import digital.vmstudio.code.feature.ai.AgentConversationsViewModel
 import digital.vmstudio.code.navigation.VmDestination
 import digital.vmstudio.code.navigation.VmNavHost
@@ -195,6 +196,7 @@ fun VmApp(
                     // reaches the user wherever they currently are.
                     CommandApprovalHost()
                     FileEditApprovalHost()
+                    CrashReportDialog()
                 }
             }
         }

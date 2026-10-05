@@ -11,6 +11,7 @@ import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.onFailure
 import digital.vmstudio.code.core.database.StartupReconciler
 import digital.vmstudio.code.core.update.UpdateManager
+import digital.vmstudio.code.crash.CrashReporter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,6 +30,7 @@ class VmApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         installLogging()
+        CrashReporter.install(this, BuildConfig.VERSION_NAME) { diagnosticsLogSink.exportAsText() }
         reconcileInterruptedWork()
         updateManager.checkForUpdate()
     }
