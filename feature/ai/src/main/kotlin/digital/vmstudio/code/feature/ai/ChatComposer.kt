@@ -258,6 +258,16 @@ internal fun ComposerChip(
     }
 }
 
+@Composable
+private fun MenuSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+    )
+}
+
 /** The + menu: attach, folder, mode and background run, out of the way until needed. */
 @Suppress("LongParameterList")
 @Composable
