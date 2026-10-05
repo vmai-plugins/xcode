@@ -133,6 +133,8 @@ data class AgentRunConfig(
      * them. Claude Code reads the uploaded copy named in the prompt instead.
      */
     val images: List<ImageAttachment> = emptyList(),
+    /** History budget in characters for gateway models; null uses the built-in default. */
+    val contextChars: Int? = null,
 ) {
     companion object {
         /**

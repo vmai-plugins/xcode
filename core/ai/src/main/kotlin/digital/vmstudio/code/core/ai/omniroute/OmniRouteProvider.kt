@@ -57,8 +57,20 @@ class OmniRouteProvider @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+    /**
+     * The dialect found for a base URL. Keyed by URL so switching gateways never
+     * reuses the old answer, and cached so a connection test does not send two
+     * billed probe requests every time.
+     */
     @Volatile
-    private var detectedDialect: OmniRouteDialect = OmniRouteDialect.UNKNOWN
+    private var detected: Pair<String, OmniRouteDialect>? = null
+
+    private suspend fun dialectFor(baseUrl: String, key: Secret): OmniRouteDialect {
+        detected?.let { (url, dialect) -> if (url == baseUrl) return dialect }
+        return detectDialect(baseUrl, key).also { dialect ->
+            detected = if (dialect == OmniRouteDialect.UNKNOWN) null else baseUrl to dialect
+        }
+    }
 
     override suspend fun checkHealth(serverId: String?): VmResult<AiProviderHealth> {
         val settings = preferences.preferences.first()
@@ -102,8 +114,7 @@ class OmniRouteProvider @Inject constructor(
                 )
 
                 is VmResult.Success -> {
-                    val dialect = detectDialect(baseUrl, key)
-                    detectedDialect = dialect
+                    val dialect = dialectFor(baseUrl, key)
                     VmResult.Success(
                         AiProviderHealth(
                             kind = kind,
@@ -166,12 +177,14 @@ class OmniRouteProvider @Inject constructor(
             return@flow
         }
 
-        val dialect = detectedDialect.takeIf { it != OmniRouteDialect.UNKNOWN }
-            ?: detectDialect(baseUrl, key).also { detectedDialect = it }
+        val dialect = dialectFor(baseUrl, key)
 
-        // Run as an autonomous agent loop whenever a project workspace is active on a server
-        val canUseTools = settings.aiToolsEnabled || config.serverId.isNotBlank()
-        if (config.workingDirectory.isNotBlank() && canUseTools) {
+        // The agent loop needs somewhere to act and the user's consent (the Tool
+        // use switch, on by default); otherwise this is a plain chat.
+        val canUseTools = settings.aiToolsEnabled &&
+            config.serverId.isNotBlank() &&
+            config.workingDirectory.isNotBlank()
+        if (canUseTools) {
             try {
                 emitAll(agentLoop.run(baseUrl, key, dialect, model, config, settings.agentAutonomyLevel))
             } finally {
@@ -260,6 +273,45 @@ class OmniRouteProvider @Inject constructor(
         } finally {
             key.wipe()
         }
+    }
+
+    /**
+     * Everything a server-side run needs to call the gateway itself: the address,
+     * the wire dialect and the key. The caller owns [GatewayAccess.key] and must
+     * wipe it.
+     */
+    suspend fun gatewayAccess(): VmResult<GatewayAccess> {
+        val settings = preferences.preferences.first()
+        val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
+        if (baseUrl.isEmpty()) {
+            return VmResult.Failure(
+                VmError.Ai(
+                    summary = "No gateway URL is set",
+                    suggestedAction = "Add your OmniRoute address in Settings.",
+                    retryable = false,
+                    provider = "omniroute",
+                ),
+            )
+        }
+        val key = resolveApiKey(settings.aiApiKeyCredentialId)
+            ?: return VmResult.Failure(
+                VmError.Authentication(
+                    summary = "No API key is stored",
+                    suggestedAction = "Add the gateway's API key in Settings.",
+                ),
+            )
+        val dialect = dialectFor(baseUrl, key)
+        if (dialect == OmniRouteDialect.UNKNOWN) {
+            key.wipe()
+            return VmResult.Failure(
+                VmError.Ai(
+                    summary = "The gateway's API type could not be detected",
+                    suggestedAction = "Run the connection test in Settings.",
+                    provider = "omniroute",
+                ),
+            )
+        }
+        return VmResult.Success(GatewayAccess(baseUrl, dialect, key))
     }
 
     // --- internals ---------------------------------------------------------------
@@ -386,3 +438,6 @@ class OmniRouteProvider @Inject constructor(
  */
 internal fun normalizeBaseUrl(raw: String): String =
     raw.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+
+/** Gateway connection details handed to a server-side run. */
+class GatewayAccess(val baseUrl: String, val dialect: OmniRouteDialect, val key: Secret)

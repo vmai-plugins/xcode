@@ -42,8 +42,10 @@ class AttachmentStager @Inject constructor(
         workingDirectory: String,
         uris: List<Uri>,
     ): VmResult<StagedAttachments> {
-        val remoteDir = "${workingDirectory.trimEnd('/')}/$ATTACHMENT_DIR"
+        val root = workingDirectory.trimEnd('/')
+        val remoteDir = "$root/$ATTACHMENT_DIR"
         ensureDirectory(serverId, remoteDir)?.let { return VmResult.Failure(it) }
+        keepOutOfGit(serverId, root)
 
         val paths = mutableListOf<String>()
         val images = mutableListOf<ImageAttachment>()
@@ -70,6 +72,22 @@ class AttachmentStager @Inject constructor(
         // Parents first: `.xcodes` may not exist yet either.
         remoteFileSystem.createDirectory(serverId, path.substringBeforeLast('/'))
         return (remoteFileSystem.createDirectory(serverId, path) as? VmResult.Failure)?.error
+    }
+
+    /**
+     * Adds `.xcodes/` to the repository's local exclude file, so attachments never
+     * show in `git status` or get committed. Local to this clone, unlike .gitignore,
+     * so the project's own files are untouched. Best effort: no repo, no change.
+     */
+    private suspend fun keepOutOfGit(serverId: String, root: String) {
+        val exclude = "$root/.git/info/exclude"
+        val gitDir = remoteFileSystem.exists(serverId, "$root/.git")
+        if (gitDir !is VmResult.Success || !gitDir.value) return
+        val current = (remoteFileSystem.readText(serverId, exclude) as? VmResult.Success)?.value.orEmpty()
+        if (current.lineSequence().any { it.trim() == GIT_EXCLUDE_LINE }) return
+        remoteFileSystem.createDirectory(serverId, "$root/.git/info")
+        val separator = if (current.isEmpty() || current.endsWith("\n")) "" else "\n"
+        remoteFileSystem.writeText(serverId, exclude, current + separator + GIT_EXCLUDE_LINE + "\n")
     }
 
     private suspend fun upload(serverId: String, file: File, remotePath: String): VmError? =
@@ -113,6 +131,7 @@ class AttachmentStager @Inject constructor(
 
     private companion object {
         const val ATTACHMENT_DIR = ".xcodes/attachments"
+        const val GIT_EXCLUDE_LINE = ".xcodes/"
         const val MAX_ATTACHMENT_BYTES = 20L * 1024 * 1024
         const val MAX_INLINE_IMAGE_BYTES = 4L * 1024 * 1024
         val UNSAFE_NAME_CHARS = Regex("[^A-Za-z0-9._-]")

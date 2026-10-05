@@ -4,11 +4,17 @@ name: Nightly APK
 # it can be installed straight from a phone browser. CI artifacts are zipped and
 # hidden in GitHub's mobile view; a release asset is one tap.
 #
+# Reuses the APK the Build workflow already produced for the same commit instead
+# of compiling the app a second time. A manual run (workflow_dispatch) has no
+# build to reuse, so it compiles.
+#
 # Marked as a pre-release under the moving `nightly` tag: the in-app updater only
 # reads full releases, so this never shows up as an update prompt.
 
 on:
-  push:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -18,44 +24,66 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false
 
 jobs:
   publish:
-    name: Build and publish nightly APK
+    name: Publish nightly APK
+    # Only builds that passed: a red main must not become the downloadable app.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Download the APK Build already made
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: app-debug
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: apk
 
       - name: Set up JDK 17
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: github.event_name == 'workflow_dispatch'
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: true
 
-      - name: Assemble debug
-        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Assemble debug (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          ./gradlew :app:assembleDebug --stacktrace
+          mkdir -p apk && cp app/build/outputs/apk/debug/app-debug.apk apk/
 
       - name: Name the APK
         run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          cp app/build/outputs/apk/debug/app-debug.apk "xcodes-nightly-${SHORT_SHA}.apk"
+          SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="${SHA::7}"
+          cp apk/app-debug.apk "xcodes-nightly-${SHORT_SHA}.apk"
+          # A fixed name too, so a server can always fetch the latest by one URL.
+          cp apk/app-debug.apk "xcodes-nightly.apk"
           echo "APK_FILE=xcodes-nightly-${SHORT_SHA}.apk" >> "$GITHUB_ENV"
+          echo "SHA=${SHA}" >> "$GITHUB_ENV"
           echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
 
-      # Move the tag to this commit; the release below then points at it.
       - name: Move nightly tag
         run: |
-          git tag -f nightly
+          git tag -f nightly "$SHA"
           git push -f origin nightly
 
       - name: Replace nightly release
@@ -63,7 +91,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete nightly --yes 2>/dev/null || true
-          gh release create nightly "$APK_FILE" \
+          gh release create nightly "$APK_FILE" xcodes-nightly.apk \
             --prerelease \
             --title "Nightly (${SHORT_SHA})" \
-            --notes "Debug build of main at ${GITHUB_SHA}. Installs next to a release build. On your phone: tap the .apk below, then allow installs from your browser if asked."
+            --notes "Debug build of main at ${SHA}. Installs next to a release build. On your phone: tap the .apk below, then allow installs from your browser if asked. Stable link to the latest: https://github.com/${GITHUB_REPOSITORY}/releases/download/nightly/xcodes-nightly.apk"

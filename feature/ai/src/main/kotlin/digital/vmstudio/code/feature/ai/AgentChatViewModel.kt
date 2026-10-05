@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
+import digital.vmstudio.code.core.ai.background.OmniRouteBackgroundRunner
 import digital.vmstudio.code.core.ai.background.BackgroundRun
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
@@ -128,6 +129,7 @@ class AgentChatViewModel @Inject constructor(
     private val tasks: AgentTaskRepository,
     private val remoteFileSystem: RemoteFileSystem,
     private val backgroundRunner: BackgroundAgentRunner,
+    private val serverSideRunner: OmniRouteBackgroundRunner,
     private val preferences: UserPreferencesSource,
     private val projectRepository: ProjectRepository,
     private val gitService: GitService,
@@ -227,12 +229,26 @@ class AgentChatViewModel @Inject constructor(
 
         _uiState.update { it.copy(isStartingBackgroundRun = true, error = null) }
         viewModelScope.launch {
-            val result = backgroundRunner.start(
-                serverId = server,
-                workingDirectory = state.workingDirectory.trim(),
-                prompt = prompt,
-                permissionMode = state.permissionMode,
-            )
+            // Claude models run as Claude Code's own detached session; gateway models
+            // run the OmniRoute loop on the server. Either way the phone can sleep.
+            val result = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
+                backgroundRunner.start(
+                    serverId = server,
+                    workingDirectory = state.workingDirectory.trim(),
+                    prompt = prompt,
+                    permissionMode = state.permissionMode,
+                )
+            } else {
+                serverSideRunner.start(
+                    serverId = server,
+                    workingDirectory = state.workingDirectory.trim(),
+                    prompt = prompt,
+                    model = state.selectedModel,
+                    permissionMode = state.permissionMode,
+                    history = state.transcript.toConversationTurns(),
+                    contextChars = preferences.contextChars(),
+                )
+            }
             when (result) {
                 is VmResult.Success -> {
                     append(
@@ -310,8 +326,15 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(isCheckingHealth = true) }
         viewModelScope.launch {
             val prefs = preferences.preferences.first()
-            val omniModel = prefs.aiSelectedModelId
-                ?.takeIf { prefs.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE }
+            val omniModel = if (prefs.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE) {
+                // The gateway is the default: use its chosen model, else its first
+                // synced one, syncing now if the list is still empty.
+                prefs.aiSelectedModelId
+                    ?: prefs.aiAvailableModelIds.firstOrNull()
+                    ?: (modelCatalog.sync() as? VmResult.Success)?.value?.firstOrNull()
+            } else {
+                null
+            }
             _uiState.update {
                 it.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
@@ -409,7 +432,7 @@ class AgentChatViewModel @Inject constructor(
             // from inside itself rather than racing the external `runJob = ...`
             // assignment below, which only completes after this block starts.
             val selfJob = coroutineContext[Job]
-            val conversationId = state.conversationId ?: createConversation(server, state)
+            val conversationId = state.conversationId ?: createConversation(server, state, prompt)
             if (conversationId == null) {
                 _uiState.update { it.copy(isRunning = false) }
                 return@launch
@@ -466,6 +489,7 @@ class AgentChatViewModel @Inject constructor(
                     state.transcript.toConversationTurns()
                 },
                 autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
+                contextChars = preferences.contextChars(),
             )
 
             try {
@@ -546,10 +570,11 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 
-    private suspend fun createConversation(server: String, state: AgentChatUiState): String? =
+    private suspend fun createConversation(server: String, state: AgentChatUiState, prompt: String): String? =
         when (
             val created = conversations.create(
-                title = state.workingDirectory.substringAfterLast('/').ifBlank { "Agent" },
+                // Named after what was asked, so Recents is not a list of folder names.
+                title = chatTitle(prompt),
                 providerId = providers.forModel(state.selectedModel).kind.name,
                 modelId = state.health?.version.orEmpty(),
                 serverId = server,
@@ -731,3 +756,17 @@ private fun List<TranscriptItem>.toConversationTurns(): List<ConversationTurn> =
         else -> null
     }
 }
+
+/** First line of the first message, shortened on a word boundary. */
+internal fun chatTitle(prompt: String): String {
+    val line = prompt.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+    if (line.length <= MAX_TITLE_CHARS) return line.ifEmpty { "New chat" }
+    val cut = line.take(MAX_TITLE_CHARS).substringBeforeLast(' ').ifBlank { line.take(MAX_TITLE_CHARS) }
+    return "$cut…"
+}
+
+private const val MAX_TITLE_CHARS = 48
+
+/** The history budget the user chose in Settings, in characters. */
+private suspend fun UserPreferencesSource.contextChars(): Int =
+    UserPreferences.contextChars(preferences.first().aiContextSize)

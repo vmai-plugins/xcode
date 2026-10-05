@@ -32,6 +32,7 @@ import javax.inject.Singleton
 @Singleton
 class BackgroundAgentRunner @Inject constructor(
     private val connectionManager: SshConnectionManager,
+    private val serverSideRuns: OmniRouteBackgroundRunner,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
 
@@ -81,12 +82,22 @@ class BackgroundAgentRunner @Inject constructor(
         workingDirectory: String? = null,
     ): VmResult<List<BackgroundRun>> = withContext(ioDispatcher) {
         val command = ClaudeCodeCommandBuilder.agentsJsonCommand(workingDirectory)
-        connectionManager.withSession(serverId) { session ->
+        val claude = connectionManager.withSession(serverId) { session ->
             when (val result = session.execute(command, CommandLimits.QUICK)) {
                 is VmResult.Failure -> result
                 is VmResult.Success ->
                     VmResult.Success(BackgroundRunParser.parse(result.value.combinedOutput()))
             }
+        }
+        // Server-side OmniRoute runs are listed alongside, so the chat panel and the
+        // finish notifications cover both engines. Either side failing alone (Claude
+        // Code not installed, the runner never used) still shows the other.
+        val gateway = serverSideRuns.list(serverId, workingDirectory)
+        when {
+            claude is VmResult.Success && gateway is VmResult.Success ->
+                VmResult.Success((claude.value + gateway.value).sortedByDescending { it.startedAtMillis })
+            gateway is VmResult.Success && gateway.value.isNotEmpty() -> gateway
+            else -> claude
         }
     }
 
@@ -106,7 +117,7 @@ class BackgroundAgentRunner @Inject constructor(
      * screen that positions text rather than printing it in order.
      */
     suspend fun logs(serverId: String, runId: String): VmResult<String> =
-        withContext(ioDispatcher) {
+        if (isServerSideRun(runId)) serverSideRuns.logs(serverId, runId) else withContext(ioDispatcher) {
             val command = ClaudeCodeCommandBuilder.logsCommand(runId)
             connectionManager.withSession(serverId) { session ->
                 when (val result = session.execute(command, CommandLimits.QUICK)) {
@@ -118,15 +129,25 @@ class BackgroundAgentRunner @Inject constructor(
 
     /** Stops a run. Its conversation is kept, so it can still be resumed. */
     suspend fun stop(serverId: String, runId: String): VmResult<Unit> = withContext(ioDispatcher) {
-        issueCommand(serverId, ClaudeCodeCommandBuilder.stopCommand(runId))
-            .flatMap { verifyStopped(serverId, runId) }
+        val command = if (isServerSideRun(runId)) {
+            serverSideRuns.stop(serverId, runId)
+        } else {
+            issueCommand(serverId, ClaudeCodeCommandBuilder.stopCommand(runId))
+        }
+        command.flatMap { verifyStopped(serverId, runId) }
     }
 
     /** Deletes a run and its record. Only meaningful once it has stopped. */
     suspend fun remove(serverId: String, runId: String): VmResult<Unit> = withContext(ioDispatcher) {
-        issueCommand(serverId, ClaudeCodeCommandBuilder.removeCommand(runId))
-            .flatMap { verifyRemoved(serverId, runId) }
+        val command = if (isServerSideRun(runId)) {
+            serverSideRuns.remove(serverId, runId)
+        } else {
+            issueCommand(serverId, ClaudeCodeCommandBuilder.removeCommand(runId))
+        }
+        command.flatMap { verifyRemoved(serverId, runId) }
     }
+
+    private fun isServerSideRun(runId: String) = runId.startsWith(OmniRouteBackgroundRunner.RUN_ID_PREFIX)
 
     // --- internals -----------------------------------------------------------------
 

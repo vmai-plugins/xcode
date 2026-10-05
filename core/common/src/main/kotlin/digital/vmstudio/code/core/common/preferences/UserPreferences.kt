@@ -55,7 +55,8 @@ data class UserPreferences(
      */
     val agentMaxContextTokens: Int = 120_000,
     val confirmDestructiveCommands: Boolean = true,
-    val aiProviderId: String = PROVIDER_CLAUDE_CODE,
+    /** OmniRoute by default: it runs free gateway models; Claude Code needs a plan. */
+    val aiProviderId: String = PROVIDER_OMNIROUTE,
     val aiBaseUrl: String = DEFAULT_AI_BASE_URL,
     /** Credential reference id for the AI API key, or null when not configured. */
     val aiApiKeyCredentialId: String? = null,
@@ -71,12 +72,17 @@ data class UserPreferences(
     val aiModelPreset: String = "balanced",
     val aiStreamingEnabled: Boolean = true,
     /**
-     * Whether OmniRoute may call tools (read/write/list files, run commands)
-     * instead of only chatting. Off by default: reliability at real tool-calling
-     * depends entirely on the selected model, and this is never assumed - only
-     * turned on by an explicit, informed choice.
+     * Whether OmniRoute may call tools (read/write/edit files, search, run
+     * commands, fetch pages) instead of only chatting. On by default: the app is a
+     * coding agent, and every write and risky command still goes through approval.
      */
-    val aiToolsEnabled: Boolean = false,
+    val aiToolsEnabled: Boolean = true,
+    /**
+     * How much conversation the gateway agent keeps before trimming: one of
+     * [CONTEXT_SMALL], [CONTEXT_LARGE], [CONTEXT_HUGE]. Small protects free models
+     * with short windows; large and huge suit models with long ones.
+     */
+    val aiContextSize: String = CONTEXT_LARGE,
     val gitUserName: String = "",
     val gitUserEmail: String = "",
     val notifyOnTaskComplete: Boolean = true,
@@ -90,8 +96,23 @@ data class UserPreferences(
     val activeProjectId: String? = null,
 ) {
     companion object {
-        /** No default gateway: the app is universal, so the user supplies their own. */
-        const val DEFAULT_AI_BASE_URL = ""
+        /** The project's own OmniRoute gateway, prefilled; any user can replace it in Settings. */
+        const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
+
+        const val CONTEXT_SMALL = "small"
+        const val CONTEXT_LARGE = "large"
+        const val CONTEXT_HUGE = "huge"
+
+        /** Characters of history kept for each context size (about 4 per token). */
+        fun contextChars(size: String): Int = when (size) {
+            CONTEXT_SMALL -> SMALL_CONTEXT_CHARS
+            CONTEXT_HUGE -> HUGE_CONTEXT_CHARS
+            else -> LARGE_CONTEXT_CHARS
+        }
+
+        private const val SMALL_CONTEXT_CHARS = 100_000
+        private const val LARGE_CONTEXT_CHARS = 400_000
+        private const val HUGE_CONTEXT_CHARS = 1_200_000
 
         /** Agentic backend: Claude Code driven over SSH. The default. */
         const val PROVIDER_CLAUDE_CODE = "claude-code"

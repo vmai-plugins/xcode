@@ -66,6 +66,9 @@ class OmniRouteAgentLoop @Inject constructor(
      */
     private val sessions = SessionMemory(MAX_SESSIONS)
 
+    /** Gateway+model pairs whose streaming failed once; they go straight to plain requests. */
+    private val nonStreaming: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     fun run(
         baseUrl: String,
         key: Secret,
@@ -106,7 +109,8 @@ class OmniRouteAgentLoop @Inject constructor(
             repeat(MAX_ITERATIONS) {
                 currentCoroutineContext().ensureActive()
 
-                val target = GatewayTarget(baseUrl, key, dialect, model)
+                val budget = config.contextChars ?: MAX_HISTORY_CHARS
+                val target = GatewayTarget(baseUrl, key, dialect, model, budget)
                 val (turn, streamedText) =
                     when (val next = nextTurn(target, workingDirectory, allowedTools, history)) {
                         is VmResult.Failure -> {
@@ -219,6 +223,7 @@ class OmniRouteAgentLoop @Inject constructor(
         val key: Secret,
         val dialect: OmniRouteDialect,
         val model: String,
+        val historyBudget: Int,
     )
 
     /**
@@ -252,7 +257,7 @@ class OmniRouteAgentLoop @Inject constructor(
             dialect = target.dialect,
             model = target.model,
             systemPrompt = systemPrompt(workingDirectory, allowedTools),
-            history = history,
+            history = trimHistory(history, budget = target.historyBudget),
             maxTokens = DEFAULT_MAX_TOKENS,
             tools = allowedTools.toList(),
         ).let { if (stream) OmniRouteStreamAssembler.streamingBody(target.dialect, it) else it }
@@ -277,7 +282,8 @@ class OmniRouteAgentLoop @Inject constructor(
         history: List<OmniRouteMessage>,
     ): VmResult<Pair<OmniRouteTurn, String>> {
         val assembler = OmniRouteStreamAssembler(target.dialect)
-        val streamed = try {
+        val streamKey = target.baseUrl + "|" + target.model
+        val streamed = if (streamKey in nonStreaming) null else try {
             httpClient.stream(buildRequest(target, workingDirectory, allowedTools, history, stream = true))
                 .collect { event ->
                     assembler.accept(event.data)?.takeIf { it.isNotEmpty() }?.let {
@@ -298,6 +304,8 @@ class OmniRouteAgentLoop @Inject constructor(
         if (streamed != null && streamed !is OmniRouteTurn.ParseFailed) {
             return VmResult.Success(streamed to assembler.textSoFar)
         }
+        // Don't pay for a failing stream attempt on every later turn.
+        if (streamKey !in nonStreaming) nonStreaming += streamKey
 
         val request = buildRequest(target, workingDirectory, allowedTools, history, stream = false)
         return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
@@ -355,7 +363,7 @@ class OmniRouteAgentLoop @Inject constructor(
         return OmniRouteMessage.ToolResult(
             toolCallId = call.id,
             toolName = call.name,
-            content = outcome.output,
+            content = capToolOutput(outcome.output),
             isError = outcome.isError,
         )
     }
@@ -413,9 +421,14 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
         val resolved = resolvePath(workingDirectory, path)
 
-        return when (val result = remoteFileSystem.readText(serverId, resolved)) {
+        return when (val result = remoteFileSystem.readText(serverId, resolved, MAX_READ_BYTES)) {
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
-            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Failure -> ToolOutcome(
+                result.error.summaryWithReason() +
+                    ". For a large file, use grep_search, or run_command with head, tail or sed " +
+                    "to read the part you need.",
+                isError = true,
+            )
         }
     }
 
@@ -712,6 +725,7 @@ class OmniRouteAgentLoop @Inject constructor(
         const val SESSION_PREFIX = "omniroute-"
         const val MAX_ITERATIONS = 25
         const val MAX_SESSIONS = 16
+        const val MAX_READ_BYTES = 256L * 1024
         const val DEFAULT_MAX_TOKENS = 4096
         const val SIZE_COLUMN_WIDTH = 10
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
@@ -766,3 +780,62 @@ internal fun List<ConversationTurn>.toMessages(): List<OmniRouteMessage> =
                 OmniRouteMessage.Assistant(text = turn.text, toolCalls = emptyList())
             }
         }
+
+/** One tool result is never allowed to dominate the model's context. */
+internal const val MAX_TOOL_OUTPUT_CHARS = 30_000
+
+/**
+ * Rough context budget in characters (about 4 per token). Small enough for free
+ * models with 32k-token windows to keep room for the reply.
+ */
+internal const val MAX_HISTORY_CHARS = 100_000
+
+/** Older tool results are shortened to this once the history is over budget. */
+internal const val TRIMMED_TOOL_OUTPUT_CHARS = 1_500
+
+internal fun capToolOutput(output: String, limit: Int = MAX_TOOL_OUTPUT_CHARS): String =
+    if (output.length <= limit) {
+        output
+    } else {
+        output.take(limit) + "\n\n[output truncated: ${output.length - limit} more characters]"
+    }
+
+private fun OmniRouteMessage.size(): Int = when (this) {
+    is OmniRouteMessage.User -> text.length
+    is OmniRouteMessage.Assistant -> text.orEmpty().length + toolCalls.sumOf { it.argumentsJson.length }
+    is OmniRouteMessage.ToolResult -> content.length
+}
+
+/**
+ * Keeps a long conversation inside the model's context window.
+ *
+ * First shortens old tool results (the bulk of most histories), keeping the last
+ * [keepRecent] messages intact. If that is not enough, drops whole turns from the
+ * front, always restarting at a user message so a tool result never appears
+ * without the call that produced it.
+ */
+internal fun trimHistory(
+    history: List<OmniRouteMessage>,
+    budget: Int = MAX_HISTORY_CHARS,
+    keepRecent: Int = 6,
+): List<OmniRouteMessage> {
+    if (history.sumOf { it.size() } <= budget) return history
+
+    val recentFrom = (history.size - keepRecent).coerceAtLeast(0)
+    var trimmed = history.mapIndexed { index, message ->
+        if (index < recentFrom && message is OmniRouteMessage.ToolResult) {
+            message.copy(content = capToolOutput(message.content, TRIMMED_TOOL_OUTPUT_CHARS))
+        } else {
+            message
+        }
+    }
+
+    while (trimmed.sumOf { it.size() } > budget) {
+        val nextUser = trimmed.withIndex()
+            .drop(1)
+            .firstOrNull { it.value is OmniRouteMessage.User }
+            ?.index ?: break
+        trimmed = trimmed.drop(nextUser)
+    }
+    return trimmed
+}
