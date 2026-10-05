@@ -90,8 +90,8 @@ data class UserPreferences(
     val activeProjectId: String? = null,
 ) {
     companion object {
-        /** No default gateway: the app is universal, so the user supplies their own. */
-        const val DEFAULT_AI_BASE_URL = ""
+        /** The project's own OmniRoute gateway, prefilled; any user can replace it in Settings. */
+        const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
 
         /** Agentic backend: Claude Code driven over SSH. The default. */
         const val PROVIDER_CLAUDE_CODE = "claude-code"
