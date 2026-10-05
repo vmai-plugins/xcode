@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
@@ -58,6 +59,9 @@ import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
+private fun AgentPermissionMode.changesThings(): Boolean =
+    this == AgentPermissionMode.ACCEPT_EDITS || this == AgentPermissionMode.BYPASS
+
 private fun AgentPermissionMode.chatLabel(): String = when (this) {
     AgentPermissionMode.PLAN -> "Plan only"
     AgentPermissionMode.ACCEPT_EDITS -> "Auto-edit"
@@ -92,7 +96,6 @@ internal fun ModernComposer(
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
-    var showModeMenu by remember { mutableStateOf(false) }
     val canSend = enabled && text.isNotBlank()
 
     Surface(
@@ -110,7 +113,7 @@ internal fun ModernComposer(
                 enabled = !isRunning,
                 placeholder = {
                     Text(
-                        text = if (isResuming) "Reply…" else "Message Claude Code",
+                        text = if (isResuming) "Reply…" else "Message",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -132,40 +135,34 @@ internal fun ModernComposer(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AttachButton(enabled = !isRunning, onAttach = onAttach)
-                // Folder chip: the working directory, tap to change.
-                ComposerChip(
-                    label = workingDirectory.trimEnd('/').substringAfterLast('/')
-                        .ifBlank { "Set folder" },
-                    icon = Icons.Default.Folder,
+                // Claude-style: one quiet row. Everything used now and then (attach,
+                // folder, mode, background) lives behind +; only the model and Send
+                // stay visible.
+                ComposerPlusMenu(
                     enabled = !isRunning,
-                    onClick = onEditDirectory,
+                    canSend = canSend && !isStartingBackgroundRun,
+                    isStartingBackgroundRun = isStartingBackgroundRun,
+                    folderName = workingDirectory.trimEnd('/').substringAfterLast('/')
+                        .ifBlank { "Set folder" },
+                    permissionMode = permissionMode,
+                    onAttach = onAttach,
+                    onEditDirectory = onEditDirectory,
+                    onPermissionModeChange = onPermissionModeChange,
+                    onSendInBackground = {
+                        val toSend = text
+                        onTextChange("")
+                        onSendInBackground(toSend)
+                    },
                 )
-
-                Box {
-                    ComposerChip(
-                        label = permissionMode.chatLabel(),
-                        enabled = !isRunning,
-                        onClick = { showModeMenu = true },
+                // Only the modes that change things are worth a permanent reminder.
+                if (permissionMode.changesThings()) {
+                    Text(
+                        text = permissionMode.chatLabel(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = VmTheme.colors.warning,
+                        modifier = Modifier.padding(horizontal = 4.dp),
                     )
-                    DropdownMenu(expanded = showModeMenu, onDismissRequest = { showModeMenu = false }) {
-                        AgentPermissionMode.entries.forEach { mode ->
-                            DropdownMenuItem(
-                                text = { Text(mode.chatLabel()) },
-                                leadingIcon = {
-                                    if (mode == permissionMode) {
-                                        Icon(Icons.Default.Check, contentDescription = null)
-                                    }
-                                },
-                                onClick = {
-                                    onPermissionModeChange(mode)
-                                    showModeMenu = false
-                                },
-                            )
-                        }
-                    }
                 }
-
                 ModelPicker(
                     selectedModel = selectedModel,
                     omniModels = omniModels,
@@ -176,27 +173,6 @@ internal fun ModernComposer(
                 )
 
                 Spacer(Modifier.weight(1f))
-
-                // Run on the server; keeps going with the phone locked or the app closed.
-                IconButton(
-                    onClick = {
-                        val toSend = text
-                        onTextChange("")
-                        onSendInBackground(toSend)
-                    },
-                    enabled = canSend && !isStartingBackgroundRun,
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    if (isStartingBackgroundRun) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Schedule,
-                            contentDescription = "Run in background",
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
 
                 if (isRunning) {
                     Surface(
@@ -401,18 +377,97 @@ private const val SYNC_LABEL = "Sync models now"
 private const val SET_UP_LABEL = "Set up OmniRoute in Settings"
 private const val MINUTES_PER_HOUR = 60L
 
+/** The + menu: attach, folder, mode and background run, out of the way until needed. */
+@Suppress("LongParameterList")
 @Composable
-private fun AttachButton(enabled: Boolean, onAttach: (Uri) -> Unit) {
+private fun ComposerPlusMenu(
+    enabled: Boolean,
+    canSend: Boolean,
+    isStartingBackgroundRun: Boolean,
+    folderName: String,
+    permissionMode: AgentPermissionMode,
+    onAttach: (Uri) -> Unit,
+    onEditDirectory: () -> Unit,
+    onPermissionModeChange: (AgentPermissionMode) -> Unit,
+    onSendInBackground: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         uris.forEach(onAttach)
     }
-    IconButton(onClick = { picker.launch("*/*") }, enabled = enabled, modifier = Modifier.size(36.dp)) {
-        Icon(
-            imageVector = Icons.Default.AttachFile,
-            contentDescription = "Attach files",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
+
+    Box {
+        IconButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.size(36.dp)) {
+            if (isStartingBackgroundRun) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "More options",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Attach files") },
+                leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    picker.launch("*/*")
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column {
+                        Text("Folder")
+                        Text(
+                            text = folderName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    onEditDirectory()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Column {
+                        Text("Send in background")
+                        Text(
+                            text = "Keeps running with the phone locked",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                leadingIcon = { Icon(Icons.Default.Schedule, contentDescription = null) },
+                enabled = canSend,
+                onClick = {
+                    expanded = false
+                    onSendInBackground()
+                },
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            MenuSectionLabel("Mode")
+            AgentPermissionMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text(mode.chatLabel()) },
+                    leadingIcon = {
+                        if (mode == permissionMode) Icon(Icons.Default.Check, contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        onPermissionModeChange(mode)
+                    },
+                )
+            }
+        }
     }
 }
 
