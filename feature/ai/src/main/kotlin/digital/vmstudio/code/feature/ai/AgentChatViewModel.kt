@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
+import digital.vmstudio.code.core.ai.background.OmniRouteBackgroundRunner
 import digital.vmstudio.code.core.ai.background.BackgroundRun
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
@@ -128,6 +129,7 @@ class AgentChatViewModel @Inject constructor(
     private val tasks: AgentTaskRepository,
     private val remoteFileSystem: RemoteFileSystem,
     private val backgroundRunner: BackgroundAgentRunner,
+    private val serverSideRunner: OmniRouteBackgroundRunner,
     private val preferences: UserPreferencesSource,
     private val projectRepository: ProjectRepository,
     private val gitService: GitService,
@@ -227,12 +229,25 @@ class AgentChatViewModel @Inject constructor(
 
         _uiState.update { it.copy(isStartingBackgroundRun = true, error = null) }
         viewModelScope.launch {
-            val result = backgroundRunner.start(
-                serverId = server,
-                workingDirectory = state.workingDirectory.trim(),
-                prompt = prompt,
-                permissionMode = state.permissionMode,
-            )
+            // Claude models run as Claude Code's own detached session; gateway models
+            // run the OmniRoute loop on the server. Either way the phone can sleep.
+            val result = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
+                backgroundRunner.start(
+                    serverId = server,
+                    workingDirectory = state.workingDirectory.trim(),
+                    prompt = prompt,
+                    permissionMode = state.permissionMode,
+                )
+            } else {
+                serverSideRunner.start(
+                    serverId = server,
+                    workingDirectory = state.workingDirectory.trim(),
+                    prompt = prompt,
+                    model = state.selectedModel,
+                    permissionMode = state.permissionMode,
+                    history = state.transcript.toConversationTurns(),
+                )
+            }
             when (result) {
                 is VmResult.Success -> {
                     append(

@@ -94,8 +94,6 @@ internal fun ModernComposer(
     val spacing = VmTheme.spacing
     var showModeMenu by remember { mutableStateOf(false) }
     val canSend = enabled && text.isNotBlank()
-    // Detached runs are a Claude Code CLI feature; the gateway has no equivalent.
-    val canRunInBackground = ClaudeCodeModels.isClaudeCode(selectedModel)
 
     Surface(
         modifier = modifier
@@ -179,14 +177,14 @@ internal fun ModernComposer(
 
                 Spacer(Modifier.weight(1f))
 
-                // Run detached on the server; survives closing the app.
+                // Run on the server; keeps going with the phone locked or the app closed.
                 IconButton(
                     onClick = {
                         val toSend = text
                         onTextChange("")
                         onSendInBackground(toSend)
                     },
-                    enabled = canSend && canRunInBackground && !isStartingBackgroundRun,
+                    enabled = canSend && !isStartingBackgroundRun,
                     modifier = Modifier.size(40.dp),
                 ) {
                     if (isStartingBackgroundRun) {

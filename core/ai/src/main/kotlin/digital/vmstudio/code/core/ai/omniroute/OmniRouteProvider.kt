@@ -275,6 +275,45 @@ class OmniRouteProvider @Inject constructor(
         }
     }
 
+    /**
+     * Everything a server-side run needs to call the gateway itself: the address,
+     * the wire dialect and the key. The caller owns [GatewayAccess.key] and must
+     * wipe it.
+     */
+    suspend fun gatewayAccess(): VmResult<GatewayAccess> {
+        val settings = preferences.preferences.first()
+        val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
+        if (baseUrl.isEmpty()) {
+            return VmResult.Failure(
+                VmError.Ai(
+                    summary = "No gateway URL is set",
+                    suggestedAction = "Add your OmniRoute address in Settings.",
+                    retryable = false,
+                    provider = "omniroute",
+                ),
+            )
+        }
+        val key = resolveApiKey(settings.aiApiKeyCredentialId)
+            ?: return VmResult.Failure(
+                VmError.Authentication(
+                    summary = "No API key is stored",
+                    suggestedAction = "Add the gateway's API key in Settings.",
+                ),
+            )
+        val dialect = dialectFor(baseUrl, key)
+        if (dialect == OmniRouteDialect.UNKNOWN) {
+            key.wipe()
+            return VmResult.Failure(
+                VmError.Ai(
+                    summary = "The gateway's API type could not be detected",
+                    suggestedAction = "Run the connection test in Settings.",
+                    provider = "omniroute",
+                ),
+            )
+        }
+        return VmResult.Success(GatewayAccess(baseUrl, dialect, key))
+    }
+
     // --- internals ---------------------------------------------------------------
 
     private suspend fun resolveApiKey(credentialId: String?): Secret? {
@@ -399,3 +438,6 @@ class OmniRouteProvider @Inject constructor(
  */
 internal fun normalizeBaseUrl(raw: String): String =
     raw.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+
+/** Gateway connection details handed to a server-side run. */
+class GatewayAccess(val baseUrl: String, val dialect: OmniRouteDialect, val key: Secret)
