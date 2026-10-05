@@ -390,6 +390,13 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
 
+        if (tool in FILE_TOOLS) {
+            val default = if (tool == OmniRouteTool.LIST_DIRECTORY) "." else null
+            val path = argument(call.argumentsJson, "path") ?: default
+            val problem = path?.let { PathGuard.problem(workingDirectory, it) }
+            if (problem != null) return ToolOutcome(problem, isError = true)
+        }
+
         return when (tool) {
             OmniRouteTool.READ_FILE -> readFile(call, serverId, workingDirectory)
             OmniRouteTool.LIST_DIRECTORY -> listDirectory(call, serverId, workingDirectory)
@@ -722,6 +729,13 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private companion object {
         const val TAG = "OmniRouteAgentLoop"
+        val FILE_TOOLS = setOf(
+            OmniRouteTool.READ_FILE,
+            OmniRouteTool.LIST_DIRECTORY,
+            OmniRouteTool.GREP_SEARCH,
+            OmniRouteTool.WRITE_FILE,
+            OmniRouteTool.EDIT_FILE,
+        )
         const val SESSION_PREFIX = "omniroute-"
         const val MAX_ITERATIONS = 25
         const val MAX_SESSIONS = 16

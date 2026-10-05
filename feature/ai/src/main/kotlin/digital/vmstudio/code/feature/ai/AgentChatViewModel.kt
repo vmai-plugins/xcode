@@ -222,13 +222,29 @@ class AgentChatViewModel @Inject constructor(
      * because the CLI refuses `--bg` together with the JSON output format; progress
      * is polled via [refreshBackgroundRuns] and read with [backgroundLogs].
      */
-    fun sendInBackground(prompt: String) {
+    fun sendInBackground(
+        rawPrompt: String,
+        attachments: List<Uri> = emptyList(),
+        onStarted: () -> Unit = {},
+    ) {
         val state = _uiState.value
         val server = state.serverId ?: return
-        if (prompt.isBlank() || state.isStartingBackgroundRun) return
+        if (rawPrompt.isBlank() || state.isStartingBackgroundRun) return
 
         _uiState.update { it.copy(isStartingBackgroundRun = true, error = null) }
         viewModelScope.launch {
+            var prompt = rawPrompt
+            if (attachments.isNotEmpty()) {
+                val directory = state.workingDirectory.trim()
+                when (val staged = attachmentStager.stage(server, directory, attachments)) {
+                    is VmResult.Failure -> {
+                        _uiState.update { it.copy(isStartingBackgroundRun = false, error = staged.error) }
+                        return@launch
+                    }
+                    is VmResult.Success -> prompt += "\n\nAttached files on the server:\n" +
+                        staged.value.remotePaths.joinToString("\n") { "- $it" }
+                }
+            }
             // Claude models run as Claude Code's own detached session; gateway models
             // run the OmniRoute loop on the server. Either way the phone can sleep.
             val result = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
@@ -251,6 +267,7 @@ class AgentChatViewModel @Inject constructor(
             }
             when (result) {
                 is VmResult.Success -> {
+                    onStarted()
                     append(
                         TranscriptItem.Diagnostic(
                             id = nextId(),
@@ -361,7 +378,20 @@ class AgentChatViewModel @Inject constructor(
     }
 
     fun setWorkingDirectory(path: String) {
-        _uiState.update { it.copy(workingDirectory = path) }
+        val current = _uiState.value
+        if (path == current.workingDirectory) return
+        // A Claude session belongs to the folder it started in, so a different folder
+        // is a different conversation; leaving the ids would resume a session that is
+        // not there.
+        val switching = !current.isRunning && current.transcript.isNotEmpty()
+        _uiState.update {
+            if (switching) {
+                it.copy(workingDirectory = path, conversationId = null, providerSessionId = null)
+            } else {
+                it.copy(workingDirectory = path)
+            }
+        }
+        refreshBackgroundRuns()
     }
 
     fun selectProject(project: Project) {
@@ -739,7 +769,7 @@ private fun StoredEntry.toTranscriptItem(nextId: () -> String): TranscriptItem =
 
     is StoredEntry.Failed -> TranscriptItem.Failure(
         id = nextId(),
-        error = VmError.Ai(summary = summary, provider = "restored"),
+        error = VmError.Ai(summary = summary),
     )
 }
 

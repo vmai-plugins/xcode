@@ -91,7 +91,7 @@ internal fun ModernComposer(
     workingDirectory: String,
     onEditDirectory: () -> Unit,
     onSend: (String) -> Unit,
-    onSendInBackground: (String) -> Unit,
+    onSendInBackground: (String, () -> Unit) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -148,11 +148,9 @@ internal fun ModernComposer(
                     onAttach = onAttach,
                     onEditDirectory = onEditDirectory,
                     onPermissionModeChange = onPermissionModeChange,
-                    onSendInBackground = {
-                        val toSend = text
-                        onTextChange("")
-                        onSendInBackground(toSend)
-                    },
+                    // The box is cleared only once the run really started, so a refusal
+                    // ("Python 3 is needed", a production server) never eats the message.
+                    onSendInBackground = { onSendInBackground(text) { onTextChange("") } },
                 )
                 // Only the modes that change things are worth a permanent reminder.
                 if (permissionMode.changesThings()) {
