@@ -35,6 +35,7 @@ import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -199,6 +200,14 @@ class AgentChatViewModel @Inject constructor(
             }
         }
         refreshBackgroundRuns()
+        // Live status for detached runs while the chat is open: re-read the list
+        // only while something is still running, so an idle chat makes no SSH calls.
+        viewModelScope.launch {
+            while (true) {
+                delay(BACKGROUND_POLL_MILLIS)
+                if (_uiState.value.backgroundRuns.any { it.isRunning }) refreshBackgroundRuns()
+            }
+        }
     }
 
     /**
@@ -832,3 +841,6 @@ private const val MAX_TITLE_CHARS = 48
 /** The history budget the user chose in Settings, in characters. */
 private suspend fun UserPreferencesSource.contextChars(): Int =
     UserPreferences.contextChars(preferences.first().aiContextSize)
+
+/** How often running background runs are re-read while their chat is open. */
+private const val BACKGROUND_POLL_MILLIS = 15_000L
