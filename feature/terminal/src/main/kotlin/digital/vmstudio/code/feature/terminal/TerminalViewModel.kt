@@ -247,8 +247,6 @@ class TerminalViewModel @Inject constructor(
     }
 
     /** Full buffer text for the copy action. */
-    suspend fun bufferText(): String = activeSession()?.allText().orEmpty()
-
     private fun activeSession(): TerminalSession? =
         _uiState.value.activeSessionId?.let(sessionManager::session)
 

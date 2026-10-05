@@ -19,11 +19,3 @@ data class GoogleDriveFileListResponse(
     val files: List<GoogleDriveFile> = emptyList(),
     val nextPageToken: String? = null,
 )
-
-data class DriveProjectBackup(
-    val fileId: String,
-    val projectName: String,
-    val filename: String,
-    val sizeBytes: Long,
-    val createdAtMillis: Long,
-)

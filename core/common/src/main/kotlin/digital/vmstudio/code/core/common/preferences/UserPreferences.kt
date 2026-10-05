@@ -38,9 +38,6 @@ data class UserPreferences(
     val themePreference: ThemePreference = ThemePreference.SYSTEM,
     val editorFontSizeSp: Float = 13f,
     val terminalFontSizeSp: Float = 12.5f,
-    val editorSoftWrap: Boolean = false,
-    val editorShowLineNumbers: Boolean = true,
-    val editorUseSpaces: Boolean = true,
     val terminalScrollbackLines: Int = 5_000,
     val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.SAFE_AUTO,
     /**

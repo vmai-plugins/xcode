@@ -162,13 +162,14 @@ fun ConnectorsScreen(
                                 label = if (state.driveBackups.isNotEmpty()) {
                                     "Connected"
                                 } else {
-                                    "Cloud Sync Ready"
+                                    "Not set up"
                                 },
                             )
                         }
 
                         Text(
-                            text = "Back up and restore server projects to Google Drive.",
+                            text = "Back up server projects to Google Drive. Google sign-in is not " +
+                                "built into this version yet, so backups cannot run.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

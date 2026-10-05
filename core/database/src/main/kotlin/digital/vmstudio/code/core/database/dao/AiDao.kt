@@ -1,6 +1,5 @@
 package digital.vmstudio.code.core.database.dao
 
-import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Transaction
@@ -42,9 +41,6 @@ interface ConversationDao {
     @Query("DELETE FROM conversation WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("UPDATE conversation SET isArchived = :archived WHERE id = :id")
-    suspend fun setArchived(id: String, archived: Boolean)
-
     @Query(
         """
         UPDATE conversation
@@ -62,9 +58,6 @@ interface MessageDao {
 
     @Query("SELECT * FROM message WHERE conversationId = :conversationId ORDER BY sequence ASC")
     fun observeForConversation(conversationId: String): Flow<List<MessageEntity>>
-
-    @Query("SELECT * FROM message WHERE conversationId = :conversationId ORDER BY sequence DESC")
-    fun pagingForConversation(conversationId: String): PagingSource<Int, MessageEntity>
 
     /**
      * Most recent messages, oldest-first once reversed. Used by the context engine,
@@ -95,14 +88,6 @@ interface MessageDao {
         upsert(message.copy(sequence = maxSequence(message.conversationId) + 1))
     }
 
-    @Query("UPDATE message SET content = :content, status = :status WHERE id = :id")
-    suspend fun updateContent(id: String, content: String, status: MessageStatus)
-
-    @Query(
-        "UPDATE message SET status = :status, errorText = :errorText, tokenCount = :tokenCount WHERE id = :id",
-    )
-    suspend fun finalize(id: String, status: MessageStatus, errorText: String?, tokenCount: Int)
-
     @Query("DELETE FROM message WHERE id = :id")
     suspend fun deleteById(id: String)
 
@@ -126,19 +111,8 @@ interface ToolExecutionDao {
     @Query("SELECT * FROM tool_execution WHERE conversationId = :conversationId ORDER BY startedAtMillis ASC")
     fun observeForConversation(conversationId: String): Flow<List<ToolExecutionEntity>>
 
-    @Query("SELECT * FROM tool_execution WHERE messageId = :messageId ORDER BY startedAtMillis ASC")
-    fun observeForMessage(messageId: String): Flow<List<ToolExecutionEntity>>
-
-    @Query("SELECT * FROM tool_execution WHERE taskId = :taskId ORDER BY startedAtMillis ASC")
-    suspend fun getForTask(taskId: String): List<ToolExecutionEntity>
-
     @Query("SELECT * FROM tool_execution WHERE id = :id")
     suspend fun getById(id: String): ToolExecutionEntity?
-
-    @Query("SELECT * FROM tool_execution WHERE status = :status ORDER BY startedAtMillis ASC")
-    fun observeAwaitingApproval(
-        status: ToolExecutionStatus = ToolExecutionStatus.AWAITING_APPROVAL,
-    ): Flow<List<ToolExecutionEntity>>
 
     @Upsert
     suspend fun upsert(execution: ToolExecutionEntity)

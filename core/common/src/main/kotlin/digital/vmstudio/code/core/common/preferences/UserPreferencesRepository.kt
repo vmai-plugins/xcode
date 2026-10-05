@@ -65,20 +65,6 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.TERMINAL_FONT_SIZE] = sp.coerceIn(8f, 32f)
     }
 
-    suspend fun setEditorSoftWrap(enabled: Boolean) = edit { it[Keys.EDITOR_SOFT_WRAP] = enabled }
-
-    suspend fun setEditorShowLineNumbers(enabled: Boolean) = edit {
-        it[Keys.EDITOR_LINE_NUMBERS] = enabled
-    }
-
-    suspend fun setEditorUseSpaces(useSpaces: Boolean) = edit {
-        it[Keys.EDITOR_USE_SPACES] = useSpaces
-    }
-
-    suspend fun setTerminalScrollback(lines: Int) = edit {
-        it[Keys.TERMINAL_SCROLLBACK] = lines.coerceIn(500, 50_000)
-    }
-
     suspend fun setAgentAutonomyLevel(level: AgentAutonomyLevel) = edit {
         it[Keys.AGENT_AUTONOMY] = level.name
     }
@@ -89,11 +75,6 @@ class UserPreferencesRepository @Inject constructor(
      * Clamped to the range the CLI accepts; a value it would reject fails the whole
      * run, so it is corrected here rather than at the command line.
      */
-    suspend fun setAgentContextBudget(maxContextTokens: Int) = edit {
-        it[Keys.AGENT_MAX_CONTEXT_TOKENS] =
-            maxContextTokens.coerceIn(MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS)
-    }
-
     suspend fun setConfirmDestructiveCommands(enabled: Boolean) = edit {
         it[Keys.CONFIRM_DESTRUCTIVE] = enabled
     }
@@ -162,9 +143,6 @@ class UserPreferencesRepository @Inject constructor(
             themePreference = this[Keys.THEME].toEnum(defaults.themePreference),
             editorFontSizeSp = this[Keys.EDITOR_FONT_SIZE] ?: defaults.editorFontSizeSp,
             terminalFontSizeSp = this[Keys.TERMINAL_FONT_SIZE] ?: defaults.terminalFontSizeSp,
-            editorSoftWrap = this[Keys.EDITOR_SOFT_WRAP] ?: defaults.editorSoftWrap,
-            editorShowLineNumbers = this[Keys.EDITOR_LINE_NUMBERS] ?: defaults.editorShowLineNumbers,
-            editorUseSpaces = this[Keys.EDITOR_USE_SPACES] ?: defaults.editorUseSpaces,
             terminalScrollbackLines = this[Keys.TERMINAL_SCROLLBACK] ?: defaults.terminalScrollbackLines,
             agentAutonomyLevel = this[Keys.AGENT_AUTONOMY].toEnum(defaults.agentAutonomyLevel),
             agentMaxContextTokens = this[Keys.AGENT_MAX_CONTEXT_TOKENS] ?: defaults.agentMaxContextTokens,
@@ -191,9 +169,6 @@ class UserPreferencesRepository @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val EDITOR_FONT_SIZE = floatPreferencesKey("editor_font_size")
         val TERMINAL_FONT_SIZE = floatPreferencesKey("terminal_font_size")
-        val EDITOR_SOFT_WRAP = booleanPreferencesKey("editor_soft_wrap")
-        val EDITOR_LINE_NUMBERS = booleanPreferencesKey("editor_line_numbers")
-        val EDITOR_USE_SPACES = booleanPreferencesKey("editor_use_spaces")
         val TERMINAL_SCROLLBACK = intPreferencesKey("terminal_scrollback")
         val AGENT_AUTONOMY = stringPreferencesKey("agent_autonomy")
         val AGENT_MAX_CONTEXT_TOKENS = intPreferencesKey("agent_max_context_tokens")
@@ -213,10 +188,6 @@ class UserPreferencesRepository @Inject constructor(
 
     private companion object {
         const val TAG = "UserPreferencesRepository"
-
-        /** The range the CLI accepts for --autocompact. */
-        const val MIN_CONTEXT_TOKENS = 100_000
-        const val MAX_CONTEXT_TOKENS = 1_000_000
     }
 }
 

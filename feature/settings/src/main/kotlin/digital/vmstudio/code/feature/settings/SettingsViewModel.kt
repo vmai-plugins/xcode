@@ -71,8 +71,6 @@ class SettingsViewModel @Inject constructor(
 
     fun retryInstall() = updateManager.retryInstall()
 
-    fun dismissUpdate() = updateManager.dismiss()
-
     fun setTheme(preference: ThemePreference) {
         viewModelScope.launch { preferencesRepository.setThemePreference(preference) }
     }

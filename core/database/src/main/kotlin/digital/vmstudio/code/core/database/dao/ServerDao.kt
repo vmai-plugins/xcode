@@ -25,12 +25,6 @@ interface ServerDao {
     @Query("SELECT * FROM server WHERE id = :id")
     suspend fun getById(id: String): ServerEntity?
 
-    @Query("SELECT * FROM server WHERE groupId = :groupId ORDER BY name COLLATE NOCASE ASC")
-    fun observeByGroup(groupId: String): Flow<List<ServerEntity>>
-
-    @Query("SELECT COUNT(*) FROM server")
-    fun observeCount(): Flow<Int>
-
     @Upsert
     suspend fun upsert(server: ServerEntity)
 

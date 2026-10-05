@@ -1,10 +1,8 @@
 package digital.vmstudio.code.core.database.dao
 
-import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
-import digital.vmstudio.code.core.database.entity.ActivityCategory
 import digital.vmstudio.code.core.database.entity.ActivityEntity
 import digital.vmstudio.code.core.database.entity.ConnectorEntity
 import digital.vmstudio.code.core.database.entity.ConnectorStatus
@@ -27,22 +25,6 @@ interface GitRepositoryDao {
     @Upsert
     suspend fun upsert(repository: GitRepositoryEntity)
 
-    @Query(
-        """
-        UPDATE git_repository
-        SET currentBranch = :branch, aheadCount = :ahead, behindCount = :behind,
-            lastFetchedAtMillis = :timestamp
-        WHERE projectId = :projectId
-        """,
-    )
-    suspend fun updateSyncState(
-        projectId: String,
-        branch: String?,
-        ahead: Int,
-        behind: Int,
-        timestamp: Long,
-    )
-
     @Query("DELETE FROM git_repository WHERE projectId = :projectId")
     suspend fun deleteForProject(projectId: String)
 }
@@ -55,9 +37,6 @@ interface ConnectorDao {
 
     @Query("SELECT * FROM connector WHERE id = :id")
     suspend fun getById(id: String): ConnectorEntity?
-
-    @Query("SELECT * FROM connector WHERE status = :status")
-    suspend fun getByStatus(status: ConnectorStatus): List<ConnectorEntity>
 
     @Upsert
     suspend fun upsert(connector: ConnectorEntity)
@@ -81,25 +60,8 @@ interface TransferDao {
     @Query("SELECT * FROM transfer WHERE id = :id")
     suspend fun getById(id: String): TransferEntity?
 
-    @Query(
-        "SELECT * FROM transfer WHERE status = :queued ORDER BY createdAtMillis ASC LIMIT :limit",
-    )
-    suspend fun nextQueued(
-        limit: Int,
-        queued: TransferStatus = TransferStatus.QUEUED,
-    ): List<TransferEntity>
-
     @Upsert
     suspend fun upsert(transfer: TransferEntity)
-
-    @Query(
-        """
-        UPDATE transfer
-        SET transferredBytes = :transferred, bytesPerSecond = :speed, updatedAtMillis = :timestamp
-        WHERE id = :id
-        """,
-    )
-    suspend fun updateProgress(id: String, transferred: Long, speed: Long, timestamp: Long)
 
     @Query(
         """
@@ -120,9 +82,6 @@ interface TransferDao {
     @Query("DELETE FROM transfer WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("DELETE FROM transfer WHERE status IN (:statuses)")
-    suspend fun clearByStatus(statuses: List<TransferStatus>)
-
     /**
      * A RUNNING transfer cannot survive process death; it is reset to QUEUED so the
      * worker resumes it from [TransferEntity.resumeOffsetBytes] instead of stalling.
@@ -137,30 +96,11 @@ interface TransferDao {
 @Dao
 interface ActivityDao {
 
-    @Query("SELECT * FROM activity ORDER BY timestampMillis DESC")
-    fun pagingAll(): PagingSource<Int, ActivityEntity>
-
     @Query("SELECT * FROM activity ORDER BY timestampMillis DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<ActivityEntity>>
 
-    @Query(
-        """
-        SELECT * FROM activity
-        WHERE (:projectId IS NULL OR projectId = :projectId)
-          AND (:serverId IS NULL OR serverId = :serverId)
-        ORDER BY timestampMillis DESC
-        """,
-    )
-    fun pagingFiltered(projectId: String?, serverId: String?): PagingSource<Int, ActivityEntity>
-
-    @Query("SELECT * FROM activity WHERE category IN (:categories) ORDER BY timestampMillis DESC")
-    fun pagingByCategory(categories: List<ActivityCategory>): PagingSource<Int, ActivityEntity>
-
     @Upsert
     suspend fun insert(activity: ActivityEntity)
-
-    @Query("DELETE FROM activity WHERE timestampMillis < :cutoff")
-    suspend fun deleteOlderThan(cutoff: Long)
 
     @Query("DELETE FROM activity")
     suspend fun clear()

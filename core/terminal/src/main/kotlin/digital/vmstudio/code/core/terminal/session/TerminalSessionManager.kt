@@ -44,9 +44,6 @@ class TerminalSessionManager @Inject constructor(
 
     fun session(id: String): TerminalSession? = sessionsById[id]
 
-    fun sessionsFor(serverId: String): List<TerminalSession> =
-        _sessions.value.filter { it.serverId == serverId }
-
     /**
      * Opens a shell on [serverId], connecting first if necessary.
      *
@@ -115,14 +112,6 @@ class TerminalSessionManager @Inject constructor(
     }
 
     /** Closes every session for a server, used when its connection is dropped. */
-    fun closeAllFor(serverId: String) {
-        sessionsFor(serverId).forEach { close(it.id) }
-    }
-
-    fun closeAll() {
-        sessionsById.keys.toList().forEach(::close)
-    }
-
     private fun defaultTitle(serverName: String): String {
         val existing = _sessions.value.count { it.title.startsWith(serverName) }
         return if (existing == 0) serverName else "$serverName ${existing + 1}"
