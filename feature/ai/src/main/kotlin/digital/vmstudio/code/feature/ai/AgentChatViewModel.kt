@@ -416,7 +416,7 @@ class AgentChatViewModel @Inject constructor(
             // from inside itself rather than racing the external `runJob = ...`
             // assignment below, which only completes after this block starts.
             val selfJob = coroutineContext[Job]
-            val conversationId = state.conversationId ?: createConversation(server, state)
+            val conversationId = state.conversationId ?: createConversation(server, state, prompt)
             if (conversationId == null) {
                 _uiState.update { it.copy(isRunning = false) }
                 return@launch
@@ -553,10 +553,11 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 
-    private suspend fun createConversation(server: String, state: AgentChatUiState): String? =
+    private suspend fun createConversation(server: String, state: AgentChatUiState, prompt: String): String? =
         when (
             val created = conversations.create(
-                title = state.workingDirectory.substringAfterLast('/').ifBlank { "Agent" },
+                // Named after what was asked, so Recents is not a list of folder names.
+                title = chatTitle(prompt),
                 providerId = providers.forModel(state.selectedModel).kind.name,
                 modelId = state.health?.version.orEmpty(),
                 serverId = server,
@@ -738,3 +739,13 @@ private fun List<TranscriptItem>.toConversationTurns(): List<ConversationTurn> =
         else -> null
     }
 }
+
+/** First line of the first message, shortened on a word boundary. */
+internal fun chatTitle(prompt: String): String {
+    val line = prompt.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+    if (line.length <= MAX_TITLE_CHARS) return line.ifEmpty { "New chat" }
+    val cut = line.take(MAX_TITLE_CHARS).substringBeforeLast(' ').ifBlank { line.take(MAX_TITLE_CHARS) }
+    return "$cut…"
+}
+
+private const val MAX_TITLE_CHARS = 48
