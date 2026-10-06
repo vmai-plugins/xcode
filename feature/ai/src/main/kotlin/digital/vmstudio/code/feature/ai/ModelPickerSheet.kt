@@ -1,5 +1,6 @@
 package digital.vmstudio.code.feature.ai
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,14 +13,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
@@ -98,6 +104,21 @@ internal fun ModelPicker(
     }
 }
 
+/** What the picker lists: everything, only free gateway models, or only Claude Code. */
+internal enum class ModelFilter { ALL, FREE, CLAUDE }
+
+/** The gateway ids a filter keeps, after the search. */
+internal fun visibleGatewayModels(
+    ids: List<String>,
+    freeIds: Set<String>,
+    query: String,
+    filter: ModelFilter,
+): List<String> = when (filter) {
+    ModelFilter.CLAUDE -> emptyList()
+    ModelFilter.FREE -> filterModels(ids.filter { it in freeIds }, query)
+    ModelFilter.ALL -> filterModels(ids, query)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ModelPickerSheet(
@@ -110,10 +131,19 @@ private fun ModelPickerSheet(
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
-    val claude = ClaudeCodeModels.CHOICES.filter { choice ->
-        filterModels(listOf("${choice.label} ${choice.id} ${choice.description}"), query).isNotEmpty()
+    // Opens on Free when the gateway marks any model free: that is what most people
+    // pick from, and it answers "which ones cost nothing" at a glance.
+    var filter by remember {
+        mutableStateOf(if (omniModels.freeIds.isEmpty()) ModelFilter.ALL else ModelFilter.FREE)
     }
-    val groups = groupModels(filterModels(omniModels.ids, query))
+    val claude = if (filter == ModelFilter.FREE) {
+        emptyList()
+    } else {
+        ClaudeCodeModels.CHOICES.filter { choice ->
+            filterModels(listOf("${choice.label} ${choice.id} ${choice.description}"), query).isNotEmpty()
+        }
+    }
+    val groups = groupModels(visibleGatewayModels(omniModels.ids, omniModels.freeIds, query, filter))
     val nothing = claude.isEmpty() && groups.all { it.second.isEmpty() }
 
     ModalBottomSheet(
@@ -123,7 +153,7 @@ private fun ModelPickerSheet(
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Choose a model", style = MaterialTheme.typography.titleMedium)
+                    Text("Choose a model", style = MaterialTheme.typography.titleLarge)
                     Text(
                         text = omniSectionTitle(omniModels, isSyncing),
                         style = MaterialTheme.typography.bodySmall,
@@ -133,33 +163,75 @@ private fun ModelPickerSheet(
                 SyncButton(omniModels.isConfigured, isSyncing, onSync)
             }
             SearchField(query = query, onQueryChange = { query = it })
+            FilterRow(filter, freeCount = omniModels.freeIds.size, onFilter = { filter = it })
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 160.dp, max = 520.dp),
+                    .heightIn(min = 160.dp, max = 560.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 if (claude.isNotEmpty()) {
-                    item {
-                        val label = if (isClaudeCodeMissing) CLAUDE_MISSING_LABEL else "Claude Code"
-                        SectionLabel(label)
+                    item(key = "header-claude") {
+                        SectionLabel(if (isClaudeCodeMissing) CLAUDE_MISSING_LABEL else CLAUDE_LABEL)
                     }
                     items(claude, key = { "claude-${it.id}" }) { choice ->
-                        val isSelected = choice.id == selectedModel
-                        ModelRow(choice.label, choice.description, isSelected) { onPick(choice.id) }
+                        ModelRow(
+                            title = choice.label,
+                            subtitle = choice.description,
+                            vendor = "claude",
+                            selected = choice.id == selectedModel,
+                            free = false,
+                        ) { onPick(choice.id) }
                     }
                 }
                 groups.forEach { (vendor, ids) ->
                     if (ids.isEmpty()) return@forEach
                     item(key = "header-$vendor") { SectionLabel(vendor ?: "OmniRoute") }
                     items(ids, key = { "omni-$it" }) { id ->
-                        val subtitle = id.takeIf { '/' in id }
-                        ModelRow(id.substringAfterLast('/'), subtitle, id == selectedModel) { onPick(id) }
+                        ModelRow(
+                            title = id.substringAfterLast('/'),
+                            subtitle = id.takeIf { '/' in it },
+                            vendor = vendor ?: id,
+                            selected = id == selectedModel,
+                            free = id in omniModels.freeIds,
+                        ) { onPick(id) }
                     }
                 }
-                if (nothing) item { EmptyHint(query, omniModels) }
+                if (nothing) item(key = "empty") { EmptyHint(query, omniModels, filter) }
             }
         }
+    }
+}
+
+@Composable
+private fun FilterRow(filter: ModelFilter, freeCount: Int, onFilter: (ModelFilter) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(bottom = 4.dp),
+    ) {
+        FilterChip(
+            selected = filter == ModelFilter.ALL,
+            onClick = { onFilter(ModelFilter.ALL) },
+            label = { Text("All") },
+        )
+        FilterChip(
+            selected = filter == ModelFilter.FREE,
+            onClick = { onFilter(ModelFilter.FREE) },
+            label = { Text(if (freeCount > 0) "Free · $freeCount" else "Free") },
+            leadingIcon = {
+                Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+            },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = VmTheme.colors.successContainer,
+                selectedLabelColor = VmTheme.colors.onSuccessContainer,
+                selectedLeadingIconColor = VmTheme.colors.onSuccessContainer,
+            ),
+        )
+        FilterChip(
+            selected = filter == ModelFilter.CLAUDE,
+            onClick = { onFilter(ModelFilter.CLAUDE) },
+            label = { Text("Claude Code") },
+        )
     }
 }
 
@@ -203,37 +275,78 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium,
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp),
+        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp, start = 8.dp),
+    )
+}
+
+/** A round badge with the provider's initial, tinted per provider so a long list scans by colour. */
+@Composable
+private fun ProviderAvatar(vendor: String) {
+    val palette = listOf(
+        MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer,
+        MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer,
+        MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer,
+        VmTheme.colors.infoContainer to VmTheme.colors.onInfoContainer,
+        VmTheme.colors.agentContainer to VmTheme.colors.onAgentContainer,
+    )
+    val (background, foreground) = palette[(vendor.lowercase().hashCode() and Int.MAX_VALUE) % palette.size]
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = vendor.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?",
+            style = MaterialTheme.typography.labelLarge,
+            color = foreground,
+        )
+    }
+}
+
+@Composable
+private fun FreeBadge() {
+    Text(
+        text = "FREE",
+        style = MaterialTheme.typography.labelSmall,
+        color = VmTheme.colors.onSuccessContainer,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(VmTheme.colors.successContainer)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 
 @Composable
-private fun ModelRow(title: String, subtitle: String?, selected: Boolean, onClick: () -> Unit) {
+private fun ModelRow(
+    title: String,
+    subtitle: String?,
+    vendor: String,
+    selected: Boolean,
+    free: Boolean,
+    onClick: () -> Unit,
+) {
+    val background = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(background)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(modifier = Modifier.size(20.dp)) {
-            if (selected) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Selected",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
+        ProviderAvatar(vendor)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -248,13 +361,24 @@ private fun ModelRow(title: String, subtitle: String?, selected: Boolean, onClic
                 )
             }
         }
+        if (free) FreeBadge()
+        if (selected) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = "Selected",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun EmptyHint(query: String, omniModels: OmniRouteModels) {
+private fun EmptyHint(query: String, omniModels: OmniRouteModels, filter: ModelFilter) {
     val text = when {
         query.isNotBlank() -> "No model matches “${query.trim()}”."
+        filter == ModelFilter.FREE && omniModels.ids.isNotEmpty() ->
+            "The gateway marks none of its models as free. Tap All to see every model."
         !omniModels.isConfigured -> "Set the gateway URL and key in Settings to see its models."
         else -> "No models yet. Tap the refresh button to sync."
     }
@@ -270,7 +394,11 @@ internal fun omniSectionTitle(models: OmniRouteModels, isSyncing: Boolean): Stri
     isSyncing -> "OmniRoute · syncing…"
     !models.isConfigured -> "OmniRoute · not set up"
     models.syncedAtMillis == 0L -> "OmniRoute · not synced yet"
-    else -> "OmniRoute · ${models.ids.size} models, synced ${relativeAge(models.syncedAtMillis)}"
+    else -> buildString {
+        append("OmniRoute · ${models.ids.size} models")
+        if (models.freeIds.isNotEmpty()) append(", ${models.freeIds.size} free")
+        append(" · synced ${relativeAge(models.syncedAtMillis)}")
+    }
 }
 
 private fun relativeAge(millis: Long): String {
@@ -284,4 +412,5 @@ private fun relativeAge(millis: Long): String {
 
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val MINUTES_PER_HOUR = 60L
+private const val CLAUDE_LABEL = "Claude Code · runs on your server"
 private const val CLAUDE_MISSING_LABEL = "Claude Code · not installed on this server"

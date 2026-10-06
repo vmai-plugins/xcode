@@ -15,6 +15,7 @@ import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.common.result.map
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.network.http.VmHttpException
@@ -105,7 +106,7 @@ class OmniRouteProvider @Inject constructor(
 
         val startedAt = System.currentTimeMillis()
         return try {
-            val models = fetchModels(baseUrl, key)
+            val models = fetchModels(baseUrl, key).map { it.ids }
             val latency = System.currentTimeMillis() - startedAt
 
             when (models) {
@@ -276,7 +277,7 @@ class OmniRouteProvider @Inject constructor(
      * Separate from [checkHealth] so a model refresh costs one `GET /v1/models`
      * and not the dialect probes a full health check sends.
      */
-    suspend fun listModels(): VmResult<List<String>> {
+    suspend fun listModels(): VmResult<GatewayModelList> {
         val settings = preferences.preferences.first()
         val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
         if (baseUrl.isEmpty()) {
@@ -352,7 +353,7 @@ class OmniRouteProvider @Inject constructor(
         }
     }
 
-    private suspend fun fetchModels(baseUrl: String, key: Secret): VmResult<List<String>> {
+    private suspend fun fetchModels(baseUrl: String, key: Secret): VmResult<GatewayModelList> {
         // Try the OpenAI-style bearer header first, then the Anthropic-style
         // x-api-key only if that is rejected. Sending both at once would hand the
         // key, in two forms, to an endpoint whose identity is not yet confirmed —
@@ -382,16 +383,19 @@ class OmniRouteProvider @Inject constructor(
             httpClient.execute(request(dialect, null), retry)
         }
         val ids = mutableListOf<String>()
+        val free = mutableSetOf<String>()
+        fun collected() = VmResult.Success(GatewayModelList(ids.distinct(), free))
         repeat(MAX_MODEL_PAGES) {
             val body = when (val current = page) {
-                is VmResult.Failure -> return if (ids.isEmpty()) current else VmResult.Success(ids.distinct())
+                is VmResult.Failure -> return if (ids.isEmpty()) current else collected()
                 is VmResult.Success -> current.value
             }
             ids += ChatStreamDecoder.parseModels(body)
-            val cursor = ChatStreamDecoder.nextModelsCursor(body) ?: return VmResult.Success(ids.distinct())
+            free += GatewayModelPricing.parseFreeModels(body)
+            val cursor = ChatStreamDecoder.nextModelsCursor(body) ?: return collected()
             page = httpClient.execute(request(dialect, cursor), retry)
         }
-        return VmResult.Success(ids.distinct())
+        return collected()
     }
 
     /**
@@ -519,6 +523,9 @@ internal fun normalizeBaseUrl(raw: String): String {
     val withScheme = if ("://" in trimmed) trimmed else "https://$trimmed"
     return withScheme.takeIf { it.toHttpUrlOrNull() != null }.orEmpty()
 }
+
+/** The gateway's chat models, and which of them it marks as free. */
+data class GatewayModelList(val ids: List<String>, val freeIds: Set<String>)
 
 /** Gateway connection details handed to a server-side run. */
 class GatewayAccess(val baseUrl: String, val dialect: OmniRouteDialect, val key: Secret)
