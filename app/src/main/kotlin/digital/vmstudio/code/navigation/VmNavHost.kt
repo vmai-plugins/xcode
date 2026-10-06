@@ -164,13 +164,25 @@ fun VmNavHost(
                     defaultValue = null
                 },
             ),
-        ) { backStackEntry ->
-            val serverId = backStackEntry.arguments?.getString(VmDestination.ServerFiles.ARG_SERVER_ID) ?: ""
+        ) {
             FilesScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onOpenEditor = { _, filePath ->
+                // The screen's own server id: its switcher can move off the route's.
+                onOpenEditor = { serverId, filePath ->
                     navController.navigate(VmDestination.ServerEditor.routeFor(serverId, filePath))
                 },
+                onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
+            )
+        }
+
+        composable(VmDestination.Files.route) {
+            FilesScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenEditor = { serverId, filePath ->
+                    navController.navigate(VmDestination.ServerEditor.routeFor(serverId, filePath))
+                },
+                onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
+                onOpenMenu = onOpenMenu,
             )
         }
 

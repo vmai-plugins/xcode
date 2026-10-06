@@ -1,5 +1,6 @@
 package digital.vmstudio.code.feature.files
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,89 +10,85 @@ import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.sftp.model.RemoteFileEntry
 import digital.vmstudio.code.core.sftp.model.RemoteFileType
-import digital.vmstudio.code.core.sftp.model.RemoteListingOptions
 import digital.vmstudio.code.core.sftp.model.RemotePath
 import digital.vmstudio.code.core.sftp.model.RemoteSortOrder
+import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import javax.inject.Inject
-
-data class FilesUiState(
-    val serverId: String = "",
-    val path: String = "",
-    val entries: List<RemoteFileEntry> = emptyList(),
-    val options: RemoteListingOptions = RemoteListingOptions(),
-    val isLoading: Boolean = true,
-    val error: VmError? = null,
-    val selectedPaths: Set<String> = emptySet(),
-    /** Non-null while a create/rename dialog is open. */
-    val pendingAction: FileAction? = null,
-) {
-    val isEmpty: Boolean get() = !isLoading && entries.isEmpty() && error == null
-
-    val inSelectionMode: Boolean get() = selectedPaths.isNotEmpty()
-
-    /** Breadcrumb segments from the root down to the current directory. */
-    val breadcrumbs: List<Pair<String, String>>
-        get() {
-            if (path.isEmpty()) return emptyList()
-            val segments = path.trim('/').split('/').filter { it.isNotEmpty() }
-            var accumulated = ""
-            return buildList {
-                add("/" to "/")
-                segments.forEach { segment ->
-                    accumulated = "$accumulated/$segment"
-                    add(segment to accumulated)
-                }
-            }
-        }
-}
-
-sealed interface FileAction {
-    data object CreateFile : FileAction
-    data object CreateDirectory : FileAction
-    data class Rename(val entry: RemoteFileEntry) : FileAction
-    data class ConfirmDelete(val entries: List<RemoteFileEntry>) : FileAction
-    data class Details(val entry: RemoteFileEntry) : FileAction
-    data class Edit(val entry: RemoteFileEntry) : FileAction
-}
 
 @HiltViewModel
 class FilesViewModel @Inject constructor(
     private val remoteFileSystem: RemoteFileSystem,
+    private val transfers: FileTransfers,
+    serverRepository: ServerRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val serverId: String = requireNotNull(savedStateHandle[ARG_SERVER_ID]) {
-        "Files requires a serverId"
-    }
-
-    private val _uiState = MutableStateFlow(FilesUiState(serverId = serverId))
+    private val _uiState = MutableStateFlow(FilesUiState())
     val uiState: StateFlow<FilesUiState> = _uiState.asStateFlow()
+
+    private val shareChannel = Channel<File>(Channel.BUFFERED)
+
+    /** Downloaded files for the screen to hand to the Android share sheet, once each. */
+    val shareRequests: Flow<File> = shareChannel.receiveAsFlow()
+
+    private val serverId: String get() = _uiState.value.serverId
 
     /** Directories visited, so Back walks up rather than leaving the screen. */
     private val history = ArrayDeque<String>()
 
-    /** A starting folder (a project's or a chat's), when the caller has one. */
-    private val startPath: String? = savedStateHandle.get<String>(ARG_PATH)?.takeIf { it.isNotBlank() }
+    private var openJob: Job? = null
+    private var refreshJob: Job? = null
+    private var previewJob: Job? = null
+    private var liveJob: Job? = null
 
     init {
+        // A starting folder (a project's or a chat's), when the caller has one.
+        val startPath = savedStateHandle.get<String>(ARG_PATH)?.takeIf { it.isNotBlank() }
+        savedStateHandle.get<String>(ARG_SERVER_ID)?.takeIf { it.isNotBlank() }
+            ?.let { openServer(it, startPath) }
+
         viewModelScope.launch {
-            if (startPath != null) return@launch navigateTo(startPath, recordHistory = false)
-            when (val home = remoteFileSystem.homeDirectory(serverId)) {
-                is VmResult.Success -> navigateTo(home.value, recordHistory = false)
-                is VmResult.Failure -> {
-                    // Falling back to / rather than failing outright: an account with
-                    // no readable home can still browse from the root.
-                    _uiState.update { it.copy(error = home.error) }
-                    navigateTo(RemotePath.ROOT, recordHistory = false)
+            serverRepository.servers.collect { servers ->
+                val options = servers.map {
+                    ServerOption(
+                        id = it.id,
+                        name = it.name.ifBlank { it.displayTarget },
+                        target = it.displayTarget,
+                        lastConnectedAtMillis = it.lastConnectedAtMillis,
+                    )
+                }
+                _uiState.update { it.copy(servers = options) }
+                // The drawer route has no server argument: pick one as soon as the
+                // list is known, and again if one is added from the empty state.
+                if (serverId.isEmpty()) {
+                    val pick = pickDefaultServerId(options)
+                    if (pick != null) {
+                        openServer(pick, startPath = null)
+                    } else {
+                        _uiState.update { it.copy(noServer = true, isLoading = false) }
+                    }
                 }
             }
         }
+    }
+
+    /** Switches the browser to another saved server, starting at its home folder. */
+    fun selectServer(id: String) {
+        if (id != serverId) openServer(id, startPath = null)
     }
 
     fun navigateTo(path: String, recordHistory: Boolean = true) {
@@ -117,25 +114,41 @@ class FilesViewModel @Inject constructor(
         return true
     }
 
-    private var refreshJob: Job? = null
-
-    fun refresh() {
+    /**
+     * Re-lists the current folder. [quiet] is the live tick: it shows no spinner,
+     * never interrupts a listing already in flight, and is skipped while a
+     * user-started load or change is running so it cannot race it.
+     */
+    fun refresh(quiet: Boolean = false) {
         val state = _uiState.value
-        if (state.path.isEmpty()) return
-        _uiState.update { it.copy(isLoading = true) }
-        // A slow listing that lands after the user moved on must not overwrite the
-        // folder now shown, so the old request is dropped and stale results ignored.
-        refreshJob?.cancel()
+        if (state.path.isEmpty() || state.serverId.isEmpty()) return
+        if (quiet && (state.isLoading || refreshJob?.isActive == true)) return
+        if (!quiet) {
+            _uiState.update { it.copy(isLoading = true) }
+            // A slow listing that lands after the user moved on must not overwrite
+            // the folder now shown, so the old request is dropped and stale results
+            // ignored (see applyListing).
+            refreshJob?.cancel()
+        }
         refreshJob = viewModelScope.launch {
-            val result = remoteFileSystem.list(serverId, state.path, state.options)
-            _uiState.update {
-                when {
-                    it.path != state.path -> it
-                    result is VmResult.Success ->
-                        it.copy(entries = result.value, isLoading = false, error = null)
-                    result is VmResult.Failure ->
-                        it.copy(entries = emptyList(), isLoading = false, error = result.error)
-                    else -> it
+            val result = remoteFileSystem.list(state.serverId, state.path, state.options)
+            _uiState.update { applyListing(it, state, result, quiet) }
+        }
+    }
+
+    /**
+     * Turns live updates on while the screen is visible and off when it is not, so
+     * a backgrounded app does not keep a connection busy listing a folder.
+     */
+    fun setLive(active: Boolean) {
+        liveJob?.cancel()
+        liveJob = if (!active) {
+            null
+        } else {
+            viewModelScope.launch {
+                while (isActive) {
+                    refresh(quiet = true)
+                    delay(LIVE_REFRESH_MILLIS)
                 }
             }
         }
@@ -176,40 +189,44 @@ class FilesViewModel @Inject constructor(
      */
     fun open(entry: RemoteFileEntry) {
         if (entry.isDirectory) return navigateTo(entry.path)
-        if (entry.type != RemoteFileType.SYMLINK) return startAction(FileAction.Details(entry))
+        if (entry.type != RemoteFileType.SYMLINK) return showFile(entry)
         viewModelScope.launch {
             val target = (remoteFileSystem.stat(serverId, entry.path) as? VmResult.Success)?.value
-            if (target?.isDirectory == true) {
-                navigateTo(entry.path)
-            } else {
-                startAction(FileAction.Details(entry))
+            when {
+                target?.isDirectory == true -> navigateTo(entry.path)
+                // Previewed by the target's type and size, under the link's own name.
+                target != null -> showFile(target.copy(name = entry.name, path = entry.path))
+                else -> showFile(entry)
             }
         }
     }
 
     fun startAction(action: FileAction?) {
-        _uiState.update { it.copy(pendingAction = action) }
+        if (action is FileAction.Details) return showFile(action.entry)
+        previewJob?.cancel()
+        _uiState.update { it.copy(pendingAction = action, preview = null) }
     }
 
-    fun createDirectory(name: String) = mutate { path ->
-        remoteFileSystem.createDirectory(serverId, RemotePath.join(path, name))
+    fun createDirectory(name: String) = mutate { server, path ->
+        remoteFileSystem.createDirectory(server, RemotePath.join(path, name))
     }
 
-    fun createFile(name: String) = mutate { path ->
-        remoteFileSystem.createFile(serverId, RemotePath.join(path, name))
+    fun createFile(name: String) = mutate { server, path ->
+        remoteFileSystem.createFile(server, RemotePath.join(path, name))
     }
 
-    fun rename(entry: RemoteFileEntry, newName: String) = mutate { path ->
-        remoteFileSystem.rename(serverId, entry.path, RemotePath.join(path, newName))
+    fun rename(entry: RemoteFileEntry, newName: String) = mutate { server, path ->
+        remoteFileSystem.rename(server, entry.path, RemotePath.join(path, newName))
     }
 
     fun delete(entries: List<RemoteFileEntry>) {
+        val server = serverId
         _uiState.update { it.copy(isLoading = true, pendingAction = null) }
         viewModelScope.launch {
             var failure: VmError? = null
             entries.forEach { entry ->
                 val result = remoteFileSystem.delete(
-                    serverId = serverId,
+                    serverId = server,
                     path = entry.path,
                     recursive = entry.isDirectory,
                 )
@@ -226,11 +243,148 @@ class FilesViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 
-    private fun mutate(block: suspend (String) -> VmResult<Unit>) {
+    /**
+     * Downloads a file to the phone's cache and asks the screen to share it. An image
+     * already fetched for its preview is shared as is rather than fetched again.
+     */
+    fun share(entry: RemoteFileEntry) {
+        val state = _uiState.value
+        val previewed = (state.preview as? PreviewContent.Image)?.file
+        if (previewed != null && (state.pendingAction as? FileAction.Details)?.entry == entry) {
+            shareChannel.trySend(previewed)
+            return
+        }
+        if (state.transfer != null || state.serverId.isEmpty()) return
+        val server = state.serverId
+        viewModelScope.launch {
+            val label = "Downloading ${entry.name}"
+            setTransfer(TransferStatus(label))
+            val result = transfers.download(server, entry) { setTransfer(TransferStatus(label, it)) }
+            setTransfer(null)
+            when (result) {
+                is VmResult.Success -> shareChannel.send(result.value)
+                is VmResult.Failure -> _uiState.update { it.copy(error = result.error) }
+            }
+        }
+    }
+
+    /**
+     * Uploads a document picked on the phone into the current folder. A name already
+     * taken there gets a " (n)" suffix rather than overwriting the server's file.
+     */
+    fun upload(uri: Uri) {
+        val state = _uiState.value
+        if (state.transfer != null || state.serverId.isEmpty() || state.path.isEmpty()) return
+        val server = state.serverId
+        val folder = state.path
+        viewModelScope.launch {
+            setTransfer(TransferStatus("Preparing upload"))
+            val local = when (val copied = transfers.copyToCache(uri)) {
+                is VmResult.Success -> copied.value
+                is VmResult.Failure -> return@launch finishUpload(copied.error)
+            }
+            try {
+                val error = when (val name = freeName(server, folder, local.name)) {
+                    is VmResult.Failure -> name.error
+                    is VmResult.Success -> {
+                        val label = "Uploading ${name.value}"
+                        setTransfer(TransferStatus(label, 0f))
+                        transfers.upload(server, local, RemotePath.join(folder, name.value)) {
+                            setTransfer(TransferStatus(label, it))
+                        }
+                    }
+                }
+                finishUpload(error)
+            } finally {
+                withContext(NonCancellable) { transfers.discard(local) }
+            }
+        }
+    }
+
+    private fun finishUpload(error: VmError?) {
+        _uiState.update { it.copy(transfer = null, error = error ?: it.error) }
+        refresh()
+    }
+
+    private suspend fun freeName(server: String, folder: String, name: String): VmResult<String> {
+        for (candidate in candidateNames(name)) {
+            when (val exists = remoteFileSystem.exists(server, RemotePath.join(folder, candidate))) {
+                is VmResult.Failure -> return exists
+                is VmResult.Success -> if (!exists.value) return VmResult.Success(candidate)
+            }
+        }
+        return VmResult.Failure(
+            VmError.FileSystem(summary = "Could not find a free name for $name", path = folder),
+        )
+    }
+
+    private fun setTransfer(status: TransferStatus?) {
+        _uiState.update { it.copy(transfer = status) }
+    }
+
+    /** Opens the file sheet and, for previewable types, starts loading the preview. */
+    private fun showFile(entry: RemoteFileEntry) {
+        previewJob?.cancel()
+        val kind = entry.previewKind()
+        _uiState.update {
+            it.copy(
+                pendingAction = FileAction.Details(entry),
+                preview = if (kind == PreviewKind.NONE) null else PreviewContent.Loading(),
+            )
+        }
+        if (kind == PreviewKind.NONE) return
+        val server = serverId
+        previewJob = viewModelScope.launch {
+            val content = if (kind == PreviewKind.TEXT) {
+                transfers.loadText(server, entry)
+            } else {
+                transfers.loadImage(server, entry) { fraction ->
+                    _uiState.update {
+                        if (it.preview is PreviewContent.Loading) {
+                            it.copy(preview = PreviewContent.Loading(fraction))
+                        } else {
+                            it
+                        }
+                    }
+                }
+            }
+            // The sheet may have been closed or switched to another file meanwhile.
+            _uiState.update {
+                val stillOpen = (it.pendingAction as? FileAction.Details)?.entry == entry
+                if (stillOpen) it.copy(preview = content) else it
+            }
+        }
+    }
+
+    /** Points the browser at [id], forgetting everything about the previous server. */
+    private fun openServer(id: String, startPath: String?) {
+        history.clear()
+        openJob?.cancel()
+        refreshJob?.cancel()
+        previewJob?.cancel()
+        _uiState.update {
+            FilesUiState(serverId = id, servers = it.servers, options = it.options, transfer = it.transfer)
+        }
+        openJob = viewModelScope.launch {
+            if (startPath != null) return@launch navigateTo(startPath, recordHistory = false)
+            when (val home = remoteFileSystem.homeDirectory(id)) {
+                is VmResult.Success -> navigateTo(home.value, recordHistory = false)
+                is VmResult.Failure -> {
+                    // Falling back to / rather than failing outright: an account with
+                    // no readable home can still browse from the root.
+                    _uiState.update { it.copy(error = home.error) }
+                    navigateTo(RemotePath.ROOT, recordHistory = false)
+                }
+            }
+        }
+    }
+
+    private fun mutate(block: suspend (server: String, path: String) -> VmResult<Unit>) {
+        val server = serverId
         val path = _uiState.value.path
         _uiState.update { it.copy(isLoading = true, pendingAction = null) }
         viewModelScope.launch {
-            when (val result = block(path)) {
+            when (val result = block(server, path)) {
                 is VmResult.Failure -> _uiState.update {
                     it.copy(isLoading = false, error = result.error)
                 }

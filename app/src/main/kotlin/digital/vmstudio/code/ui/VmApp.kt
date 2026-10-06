@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
@@ -222,6 +223,13 @@ fun VmApp(
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
+                        label = { Text("Files") },
+                        icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
+                        selected = currentRoute == VmDestination.Files.route,
+                        onClick = { openTopLevel(VmDestination.Files) },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    NavigationDrawerItem(
                         label = { Text("Connectors") },
                         icon = { Icon(Icons.Default.Cloud, contentDescription = null) },
                         selected = currentRoute == VmDestination.Connectors.route,
@@ -268,6 +276,7 @@ private val DRAWER_ROUTES = setOf(
     VmDestination.GeneralChat.route,
     VmDestination.Servers.route,
     VmDestination.Projects.route,
+    VmDestination.Files.route,
     VmDestination.Settings.route,
     VmDestination.Chats.route,
     VmDestination.ServerAgent.ROUTE_PATTERN,
