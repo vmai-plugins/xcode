@@ -55,8 +55,13 @@ sealed class VmDestination(val route: String) {
     data class ServerTerminal(val serverId: String) : VmDestination(routeFor(serverId)) {
         companion object {
             const val ARG_SERVER_ID = "serverId"
-            const val ROUTE_PATTERN = "servers/{$ARG_SERVER_ID}/terminal"
-            fun routeFor(serverId: String) = "servers/$serverId/terminal"
+            const val ARG_PATH = "path"
+            const val ROUTE_PATTERN = "servers/{$ARG_SERVER_ID}/terminal?$ARG_PATH={$ARG_PATH}"
+
+            /** [path] makes the shell start in that folder (a project's). */
+            fun routeFor(serverId: String, path: String? = null) =
+                "servers/$serverId/terminal" +
+                    (path?.takeIf { it.isNotBlank() }?.let { "?path=${android.net.Uri.encode(it)}" } ?: "")
         }
     }
 

@@ -159,6 +159,8 @@ class AgentRunService : Service() {
      * user deny notifications outright. Neither should crash the app: the runs are on
      * the server and continue regardless, so the failure costs the notification only.
      */
+    private var inForeground = false
+
     private fun startForegroundSafely(runningCount: Int) {
         val notification = notifications.progressNotification(runningCount.coerceAtLeast(1))
         runCatching {
@@ -172,9 +174,25 @@ class AgentRunService : Service() {
                     0
                 },
             )
+        }.onSuccess {
+            inForeground = true
         }.onFailure {
             VmLog.w(LogCategory.AI, TAG, "Could not run in the foreground: ${it.message}")
+            // Started with startForegroundService(), a service that never reaches the
+            // foreground is killed with the app a few seconds later. Refused (e.g. the
+            // daily data-sync limit is used up), stop instead; the user can still
+            // check runs in the chat.
+            if (!inForeground) stopSelf()
         }
+    }
+
+    /**
+     * Android 15 caps data-sync foreground services at six hours a day and calls
+     * this when the cap is hit; a service that keeps running crashes the app.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        VmLog.i(LogCategory.AI, TAG, "Foreground time limit reached; stopping")
+        stopSelf()
     }
 
     override fun onDestroy() {

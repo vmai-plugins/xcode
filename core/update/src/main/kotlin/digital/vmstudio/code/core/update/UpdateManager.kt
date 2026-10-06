@@ -52,8 +52,10 @@ class UpdateManager @Inject constructor(
     /** Downloads the update found by the last [checkForUpdate] and installs it. */
     fun downloadAndInstall() {
         val info = (_state.value as? UpdateState.Available)?.info ?: return
+        // Set before launching, so a second tap sees Downloading and does nothing;
+        // two downloads into one file produced a corrupt APK.
+        _state.value = UpdateState.Downloading(info, progress = 0f)
         scope.launch {
-            _state.value = UpdateState.Downloading(info, progress = 0f)
             when (
                 val result = downloader.download(info.apkDownloadUrl, info.apkAssetName) { progress ->
                     _state.value = UpdateState.Downloading(info, progress)
@@ -78,7 +80,7 @@ class UpdateManager @Inject constructor(
                         return@launch
                     }
                     _state.value = UpdateState.ReadyToInstall(info, apkFile)
-                    installer.install(apkFile)
+                    launchInstaller(apkFile)
                 }
                 is VmResult.Failure -> _state.value = UpdateState.Failed(result.error)
             }
@@ -88,7 +90,22 @@ class UpdateManager @Inject constructor(
     /** Re-launches the installer for an APK already downloaded this session. */
     fun retryInstall() {
         val ready = _state.value as? UpdateState.ReadyToInstall ?: return
-        installer.install(ready.apkFile)
+        launchInstaller(ready.apkFile)
+    }
+
+    /** The system installer can refuse to start; that is reported, never a crash. */
+    private fun launchInstaller(apkFile: java.io.File) {
+        runCatching { installer.install(apkFile) }.onFailure { failure ->
+            _state.value = UpdateState.Failed(
+                VmError.Unexpected(
+                    summary = "Could not open the installer",
+                    reason = failure.message,
+                    suggestedAction = "Allow this app to install unknown apps in Android " +
+                        "settings, then try again.",
+                    cause = failure,
+                ),
+            )
+        }
     }
 
     fun dismiss() {

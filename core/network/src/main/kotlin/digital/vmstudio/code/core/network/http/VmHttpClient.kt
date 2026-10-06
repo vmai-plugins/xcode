@@ -16,10 +16,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
+import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.net.UnknownServiceException
 import javax.inject.Inject
 import javax.inject.Singleton
+import javax.net.ssl.SSLHandshakeException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.pow
 
@@ -242,6 +245,36 @@ class VmHttpClient @Inject constructor(
                 suggestedAction = "The provider may be overloaded. Try again.",
                 retryable = true,
                 endpoint = endpoint,
+            )
+
+            // Android refuses plain http:// unless the app opts in; saying so beats a
+            // generic "check your connection" that retrying can never fix.
+            is UnknownServiceException -> VmError.Network(
+                summary = "Plain http:// is blocked",
+                reason = "Android only allows encrypted connections to ${request.url.host}.",
+                suggestedAction = "Use the gateway's https:// address.",
+                retryable = false,
+                endpoint = endpoint,
+                cause = throwable,
+            )
+
+            is SSLHandshakeException -> VmError.Network(
+                summary = "Secure connection failed",
+                reason = throwable.message,
+                suggestedAction = "Check that the address is https:// and the server's " +
+                    "certificate is valid.",
+                retryable = false,
+                endpoint = endpoint,
+                cause = throwable,
+            )
+
+            is ConnectException -> VmError.Network(
+                summary = "Could not reach the gateway",
+                reason = "Nothing answered at ${request.url.host}:${request.url.port}.",
+                suggestedAction = "Check the address and port, and that the gateway is running.",
+                retryable = true,
+                endpoint = endpoint,
+                cause = throwable,
             )
 
             is IOException -> VmError.Network(

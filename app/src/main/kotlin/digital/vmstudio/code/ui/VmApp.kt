@@ -105,10 +105,13 @@ fun VmApp(
 
     fun openTopLevel(destination: VmDestination) {
         closeDrawerThen {
+            // Pushed over the current screen so Back returns to the chat. Clearing
+            // the whole stack made Back exit the app, and saved/restored stacks could
+            // reopen an old chat when "Servers" was tapped. Any earlier copy of the
+            // destination is removed so each appears once.
             navController.navigate(destination.route) {
-                popUpTo(navController.graph.id) { saveState = true }
+                popUpTo(destination.route) { inclusive = true }
                 launchSingleTop = true
-                restoreState = true
             }
         }
     }
@@ -173,9 +176,18 @@ fun VmApp(
                                 },
                                 onClick = {
                                     closeDrawerThen {
-                                        navController.navigate(
-                                            VmDestination.AgentConversation.routeFor(chat.id),
-                                        ) { launchSingleTop = true }
+                                        // Single-top reused the open chat's screen with
+                                        // the old chat still in it; another chat
+                                        // replaces it instead.
+                                        if (chat.id != currentConversationId) {
+                                            navController.navigate(
+                                                VmDestination.AgentConversation.routeFor(chat.id),
+                                            ) {
+                                                popUpTo(VmDestination.AgentConversation.ROUTE_PATTERN) {
+                                                    inclusive = true
+                                                }
+                                            }
+                                        }
                                     }
                                 },
                                 modifier = Modifier.padding(horizontal = 12.dp),

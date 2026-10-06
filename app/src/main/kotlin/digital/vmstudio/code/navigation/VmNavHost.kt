@@ -143,6 +143,11 @@ fun VmNavHost(
                 navArgument(VmDestination.ServerTerminal.ARG_SERVER_ID) {
                     type = NavType.StringType
                 },
+                navArgument(VmDestination.ServerTerminal.ARG_PATH) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
             ),
         ) {
             TerminalRoute(onNavigateBack = { navController.popBackStack() })
@@ -205,8 +210,8 @@ fun VmNavHost(
         ) {
             ProjectDetailScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onOpenTerminal = { serverId, _ ->
-                    navController.navigate(VmDestination.ServerTerminal.routeFor(serverId))
+                onOpenTerminal = { serverId, path ->
+                    navController.navigate(VmDestination.ServerTerminal.routeFor(serverId, path))
                 },
                 onOpenFiles = { serverId, path ->
                     navController.navigate(VmDestination.ServerFiles.routeFor(serverId, path))
@@ -294,6 +299,7 @@ fun VmNavHost(
 
         composable(VmDestination.Tasks.route) {
             TasksScreen(
+                onNavigateBack = { navController.popBackStack() },
                 onOpenConversation = { conversationId ->
                     navController.navigate(
                         VmDestination.AgentConversation.routeFor(conversationId),

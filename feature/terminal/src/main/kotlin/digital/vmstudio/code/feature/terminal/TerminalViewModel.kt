@@ -51,6 +51,9 @@ class TerminalViewModel @Inject constructor(
 
     private val serverId: String? = savedStateHandle[ARG_SERVER_ID]
 
+    /** The folder to start in (a project's), when the caller has one. */
+    private var startPath: String? = savedStateHandle.get<String>(ARG_PATH)?.takeIf { it.isNotBlank() }
+
     private val _uiState = MutableStateFlow(TerminalUiState())
     val uiState: StateFlow<TerminalUiState> = _uiState
 
@@ -106,6 +109,11 @@ class TerminalViewModel @Inject constructor(
                 is VmResult.Success -> {
                     _uiState.value = _uiState.value.copy(isOpening = false)
                     selectSession(result.value.id)
+                    // Opened from a project: start there, once, not in the home folder.
+                    startPath?.let { path ->
+                        result.value.send("cd '${path.replace("'", "'\\''")}'\r")
+                        startPath = null
+                    }
                 }
                 is VmResult.Failure -> _uiState.value = _uiState.value.copy(
                     isOpening = false,
@@ -252,5 +260,6 @@ class TerminalViewModel @Inject constructor(
 
     companion object {
         const val ARG_SERVER_ID = "serverId"
+        const val ARG_PATH = "path"
     }
 }
