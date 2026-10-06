@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,16 +25,18 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +44,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,7 +83,8 @@ internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowIte
         } else {
             result.add(
                 TranscriptRowItem.ToolBatch(
-                    id = "batch-${currentTools.first().id}-${currentTools.size}",
+                    // Stable while the batch grows, so a batch the user opened stays open.
+                    id = "batch-${currentTools.first().id}",
                     tools = currentTools.toList(),
                 ),
             )
@@ -432,7 +438,31 @@ private fun FileActions(
     onRollback: ((toolCallId: String, filePath: String) -> Unit)?,
     onPreview: ((String) -> Unit)?,
 ) {
-    if (item.isReverted) {
+    var confirmRollback by remember { mutableStateOf(false) }
+    if (confirmRollback && onRollback != null) {
+        AlertDialog(
+            onDismissRequest = { confirmRollback = false },
+            title = { Text("Undo changes to ${path.substringAfterLast('/')}?") },
+            text = {
+                Text(
+                    "The file goes back to its last committed version in git. Every " +
+                        "uncommitted change in it is discarded, including your own and " +
+                        "earlier edits by the agent.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRollback = false
+                    onRollback(item.id, path)
+                }) { Text("Undo changes", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmRollback = false }) { Text("Cancel") } },
+        )
+    }
+    // Only an edit can be undone or reviewed: a read or a folder listing has nothing to
+    // revert, and "undoing" a listing of "." used to discard every change in the repo.
+    val changesFile = isFileChange(item.name)
+    if (changesFile && item.isReverted) {
         Surface(
             shape = RoundedCornerShape(4.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -444,9 +474,9 @@ private fun FileActions(
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
-    } else if (onRollback != null) {
+    } else if (changesFile && onRollback != null) {
         IconButton(
-            onClick = { onRollback(item.id, path) },
+            onClick = { confirmRollback = true },
             modifier = Modifier.size(24.dp),
         ) {
             Icon(
@@ -457,16 +487,18 @@ private fun FileActions(
             )
         }
     }
-    IconButton(
-        onClick = { onOpenDiff(path) },
-        modifier = Modifier.size(24.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Default.Difference,
-            contentDescription = "Review changes",
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(15.dp),
-        )
+    if (changesFile) {
+        IconButton(
+            onClick = { onOpenDiff(path) },
+            modifier = Modifier.size(24.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Difference,
+                contentDescription = "Review changes",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(15.dp),
+            )
+        }
     }
     if (onPreview != null && isWebPage(path)) {
         IconButton(onClick = { onPreview(path) }, modifier = Modifier.size(24.dp)) {
@@ -479,6 +511,14 @@ private fun FileActions(
         }
     }
 }
+
+/** Tools that write a file, for both backends (Claude Code's and the gateway agent's). */
+internal fun isFileChange(toolName: String): Boolean =
+    toolName.lowercase() in FILE_CHANGING_TOOLS
+
+private val FILE_CHANGING_TOOLS = setOf(
+    "edit", "multiedit", "write", "notebookedit", "write_file", "edit_file",
+)
 
 internal fun isWebPage(path: String): Boolean =
     path.endsWith(".html", ignoreCase = true) || path.endsWith(".htm", ignoreCase = true)
@@ -549,3 +589,32 @@ private fun RunStatusRow(label: String) {
 
 private const val RUN_STATUS_KEY = "run-status"
 private const val ONE_SECOND_MILLIS = 1_000L
+
+/**
+ * Keeps the newest output in view while the user is reading at the bottom, also
+ * as a long reply grows inside one row, and leaves them alone once they scroll up
+ * to read something earlier.
+ */
+@Composable
+internal fun FollowTail(listState: LazyListState, transcript: List<TranscriptItem>) {
+    var following by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
+            .collect { (scrolling, canScrollForward) ->
+                if (scrolling) following = !canScrollForward
+            }
+    }
+    val tailLength = (transcript.lastOrNull() as? TranscriptItem.StreamingText)?.text?.length ?: 0
+    LaunchedEffect(transcript.size, tailLength) {
+        if (!following) return@LaunchedEffect
+        val last = listState.layoutInfo.totalItemsCount - 1
+        if (last >= 0) {
+            listState.scrollToItem(last)
+            listState.scrollBy(TAIL_SCROLL_PX)
+        }
+    }
+}
+
+/** More than any row is tall; scrolling clamps at the end of the content. */
+private const val TAIL_SCROLL_PX = 100_000f
+

@@ -867,6 +867,35 @@ internal fun capToolOutput(output: String, limit: Int = MAX_TOOL_OUTPUT_CHARS): 
         output.take(limit) + "\n\n[output truncated: ${output.length - limit} more characters]"
     }
 
+/** Old tool output capped, and whole-file write/edit arguments replaced by a note. */
+private fun OmniRouteMessage.shortened(): OmniRouteMessage = when (this) {
+    is OmniRouteMessage.ToolResult -> copy(content = capToolOutput(content, TRIMMED_TOOL_OUTPUT_CHARS))
+    is OmniRouteMessage.Assistant -> copy(
+        toolCalls = toolCalls.map { call ->
+            if (call.argumentsJson.length <= TRIMMED_TOOL_OUTPUT_CHARS) {
+                call
+            } else {
+                val note = "${call.argumentsJson.length} characters omitted from history"
+                call.copy(argumentsJson = "{\"note\":\"$note\"}")
+            }
+        },
+    )
+    is OmniRouteMessage.User -> this
+}
+
+/**
+ * Removes the first assistant turn after the opening prompt that called tools,
+ * with the results that answer it, or null when only the recent window is left.
+ */
+private fun dropOldestToolRound(history: List<OmniRouteMessage>, keepRecent: Int): List<OmniRouteMessage>? {
+    val start = history.indexOfFirst { it is OmniRouteMessage.Assistant && it.toolCalls.isNotEmpty() }
+    if (start <= 0 || start >= history.size - keepRecent) return null
+    var end = start + 1
+    while (end < history.size && history[end] is OmniRouteMessage.ToolResult) end++
+    if (end >= history.size - keepRecent) return null
+    return history.subList(0, start) + history.subList(end, history.size)
+}
+
 private fun OmniRouteMessage.size(): Int = when (this) {
     is OmniRouteMessage.User -> text.length
     is OmniRouteMessage.Assistant -> text.orEmpty().length + toolCalls.sumOf { it.argumentsJson.length }
@@ -890,19 +919,23 @@ internal fun trimHistory(
 
     val recentFrom = (history.size - keepRecent).coerceAtLeast(0)
     var trimmed = history.mapIndexed { index, message ->
-        if (index < recentFrom && message is OmniRouteMessage.ToolResult) {
-            message.copy(content = capToolOutput(message.content, TRIMMED_TOOL_OUTPUT_CHARS))
-        } else {
-            message
-        }
+        if (index < recentFrom) message.shortened() else message
     }
 
     while (trimmed.sumOf { it.size() } > budget) {
         val nextUser = trimmed.withIndex()
             .drop(1)
             .firstOrNull { it.value is OmniRouteMessage.User }
-            ?.index ?: break
-        trimmed = trimmed.drop(nextUser)
+            ?.index
+        trimmed = when {
+            nextUser != null -> trimmed.drop(nextUser)
+            // One long task has no later prompt to cut at: drop its oldest tool
+            // round (the call and its results together) and keep the request.
+            else -> dropOldestToolRound(trimmed, keepRecent) ?: break
+        }
     }
+    // Still too big with only the recent window left: shorten that too rather than
+    // send a request the model rejects, which ended the run mid-task.
+    if (trimmed.sumOf { it.size() } > budget) trimmed = trimmed.map { it.shortened() }
     return trimmed
 }

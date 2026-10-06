@@ -4,6 +4,7 @@ import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.ConversationTurn
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteDialect
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteProvider
+import digital.vmstudio.code.core.ai.omniroute.alternating
 import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.log.LogCategory
@@ -73,18 +74,21 @@ class OmniRouteBackgroundRunner @Inject constructor(
 
         val runId = RUN_ID_PREFIX + randomHex()
         val runDir = "$home/.xcodes/runs/$runId"
+        // The runner sends history then the prompt; both are made to alternate here,
+        // since a stopped run leaves a prompt with no reply in the history.
+        val turns = (history + ConversationTurn(fromUser = true, text = prompt)).alternating()
         val task = buildJsonObject {
             put("base_url", access.baseUrl)
             val isAnthropic = access.dialect == OmniRouteDialect.ANTHROPIC_MESSAGES
             put("dialect", if (isAnthropic) "anthropic" else "openai")
             put("model", model)
-            put("prompt", prompt)
+            put("prompt", turns.lastOrNull()?.text ?: prompt)
             put("cwd", workingDirectory)
             put("mode", mode)
             put("context_chars", contextChars)
             put("system_prompt", systemPrompt(workingDirectory, mode))
             putJsonArray("history") {
-                history.filter { it.text.isNotBlank() }.forEach { turn ->
+                turns.dropLast(1).forEach { turn ->
                     addJsonObject {
                         put("role", if (turn.fromUser) "user" else "assistant")
                         put("content", turn.text)
