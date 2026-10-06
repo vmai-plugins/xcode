@@ -330,6 +330,7 @@ fun AgentChatScreen(
                 onModelChange = viewModel::selectModel,
                 omniModels = state.omniModels,
                 isSyncingModels = state.isSyncingModels,
+                isClaudeCodeMissing = state.isClaudeCodeMissing,
                 onSyncModels = viewModel::syncModels,
                 workingDirectory = state.workingDirectory,
                 onEditDirectory = { showDirectoryDialog = true },

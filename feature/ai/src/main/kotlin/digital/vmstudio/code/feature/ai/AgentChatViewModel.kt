@@ -25,6 +25,7 @@ import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
 import digital.vmstudio.code.core.ai.repository.StoredEntry
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferences
+import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.git.GitResult
@@ -34,6 +35,7 @@ import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,6 +93,12 @@ data class AgentChatUiState(
     val isRunning: Boolean = false,
     val permissionMode: AgentPermissionMode = AgentPermissionMode.PLAN,
     val health: AiProviderHealth? = null,
+    /**
+     * The last Claude Code check on this server found no `claude`. Kept after
+     * switching to the gateway (whose own health replaces [health]), so the picker
+     * can still say the Claude models will not run here.
+     */
+    val isClaudeCodeMissing: Boolean = false,
     val isCheckingHealth: Boolean = false,
     val conversationId: String? = null,
     /** Present once a run reports one; enables continuing rather than starting cold. */
@@ -135,6 +143,7 @@ class AgentChatViewModel @Inject constructor(
     private val gitService: GitService,
     private val modelCatalog: OmniRouteModelCatalog,
     private val attachmentStager: AttachmentStager,
+    private val preferenceStore: UserPreferencesRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -177,17 +186,28 @@ class AgentChatViewModel @Inject constructor(
             // Defaults the agent's scope to the login home directory rather than `/`.
             else -> serverId?.let { server ->
                 viewModelScope.launch {
-                    val home = remoteFileSystem.homeDirectory(server)
-                    // A failure is not fatal; the user can type a path.
-                    if (home is VmResult.Success) {
+                    // The folder last used on this server, else the login home. A
+                    // failure is not fatal; the user can pick a folder.
+                    val remembered = preferences.preferences.first().lastFolders[server]
+                    val folder = remembered
+                        ?: (remoteFileSystem.homeDirectory(server) as? VmResult.Success)?.value
+                    if (folder != null) {
                         _uiState.update {
-                            if (it.workingDirectory.isBlank()) it.copy(workingDirectory = home.value) else it
+                            if (it.workingDirectory.isBlank()) it.copy(workingDirectory = folder) else it
                         }
                     }
                 }
             }
         }
         refreshBackgroundRuns()
+        // Live status for detached runs while the chat is open: re-read the list
+        // only while something is still running, so an idle chat makes no SSH calls.
+        viewModelScope.launch {
+            while (true) {
+                delay(BACKGROUND_POLL_MILLIS)
+                if (_uiState.value.backgroundRuns.any { it.isRunning }) refreshBackgroundRuns()
+            }
+        }
     }
 
     /**
@@ -352,10 +372,15 @@ class AgentChatViewModel @Inject constructor(
             } else {
                 null
             }
+            // The model last picked in a chat wins, as long as it still exists: a
+            // Claude Code alias, or a gateway model the last sync still reported.
+            val lastModel = prefs.lastChatModel?.takeIf { last ->
+                ClaudeCodeModels.isClaudeCode(last) || last in prefs.aiAvailableModelIds
+            }
             _uiState.update {
                 it.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
-                    selectedModel = omniModel ?: ClaudeCodeModels.DEFAULT,
+                    selectedModel = lastModel ?: omniModel ?: ClaudeCodeModels.DEFAULT,
                 )
             }
             checkHealth()
@@ -368,7 +393,16 @@ class AgentChatViewModel @Inject constructor(
             val provider = providers.forModel(_uiState.value.selectedModel)
             when (val result = providers.checkHealth(provider, serverId)) {
                 is VmResult.Success -> _uiState.update {
-                    it.copy(health = result.value, isCheckingHealth = false)
+                    val checkedClaude = result.value.kind == AiProviderKind.CLAUDE_CODE_CLI
+                    it.copy(
+                        health = result.value,
+                        isCheckingHealth = false,
+                        isClaudeCodeMissing = if (checkedClaude) {
+                            !result.value.isAvailable
+                        } else {
+                            it.isClaudeCodeMissing
+                        },
+                    )
                 }
                 is VmResult.Failure -> _uiState.update {
                     it.copy(isCheckingHealth = false, error = result.error)
@@ -391,6 +425,9 @@ class AgentChatViewModel @Inject constructor(
                 it.copy(workingDirectory = path)
             }
         }
+        current.serverId?.let { server ->
+            viewModelScope.launch { preferenceStore.setLastFolder(server, path) }
+        }
         refreshBackgroundRuns()
     }
 
@@ -403,6 +440,9 @@ class AgentChatViewModel @Inject constructor(
                 conversationId = null,
                 providerSessionId = null,
             )
+        }
+        _uiState.value.serverId?.let { server ->
+            viewModelScope.launch { preferenceStore.setLastFolder(server, project.remotePath) }
         }
         refreshBackgroundRuns()
     }
@@ -422,6 +462,7 @@ class AgentChatViewModel @Inject constructor(
             )
         }
         if (switchesBackend) checkHealth()
+        viewModelScope.launch { preferenceStore.setLastChatModel(model) }
     }
 
     /** Refreshes the gateway's model list now, reporting a failure. */
@@ -800,3 +841,6 @@ private const val MAX_TITLE_CHARS = 48
 /** The history budget the user chose in Settings, in characters. */
 private suspend fun UserPreferencesSource.contextChars(): Int =
     UserPreferences.contextChars(preferences.first().aiContextSize)
+
+/** How often running background runs are re-read while their chat is open. */
+private const val BACKGROUND_POLL_MILLIS = 15_000L

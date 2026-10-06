@@ -71,8 +71,6 @@ class SettingsViewModel @Inject constructor(
 
     fun retryInstall() = updateManager.retryInstall()
 
-    fun dismissUpdate() = updateManager.dismiss()
-
     fun setTheme(preference: ThemePreference) {
         viewModelScope.launch { preferencesRepository.setThemePreference(preference) }
     }
@@ -91,10 +89,6 @@ class SettingsViewModel @Inject constructor(
 
     fun setConfirmDestructiveCommands(enabled: Boolean) {
         viewModelScope.launch { preferencesRepository.setConfirmDestructiveCommands(enabled) }
-    }
-
-    fun setReduceMotion(enabled: Boolean) {
-        viewModelScope.launch { preferencesRepository.setReduceMotion(enabled) }
     }
 
     /** Diagnostics are redacted at capture time, so this text is safe to share. */

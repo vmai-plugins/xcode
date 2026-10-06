@@ -38,9 +38,6 @@ class AppProcessManager @Inject constructor(
     suspend fun logs(serverId: String, app: AppProject, lines: Int = DEFAULT_LOG_LINES): VmResult<CommandResult> =
         guard.run(serverId, logsCommand(app, lines))
 
-    suspend fun gitPull(serverId: String, app: AppProject): VmResult<CommandResult> =
-        runChecked(serverId, "cd ${sh(app.path)} && git pull", CommandLimits.LONG_RUNNING)
-
     suspend fun cloneFromGitHub(
         serverId: String,
         repoUrl: String,

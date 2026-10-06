@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -61,6 +62,7 @@ fun ProjectsScreen(
     onCreateProject: () -> Unit,
     onAddServer: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenMenu: (() -> Unit)? = null,
     viewModel: ProjectsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -79,8 +81,8 @@ fun ProjectsScreen(
             },
         ) {
             Text(
-                text = "Removes it from this app. The folder and its files on the server " +
-                    "are not touched.",
+                text = "Removes it and its chats from this app. The folder and its files on " +
+                    "the server are not touched.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -91,6 +93,13 @@ fun ProjectsScreen(
         topBar = {
             TopAppBar(
                 title = { Text(title) },
+                navigationIcon = {
+                    if (onOpenMenu != null) {
+                        IconButton(onClick = onOpenMenu) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    }
+                },
             )
         },
         floatingActionButton = {

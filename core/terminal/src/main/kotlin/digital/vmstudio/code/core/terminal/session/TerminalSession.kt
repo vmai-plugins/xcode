@@ -5,7 +5,6 @@ import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.ssh.connection.ShellChannel
 import digital.vmstudio.code.core.terminal.emulator.TerminalEmulator
-import digital.vmstudio.code.core.terminal.emulator.TerminalStyle
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -230,11 +229,6 @@ class TerminalSession internal constructor(
     /** Full buffer text, for copy-all and for the agent reading command output. */
     suspend fun allText(): String = withContext(emulatorDispatcher) { emulator.buffer.allText() }
 
-    /** The visible screen as plain text, without styles. */
-    suspend fun visibleText(): String = withContext(emulatorDispatcher) {
-        (0 until emulator.rows).joinToString("\n") { emulator.buffer.screenLine(it).text() }
-    }
-
     fun close() {
         readerJob?.cancel()
         runCatching { channel.close() }
@@ -284,9 +278,6 @@ class TerminalSession internal constructor(
             revision = emulator.revision,
         )
     }
-
-    /** Default background for the renderer to fill unwritten area with. */
-    fun defaultStyle(): Long = TerminalStyle.DEFAULT
 
     private companion object {
         const val TAG = "TerminalSession"

@@ -97,9 +97,6 @@ object TerminalKeyEncoder {
         }
     }
 
-    /** Alt/Meta is sent as an ESC prefix, which is what xterm does. */
-    fun encodeAlt(text: String): String = ESC + text
-
     /** Ctrl+C. Offered as a first-class action in the key bar. */
     val INTERRUPT: String = Char(0x03).toString()
 

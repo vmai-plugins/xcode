@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
@@ -32,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import digital.vmstudio.code.crash.CrashReportDialog
 import digital.vmstudio.code.feature.ai.AgentConversationsViewModel
 import digital.vmstudio.code.navigation.VmDestination
 import digital.vmstudio.code.navigation.VmNavHost
@@ -162,6 +164,17 @@ fun VmApp(
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
+                        label = { Text("Connectors") },
+                        icon = { Icon(Icons.Default.Cloud, contentDescription = null) },
+                        selected = currentRoute == VmDestination.Connectors.route,
+                        // Pushed rather than made top-level: the screen has a back arrow,
+                        // and back should return here instead of leaving the app.
+                        onClick = {
+                            closeDrawerThen { navController.navigate(VmDestination.Connectors.route) }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    NavigationDrawerItem(
                         label = { Text("Settings") },
                         icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                         selected = currentRoute == VmDestination.Settings.route,
@@ -183,6 +196,7 @@ fun VmApp(
                     // reaches the user wherever they currently are.
                     CommandApprovalHost()
                     FileEditApprovalHost()
+                    CrashReportDialog()
                 }
             }
         }

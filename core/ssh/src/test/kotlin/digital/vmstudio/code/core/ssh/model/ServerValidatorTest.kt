@@ -163,4 +163,20 @@ class ServerValidatorTest {
             assertEquals("validation errors are never retryable", false, error.retryable)
         }
     }
+
+    @Test
+    fun `an ip with invisible or full-width characters is cleaned, not rejected`() {
+        val pasted = "\u200B200.234.41.231\u200E "
+        assertTrue(ServerValidator.validate(validDraft().copy(host = pasted)).isValid)
+        assertEquals("200.234.41.231", ServerValidator.normalizeHost(pasted))
+        val fullWidth = "\uFF12\uFF10\uFF10\uFF0E234\u300241.231"
+        assertEquals("200.234.41.231", ServerValidator.normalizeHost(fullWidth))
+        assertEquals("10.0.0.1", ServerValidator.normalizeHost("\u0661\u0660.\u0660.\u0660.\u0661"))
+    }
+
+    @Test
+    fun `cleaning does not hide real mistakes`() {
+        assertFalse(ServerValidator.validate(validDraft().copy(host = "200.234.41.999")).isValid)
+        assertFalse(ServerValidator.validate(validDraft().copy(host = "my host.com")).isValid)
+    }
 }

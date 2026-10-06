@@ -8,7 +8,6 @@ import digital.vmstudio.code.core.database.entity.ProjectCommandEntity
 import digital.vmstudio.code.core.database.entity.ProjectEntity
 import digital.vmstudio.code.core.database.entity.ProjectEnvVarEntity
 import digital.vmstudio.code.core.database.entity.ProjectInstructionEntity
-import digital.vmstudio.code.core.database.entity.ProjectInstructionScope
 import digital.vmstudio.code.core.database.entity.RecentFileEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -73,22 +72,6 @@ interface ProjectCommandDao {
 @Dao
 interface ProjectInstructionDao {
 
-    /**
-     * Returns global instructions plus the project's own, ordered so that
-     * more specific scopes are applied last when the agent assembles its prompt.
-     */
-    @Query(
-        """
-        SELECT * FROM project_instruction
-        WHERE isEnabled = 1 AND (projectId = :projectId OR scope = :globalScope)
-        ORDER BY scope ASC, path ASC
-        """,
-    )
-    suspend fun getEffectiveFor(
-        projectId: String,
-        globalScope: ProjectInstructionScope = ProjectInstructionScope.GLOBAL,
-    ): List<ProjectInstructionEntity>
-
     @Query("SELECT * FROM project_instruction WHERE projectId = :projectId ORDER BY scope ASC")
     fun observeForProject(projectId: String): Flow<List<ProjectInstructionEntity>>
 
@@ -149,12 +132,6 @@ interface FileCacheDao {
     @Query("SELECT * FROM file_cache WHERE projectId = :projectId AND remotePath = :remotePath")
     suspend fun find(projectId: String, remotePath: String): FileCacheEntity?
 
-    @Query("SELECT * FROM file_cache WHERE projectId = :projectId AND hasLocalEdits = 1")
-    fun observeDirty(projectId: String): Flow<List<FileCacheEntity>>
-
-    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM file_cache")
-    fun observeTotalBytes(): Flow<Long>
-
     @Upsert
     suspend fun upsert(entry: FileCacheEntity)
 
@@ -166,18 +143,4 @@ interface FileCacheDao {
 
     @Query("DELETE FROM file_cache WHERE projectId = :projectId")
     suspend fun clearForProject(projectId: String)
-
-    /**
-     * Selects least-recently-used clean entries for eviction. Dirty entries are
-     * excluded: evicting one would silently discard the user's unsaved edits.
-     */
-    @Query(
-        """
-        SELECT * FROM file_cache
-        WHERE hasLocalEdits = 0
-        ORDER BY lastAccessedAtMillis ASC
-        LIMIT :limit
-        """,
-    )
-    suspend fun evictionCandidates(limit: Int): List<FileCacheEntity>
 }

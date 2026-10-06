@@ -9,5 +9,6 @@ android {
 dependencies {
     api(projects.core.project)
     implementation(projects.core.ssh)
+    implementation(projects.core.ai)
     implementation(projects.core.connectors)
 }

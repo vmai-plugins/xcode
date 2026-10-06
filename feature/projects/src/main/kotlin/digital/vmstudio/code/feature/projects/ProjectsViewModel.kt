@@ -3,6 +3,8 @@ package digital.vmstudio.code.feature.projects
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.vmstudio.code.core.ai.repository.AgentConversation
+import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.project.Project
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -39,6 +42,7 @@ data class ProjectsUiState(
 @HiltViewModel
 class ProjectsViewModel @Inject constructor(
     private val projects: ProjectRepository,
+    private val conversations: AgentConversationRepository,
     servers: ServerRepository,
 ) : ViewModel() {
 
@@ -77,7 +81,10 @@ class ProjectsViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = projects.delete(project.id)) {
                 is VmResult.Failure -> error.value = result.error
-                is VmResult.Success -> Unit
+                // Its chats go too; otherwise Recents keeps pointing at a project that is gone.
+                is VmResult.Success -> conversations.observeConversations().first()
+                    .filter { it.belongsTo(project) }
+                    .forEach { conversations.delete(it.id) }
             }
         }
     }
@@ -86,3 +93,9 @@ class ProjectsViewModel @Inject constructor(
         error.value = null
     }
 }
+
+/** A chat belongs to a project when it ran on the project's server, in its folder. */
+internal fun AgentConversation.belongsTo(project: Project): Boolean =
+    serverId != null &&
+        serverId == project.serverId &&
+        workingDirectory?.trimEnd('/')?.ifEmpty { "/" } == project.remotePath.trimEnd('/').ifEmpty { "/" }

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -53,6 +54,7 @@ fun AgentConversationsScreen(
     onNewConversation: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenTasks: () -> Unit = {},
+    onOpenMenu: (() -> Unit)? = null,
     viewModel: AgentConversationsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -63,6 +65,13 @@ fun AgentConversationsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Chats") },
+                navigationIcon = {
+                    if (onOpenMenu != null) {
+                        IconButton(onClick = onOpenMenu) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = onOpenTasks) {
                         Icon(

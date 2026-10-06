@@ -78,6 +78,7 @@ internal fun ModelPicker(
     enabled: Boolean,
     onModelChange: (String) -> Unit,
     onSync: () -> Unit,
+    isClaudeCodeMissing: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
     ComposerChip(label = modelChipLabel(selectedModel), enabled = enabled, onClick = { open = true })
@@ -86,6 +87,7 @@ internal fun ModelPicker(
             selectedModel = selectedModel,
             omniModels = omniModels,
             isSyncing = isSyncing,
+            isClaudeCodeMissing = isClaudeCodeMissing,
             onPick = {
                 onModelChange(it)
                 open = false
@@ -102,6 +104,7 @@ private fun ModelPickerSheet(
     selectedModel: String,
     omniModels: OmniRouteModels,
     isSyncing: Boolean,
+    isClaudeCodeMissing: Boolean,
     onPick: (String) -> Unit,
     onSync: () -> Unit,
     onDismiss: () -> Unit,
@@ -137,7 +140,10 @@ private fun ModelPickerSheet(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 if (claude.isNotEmpty()) {
-                    item { SectionLabel("Claude Code") }
+                    item {
+                        val label = if (isClaudeCodeMissing) CLAUDE_MISSING_LABEL else "Claude Code"
+                        SectionLabel(label)
+                    }
                     items(claude, key = { "claude-${it.id}" }) { choice ->
                         val isSelected = choice.id == selectedModel
                         ModelRow(choice.label, choice.description, isSelected) { onPick(choice.id) }
@@ -278,3 +284,4 @@ private fun relativeAge(millis: Long): String {
 
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val MINUTES_PER_HOUR = 60L
+private const val CLAUDE_MISSING_LABEL = "Claude Code · not installed on this server"

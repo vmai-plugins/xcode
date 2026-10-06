@@ -35,14 +35,9 @@ enum class AgentAutonomyLevel {
  * depend on several settings recompose once and cannot observe a torn combination.
  */
 data class UserPreferences(
-    val hasCompletedOnboarding: Boolean = false,
     val themePreference: ThemePreference = ThemePreference.SYSTEM,
     val editorFontSizeSp: Float = 13f,
     val terminalFontSizeSp: Float = 12.5f,
-    val editorSoftWrap: Boolean = false,
-    val editorShowLineNumbers: Boolean = true,
-    val editorTabSize: Int = 4,
-    val editorUseSpaces: Boolean = true,
     val terminalScrollbackLines: Int = 5_000,
     val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.SAFE_AUTO,
     /**
@@ -70,7 +65,6 @@ data class UserPreferences(
     /** When [aiAvailableModelIds] was last refreshed from the gateway; 0 if never. */
     val aiModelsSyncedAtMillis: Long = 0L,
     val aiModelPreset: String = "balanced",
-    val aiStreamingEnabled: Boolean = true,
     /**
      * Whether OmniRoute may call tools (read/write/edit files, search, run
      * commands, fetch pages) instead of only chatting. On by default: the app is a
@@ -83,17 +77,10 @@ data class UserPreferences(
      * with short windows; large and huge suit models with long ones.
      */
     val aiContextSize: String = CONTEXT_LARGE,
-    val gitUserName: String = "",
-    val gitUserEmail: String = "",
-    val notifyOnTaskComplete: Boolean = true,
-    val notifyOnTransferComplete: Boolean = true,
-    val notifyOnServerDisconnect: Boolean = true,
-    val notifyOnBuildComplete: Boolean = true,
-    val reduceMotion: Boolean = false,
-    val maxCacheBytes: Long = 256L * 1024 * 1024,
-    val verboseDiagnostics: Boolean = false,
-    /** Last opened project, restored on launch. */
-    val activeProjectId: String? = null,
+    /** The model last picked in a chat; a new chat starts on it. */
+    val lastChatModel: String? = null,
+    /** The folder last used in a chat, per server id; a new chat on that server opens there. */
+    val lastFolders: Map<String, String> = emptyMap(),
 ) {
     companion object {
         /** The project's own OmniRoute gateway, prefilled; any user can replace it in Settings. */

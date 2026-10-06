@@ -75,14 +75,6 @@ class TerminalLine(columns: Int) {
         val end = to.coerceIn(start, chars.size)
         return String(chars, start, end - start)
     }
-
-    fun copyFrom(other: TerminalLine) {
-        resize(other.columns)
-        other.chars.copyInto(chars)
-        other.styles.copyInto(styles)
-        length = other.length
-        wrapped = other.wrapped
-    }
 }
 
 /**

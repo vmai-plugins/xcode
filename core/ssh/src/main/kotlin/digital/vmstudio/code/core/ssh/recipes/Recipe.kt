@@ -40,10 +40,3 @@ enum class RecipeInstallStatus {
     NOT_INSTALLED,
     UNKNOWN,
 }
-
-data class RecipeState(
-    val recipeId: String,
-    val status: RecipeInstallStatus,
-    /** Installed path, when detectable. */
-    val path: String? = null,
-)
