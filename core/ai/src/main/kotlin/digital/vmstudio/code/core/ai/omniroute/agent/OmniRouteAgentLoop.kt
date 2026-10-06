@@ -173,12 +173,15 @@ class OmniRouteAgentLoop @Inject constructor(
                         }
                         // Close the streamed draft before the tool rows appear under it.
                         if (streamedText.isNotBlank()) emit(AgentEvent.AssistantMessage(streamedText))
+                        val calls = turn.calls.withUniqueIds(usedToolCallIds(history)) {
+                            "call_" + UUID.randomUUID().toString().take(TOOL_ID_LENGTH)
+                        }
                         history += OmniRouteMessage.Assistant(
                             text = streamedText.ifBlank { null },
-                            toolCalls = turn.calls,
+                            toolCalls = calls,
                         )
 
-                        for (call in turn.calls) {
+                        for (call in calls) {
                             currentCoroutineContext().ensureActive()
                             history += runToolCall(call, config, autonomyLevel, allowedTools)
                         }
@@ -729,6 +732,7 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private companion object {
         const val TAG = "OmniRouteAgentLoop"
+        const val TOOL_ID_LENGTH = 12
         val FILE_TOOLS = setOf(
             OmniRouteTool.READ_FILE,
             OmniRouteTool.LIST_DIRECTORY,

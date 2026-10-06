@@ -67,7 +67,7 @@ internal fun List<TranscriptItem>.finishToolCall(
     // call" search used when the provider gives no id at all, rather than silently
     // dropping the finish event and leaving that call stuck showing "running" forever.
     val index = toolItemId
-        ?.let { id -> indexOfFirst { it.id == id && it is TranscriptItem.ToolCall } }
+        ?.let { id -> indexOfLast { it.id == id && it is TranscriptItem.ToolCall } }
         ?.takeIf { it >= 0 }
         ?: indexOfLast { it is TranscriptItem.ToolCall && it.isRunning }
     if (index < 0) return this

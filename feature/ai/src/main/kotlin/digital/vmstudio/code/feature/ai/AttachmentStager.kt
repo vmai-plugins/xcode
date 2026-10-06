@@ -11,8 +11,10 @@ import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.sftp.fs.TransferEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -90,11 +92,29 @@ class AttachmentStager @Inject constructor(
         remoteFileSystem.writeText(serverId, exclude, current + separator + GIT_EXCLUDE_LINE + "\n")
     }
 
-    private suspend fun upload(serverId: String, file: File, remotePath: String): VmError? =
-        when (val last = remoteFileSystem.upload(serverId, file, remotePath, resume = false).last()) {
+    /**
+     * Uploads one file. An upload stream that throws or ends without any event used
+     * to escape as an exception and take the app down mid-send; both now come back
+     * as an error the chat can show.
+     */
+    private suspend fun upload(serverId: String, file: File, remotePath: String): VmError? {
+        val last = remoteFileSystem.upload(serverId, file, remotePath, resume = false)
+            .catch { cause ->
+                if (cause is CancellationException) throw cause
+                emit(TransferEvent.Failed(uploadFailed(cause.message), 0))
+            }
+            .lastOrNull()
+        return when (last) {
+            null -> uploadFailed("The upload ended without reporting a result.")
             is TransferEvent.Failed -> last.error
             else -> null
         }
+    }
+
+    private fun uploadFailed(reason: String?) = VmError.FileSystem(
+        summary = "Could not upload the attachment",
+        reason = reason,
+    )
 
     private suspend fun copyToCache(uri: Uri): VmResult<File> = withContext(ioDispatcher) {
         val name = displayName(uri).replace(UNSAFE_NAME_CHARS, "_").ifBlank { "attachment" }

@@ -41,10 +41,10 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
 
     fun finish(): OmniRouteTurn {
         val usage = (inputTokens to outputTokens).takeIf { inputTokens > 0 || outputTokens > 0 }
-        val calls = tools.entries.mapNotNull { (index, draft) ->
+        val calls = tools.entries.mapNotNull { (_, draft) ->
             val name = draft.name ?: return@mapNotNull null
             OmniRouteToolCall(
-                id = draft.id ?: "call_$index",
+                id = draft.id.orEmpty(),
                 name = name,
                 argumentsJson = draft.arguments.toString().ifBlank { "{}" },
             )
