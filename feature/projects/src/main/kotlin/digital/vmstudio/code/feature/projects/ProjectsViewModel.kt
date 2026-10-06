@@ -66,10 +66,19 @@ class ProjectsViewModel @Inject constructor(
     )
 
     /** Records the open so the list orders by recency, then hands back the project. */
+    private var opening = false
+
+    /** A quick double tap used to push the project screen twice. */
     fun open(project: Project, onOpened: (Project) -> Unit) {
+        if (opening) return
+        opening = true
         viewModelScope.launch {
-            projects.markOpened(project.id)
-            onOpened(project)
+            try {
+                projects.markOpened(project.id)
+                onOpened(project)
+            } finally {
+                opening = false
+            }
         }
     }
 

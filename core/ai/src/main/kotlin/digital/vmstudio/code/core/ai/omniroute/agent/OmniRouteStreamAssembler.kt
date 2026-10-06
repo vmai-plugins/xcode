@@ -29,6 +29,8 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
     private var inputTokens = 0L
     private var outputTokens = 0L
     private var sawAnything = false
+    private var lengthStop = false
+    private var gatewayError: OmniRouteTurn.GatewayError? = null
 
     /** Text the model has written so far in this turn. */
     val textSoFar: String get() = text.toString()
@@ -36,6 +38,10 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
     fun accept(data: String): String? {
         val root = runCatching { json.parseToJsonElement(data) }.getOrNull() as? JsonObject ?: return null
         sawAnything = true
+        gatewayErrorOf(root)?.let {
+            gatewayError = it
+            return null
+        }
         return when (dialect) {
             OmniRouteDialect.ANTHROPIC_MESSAGES -> acceptAnthropic(root)
             OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN -> acceptOpenAi(root)
@@ -52,10 +58,11 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
                 argumentsJson = draft.arguments.toString().ifBlank { "{}" },
             )
         }
+        gatewayError?.let { return it }
         return when {
-            calls.isNotEmpty() -> OmniRouteTurn.ToolCalls(calls, usage)
-            text.isNotEmpty() -> OmniRouteTurn.Text(text.toString(), usage)
-            sawAnything -> OmniRouteTurn.Text("", usage)
+            calls.isNotEmpty() -> OmniRouteTurn.ToolCalls(calls, usage, lengthStop)
+            text.isNotEmpty() -> OmniRouteTurn.Text(text.toString(), usage, lengthStop)
+            sawAnything -> OmniRouteTurn.Text("", usage, lengthStop)
             else -> OmniRouteTurn.ParseFailed("The stream carried no model output.")
         }
     }
@@ -65,8 +72,9 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
             usage.long("prompt_tokens")?.let { inputTokens = it }
             usage.long("completion_tokens")?.let { outputTokens = it }
         }
-        val delta = ((root["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)
-            ?.get("delta") as? JsonObject ?: return null
+        val choice = (root["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
+        if (isLengthStop(choice?.string("finish_reason"))) lengthStop = true
+        val delta = choice?.get("delta") as? JsonObject ?: return null
 
         (delta["tool_calls"] as? JsonArray)?.forEach { element ->
             val call = element as? JsonObject ?: return@forEach
@@ -107,6 +115,7 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
             "content_block_delta" -> anthropicDelta(index, root["delta"] as? JsonObject)
             "message_delta" -> {
                 ((root["usage"] as? JsonObject)?.long("output_tokens"))?.let { outputTokens = it }
+                if (isLengthStop((root["delta"] as? JsonObject)?.string("stop_reason"))) lengthStop = true
                 null
             }
             else -> null

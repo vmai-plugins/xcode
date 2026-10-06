@@ -2,4 +2,7 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Matches ApkDownloader's destination: context.cacheDir/updates. -->
     <cache-path name="updates" path="updates/" />
+    <!-- Matches FileTransfers' destination in feature/files: context.cacheDir/downloads,
+         shared to other apps from the Files browser. -->
+    <cache-path name="downloads" path="downloads/" />
 </paths>

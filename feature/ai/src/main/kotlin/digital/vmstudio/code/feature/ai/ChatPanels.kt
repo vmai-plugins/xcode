@@ -92,8 +92,10 @@ internal fun EmptyChatHero(
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
+    val isGeneral = workingDirectory.isBlank()
     val dirName = remember(workingDirectory) {
-        workingDirectory.trimEnd('/').substringAfterLast('/', "").ifBlank { "your server" }
+        workingDirectory.trimEnd('/').substringAfterLast('/', "")
+            .ifBlank { "General chat · pick a project above to work on code" }
     }
 
     Column(
@@ -110,7 +112,7 @@ internal fun EmptyChatHero(
             modifier = Modifier.size(36.dp),
         )
         Text(
-            text = "What should we work on?",
+            text = if (isGeneral) "How can I help?" else "What should we work on?",
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
@@ -123,7 +125,7 @@ internal fun EmptyChatHero(
             modifier = Modifier.padding(top = 4.dp, bottom = spacing.lg),
         )
 
-        val suggestions = listOf(
+        val suggestions = if (isGeneral) GENERAL_SUGGESTIONS else listOf(
             "Explain this project" to
                 "Explain the structure of this project, its dependencies and key entry points.",
             "Find bugs" to "Review recent changes for bugs and runtime issues.",
@@ -151,6 +153,14 @@ internal fun EmptyChatHero(
         }
     }
 }
+
+/** For a chat with no project: nothing here can touch a server. */
+private val GENERAL_SUGGESTIONS = listOf(
+    "Explain a concept" to "Explain how HTTPS works, step by step, with a simple example.",
+    "Write code" to "Write a small, well-commented function that ",
+    "Debug an error" to "Here is an error message, what causes it and how do I fix it?\n\n",
+    "Plan a feature" to "Help me plan a feature: ",
+)
 
 /**
  * Shown only when the chosen backend cannot run, naming that backend and the fix.

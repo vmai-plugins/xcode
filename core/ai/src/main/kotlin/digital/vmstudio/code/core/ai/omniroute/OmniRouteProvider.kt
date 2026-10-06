@@ -5,6 +5,8 @@ import digital.vmstudio.code.core.ai.model.AgentRunConfig
 import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
 import digital.vmstudio.code.core.ai.model.ConversationTurn
 import digital.vmstudio.code.core.ai.omniroute.agent.OmniRouteAgentLoop
+import digital.vmstudio.code.core.ai.omniroute.agent.OmniRouteTurn
+import digital.vmstudio.code.core.ai.omniroute.agent.gatewayErrorOf
 import digital.vmstudio.code.core.ai.provider.AiProvider
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
 import digital.vmstudio.code.core.ai.provider.AiProviderKind
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -202,8 +205,12 @@ class OmniRouteProvider @Inject constructor(
             var inputTokens = 0L
             var outputTokens = 0L
             val startedAt = System.currentTimeMillis()
+            var streamError: OmniRouteTurn.GatewayError? = null
 
             httpClient.stream(request).collect { event ->
+                // An error object inside a 200 stream used to end as an empty reply.
+                (runCatching { json.parseToJsonElement(event.data) }.getOrNull() as? JsonObject)
+                    ?.let(::gatewayErrorOf)?.let { streamError = it }
                 // Shown as it arrives, like the agent's replies, instead of all at
                 // once at the end behind "Thinking…".
                 ChatStreamDecoder.textDelta(dialect, event.data)?.takeIf { it.isNotEmpty() }?.let { delta ->
@@ -217,6 +224,19 @@ class OmniRouteProvider @Inject constructor(
             }
 
             if (text.isNotEmpty()) emit(AgentEvent.AssistantMessage(text.toString()))
+            streamError?.let { error ->
+                emit(
+                    AgentEvent.Failed(
+                        VmError.Ai(
+                            summary = "The gateway reported an error",
+                            reason = error.message,
+                            retryable = error.retryable,
+                            provider = "omniroute",
+                        ),
+                    ),
+                )
+                return@flow
+            }
             emit(
                 AgentEvent.Completed(
                     sessionId = null,
@@ -434,7 +454,7 @@ class OmniRouteProvider @Inject constructor(
 
     private companion object {
         const val TAG = "OmniRouteProvider"
-        const val DEFAULT_MAX_TOKENS = 4096
+        const val DEFAULT_MAX_TOKENS = 8192
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }

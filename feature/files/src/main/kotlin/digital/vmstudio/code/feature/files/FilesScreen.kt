@@ -1,6 +1,12 @@
 package digital.vmstudio.code.feature.files
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -15,21 +21,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,225 +39,303 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.sftp.model.RemoteFileEntry
 import digital.vmstudio.code.core.sftp.model.RemoteFileType
-import digital.vmstudio.code.core.sftp.model.RemoteSortOrder
 import digital.vmstudio.code.core.ui.component.VmDialog
 import digital.vmstudio.code.core.ui.component.VmEmptyState
+import digital.vmstudio.code.core.ui.component.VmErrorAction
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
+import digital.vmstudio.code.core.ui.component.VmProgress
+import digital.vmstudio.code.core.ui.component.VmStatus
+import digital.vmstudio.code.core.ui.component.VmStatusBadge
 import digital.vmstudio.code.core.ui.theme.VmTheme
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+/**
+ * A live browser for a server's files.
+ *
+ * Reached two ways: from a server or project with that server fixed (and maybe a
+ * starting folder), or from the drawer, where it opens on the most recent server
+ * and a switcher in the top bar moves between any saved ones. While visible it
+ * re-lists the folder every few seconds, so files an agent writes appear without
+ * a manual refresh.
+ *
+ * [onOpenMenu] is set for the drawer route, which shows the menu button in place
+ * of the back arrow.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilesScreen(
     onNavigateBack: () -> Unit,
-    onOpenEditor: (serverId: String, filePath: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
+    onOpenEditor: (serverId: String, filePath: String) -> Unit = { _, _ -> },
+    onAddServer: () -> Unit = {},
+    onOpenMenu: (() -> Unit)? = null,
     viewModel: FilesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val spacing = VmTheme.spacing
-    var menuExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+    // Keyed on the folder: a filter typed for one folder means nothing in the next.
+    var query by rememberSaveable(state.serverId, state.path) { mutableStateOf("") }
 
-    // Back walks up the directory tree before leaving the screen, which is what a
-    // file browser is expected to do.
-    BackHandler(enabled = true) {
+    // Live only while on screen: paused in the background, in the editor, and so on.
+    LifecycleResumeEffect(viewModel) {
+        viewModel.setLive(true)
+        onPauseOrDispose { viewModel.setLive(false) }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.shareRequests.collect { file -> shareFile(context, file) }
+    }
+    val uploadPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let(viewModel::upload)
+    }
+
+    fun goBack() {
         when {
+            searchActive -> {
+                searchActive = false
+                query = ""
+            }
             state.inSelectionMode -> viewModel.clearSelection()
             !viewModel.navigateUp() -> onNavigateBack()
         }
     }
 
+    // Back closes search and selection, then walks up the directory tree before
+    // leaving the screen, which is what a file browser is expected to do.
+    BackHandler(enabled = true) { goBack() }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = if (state.inSelectionMode) {
-                            "${state.selectedPaths.size} selected"
-                        } else {
-                            "Files"
-                        },
-                    )
+            FilesTopBar(
+                state = state,
+                search = SearchState(active = searchActive, query = query),
+                onSearchChange = { active, text ->
+                    searchActive = active
+                    query = text
                 },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            when {
-                                state.inSelectionMode -> viewModel.clearSelection()
-                                !viewModel.navigateUp() -> onNavigateBack()
-                            }
-                        },
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Up")
-                    }
-                },
-                actions = {
-                    if (state.inSelectionMode) {
-                        IconButton(
-                            onClick = {
-                                val selected = state.entries.filter { it.path in state.selectedPaths }
-                                viewModel.startAction(FileAction.ConfirmDelete(selected))
-                            },
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete selected")
-                        }
-                    } else {
-                        IconButton(onClick = viewModel::refresh) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                        }
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More")
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("New file") },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.startAction(FileAction.CreateFile)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("New folder") },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.startAction(FileAction.CreateDirectory)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (state.options.showHidden) {
-                                            "Hide hidden files"
-                                        } else {
-                                            "Show hidden files"
-                                        },
-                                    )
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.toggleHidden()
-                                },
-                            )
-                            RemoteSortOrder.entries.forEach { order ->
-                                DropdownMenuItem(
-                                    text = { Text("Sort by ${order.label()}") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        viewModel.setSortOrder(order)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                },
+                onBack = ::goBack,
+                onOpenMenu = onOpenMenu,
+                onUpload = { uploadPicker.launch("*/*") },
+                viewModel = viewModel,
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        FilesContent(
+            state = state,
+            query = query,
+            onAddServer = onAddServer,
+            viewModel = viewModel,
+            modifier = Modifier.fillMaxSize().padding(padding),
+        )
+    }
+
+    state.pendingAction?.let { action ->
+        FileOverlays(
+            action = action,
+            state = state,
+            onOpenEditor = onOpenEditor,
+            viewModel = viewModel,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilesContent(
+    state: FilesUiState,
+    query: String,
+    onAddServer: () -> Unit,
+    viewModel: FilesViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = VmTheme.spacing
+    if (state.noServer) {
+        VmEmptyState(
+            icon = Icons.Default.Dns,
+            title = "No servers yet",
+            description = "Add a server to browse, preview and share its files from here.",
+            actionLabel = "Add server",
+            onAction = onAddServer,
+            modifier = modifier,
+        )
+        return
+    }
+    // Set by the pull gesture so its spinner shows only for the refresh it started,
+    // not for the live ticks or navigation, which have their own indicators.
+    var pulling by remember { mutableStateOf(false) }
+    LaunchedEffect(state.isLoading) { if (!state.isLoading) pulling = false }
+    val visible = remember(state.entries, query) { filterEntries(state.entries, query) }
+
+    Column(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Breadcrumbs(
                 crumbs = state.breadcrumbs,
                 onNavigate = viewModel::navigateTo,
+                modifier = Modifier.weight(1f),
             )
+            if (state.path.isNotEmpty()) LiveIndicator(stale = state.liveStale)
+        }
 
-            if (state.isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
+        when {
+            state.transfer != null -> VmProgress(
+                progress = state.transfer.fraction,
+                label = state.transfer.label,
+                trailingLabel = state.transfer.fraction?.let { "${(it * 100).toInt()}%" },
+                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
+            )
+            state.isLoading && !pulling -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
 
-            state.error?.let { error ->
-                VmErrorPanel(
-                    error = error,
-                    modifier = Modifier.padding(spacing.md),
-                    onRetry = viewModel::refresh,
-                    actions = listOf(
-                        digital.vmstudio.code.core.ui.component.VmErrorAction(
-                            label = "Dismiss",
-                            onClick = viewModel::dismissError,
-                        ),
-                    ),
-                )
-            }
+        state.error?.let { error ->
+            VmErrorPanel(
+                error = error,
+                modifier = Modifier.padding(spacing.md),
+                onRetry = viewModel::refresh,
+                actions = listOf(VmErrorAction(label = "Dismiss", onClick = viewModel::dismissError)),
+            )
+        }
 
-            when {
-                state.isEmpty -> VmEmptyState(
+        PullToRefreshBox(
+            isRefreshing = pulling && state.isLoading,
+            onRefresh = {
+                pulling = true
+                viewModel.refresh()
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            FileList(state = state, visible = visible, query = query, viewModel = viewModel)
+        }
+    }
+}
+
+/**
+ * The listing. Empty states live inside the list so pull-to-refresh still works
+ * on an empty folder; entries are keyed by path, so a live update that adds or
+ * removes a file keeps the scroll position on the rows that stayed.
+ */
+@Composable
+private fun FileList(
+    state: FilesUiState,
+    visible: List<RemoteFileEntry>,
+    query: String,
+    viewModel: FilesViewModel,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = VmTheme.spacing.xxl),
+    ) {
+        when {
+            state.isEmpty -> item(key = "empty") {
+                VmEmptyState(
                     icon = Icons.Default.FolderOpen,
                     title = "Empty folder",
                     description = "There is nothing here. Hidden files are " +
                         if (state.options.showHidden) "shown." else "hidden.",
                 )
-
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = spacing.xxl),
-                ) {
-                    items(state.entries, key = { it.path }) { entry ->
-                        FileRow(
-                            entry = entry,
-                            selected = entry.path in state.selectedPaths,
-                            selectionMode = state.inSelectionMode,
-                            onClick = {
-                                when {
-                                    state.inSelectionMode -> viewModel.toggleSelection(entry)
-                                    else -> viewModel.open(entry)
-                                }
-                            },
-                            onLongClick = { viewModel.toggleSelection(entry) },
-                            onEdit = if (!entry.isDirectory) {
-                                { viewModel.startAction(FileAction.Edit(entry)) }
-                            } else null,
-                        )
-                    }
-                }
+            }
+            visible.isEmpty() && query.isNotBlank() && state.entries.isNotEmpty() -> item(key = "no-match") {
+                VmEmptyState(
+                    icon = Icons.Default.SearchOff,
+                    title = "No matches",
+                    description = "Nothing in this folder has \"${query.trim()}\" in its name.",
+                )
             }
         }
-    }
-
-    state.pendingAction?.let { action ->
-        when (action) {
-            is FileAction.Edit -> {
-                onOpenEditor(state.serverId, action.entry.path)
-                viewModel.startAction(null)
-            }
-            else -> FileActionDialogs(
-                action = action,
-                onDismiss = { viewModel.startAction(null) },
-                onCreateFile = viewModel::createFile,
-                onCreateDirectory = viewModel::createDirectory,
-                onRename = viewModel::rename,
-                onDelete = viewModel::delete,
+        items(visible, key = { it.path }) { entry ->
+            FileRow(
+                entry = entry,
+                selected = entry.path in state.selectedPaths,
+                selectionMode = state.inSelectionMode,
+                onClick = {
+                    if (state.inSelectionMode) viewModel.toggleSelection(entry) else viewModel.open(entry)
+                },
+                onLongClick = { viewModel.toggleSelection(entry) },
+                onEdit = if (!entry.isDirectory) {
+                    { viewModel.startAction(FileAction.Edit(entry)) }
+                } else {
+                    null
+                },
             )
         }
     }
+}
+
+/** Dialogs and the file sheet, driven by the pending action. */
+@Composable
+private fun FileOverlays(
+    action: FileAction,
+    state: FilesUiState,
+    onOpenEditor: (serverId: String, filePath: String) -> Unit,
+    viewModel: FilesViewModel,
+) {
+    when (action) {
+        is FileAction.Edit -> LaunchedEffect(action) {
+            viewModel.startAction(null)
+            onOpenEditor(state.serverId, action.entry.path)
+        }
+        is FileAction.Details -> FileSheet(
+            entry = action.entry,
+            preview = state.preview,
+            sharing = state.transfer != null,
+            onEdit = { viewModel.startAction(FileAction.Edit(action.entry)) },
+            onShare = { viewModel.share(action.entry) },
+            onDismiss = { viewModel.startAction(null) },
+        )
+        else -> FileActionDialogs(
+            action = action,
+            onDismiss = { viewModel.startAction(null) },
+            onCreateFile = viewModel::createFile,
+            onCreateDirectory = viewModel::createDirectory,
+            onRename = viewModel::rename,
+            onDelete = viewModel::delete,
+        )
+    }
+}
+
+/**
+ * A dot that says the listing is live. Turns amber when the last background
+ * re-listing failed, so a frozen list is never mistaken for a quiet folder.
+ */
+@Composable
+private fun LiveIndicator(stale: Boolean) {
+    VmStatusBadge(
+        status = if (stale) VmStatus.DEGRADED else VmStatus.CONNECTED,
+        label = if (stale) "Reconnecting" else "Live",
+        modifier = Modifier.padding(end = VmTheme.spacing.md),
+    )
 }
 
 @Composable
 private fun Breadcrumbs(
     crumbs: List<Pair<String, String>>,
     onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    if (crumbs.isEmpty()) return
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = VmTheme.spacing.md, vertical = VmTheme.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -435,52 +514,8 @@ private fun FileActionDialogs(
             }
         }
 
-        is FileAction.Edit -> Unit // Editing opens the editor screen, not a dialog here.
-
-        is FileAction.Details -> VmDialog(
-            title = action.entry.name,
-            onDismiss = onDismiss,
-            confirmLabel = "Close",
-            onConfirm = onDismiss,
-            dismissLabel = null,
-        ) {
-            DetailRow("Path", action.entry.path)
-            DetailRow("Type", action.entry.type.name.lowercase())
-            DetailRow("Size", formatSize(action.entry.sizeBytes))
-            DetailRow(
-                "Permissions",
-                "${action.entry.permissions.toRwxString()} (${action.entry.permissions.toOctal()})",
-            )
-            DetailRow("Owner", "uid ${action.entry.uid} / gid ${action.entry.gid}")
-            if (action.entry.permissions.isWorldWritable) {
-                Text(
-                    text = "This file is world-writable, which is usually a misconfiguration.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = VmTheme.colors.warning,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DetailRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = VmTheme.code.mono,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = VmTheme.spacing.md),
-        )
+        // Both are handled by FileOverlays: the editor screen and the file sheet.
+        is FileAction.Edit, is FileAction.Details -> Unit
     }
 }
 
@@ -524,24 +559,24 @@ private fun NameDialog(
     }
 }
 
+/**
+ * Hands a downloaded file to the Android share sheet through the app's
+ * FileProvider, whose `downloads/` cache path covers [FileTransfers]' folder. The
+ * read grant lets the chosen app open it without any storage permission.
+ */
+private fun shareFile(context: Context, file: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = context.contentResolver.getType(uri) ?: "application/octet-stream"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, "Share ${file.name}"))
+}
+
 private fun RemoteFileEntry.icon() = when (type) {
     RemoteFileType.DIRECTORY -> Icons.Default.Folder
     RemoteFileType.SYMLINK -> Icons.Default.Link
     RemoteFileType.SPECIAL -> Icons.Default.Visibility
     else -> Icons.AutoMirrored.Filled.InsertDriveFile
-}
-
-private fun RemoteSortOrder.label(): String = when (this) {
-    RemoteSortOrder.NAME -> "name"
-    RemoteSortOrder.SIZE -> "size"
-    RemoteSortOrder.MODIFIED -> "date"
-    RemoteSortOrder.TYPE -> "type"
-}
-
-private fun formatSize(bytes: Long): String = when {
-    bytes < 0 -> "unknown"
-    bytes >= 1L shl 30 -> "%.1f GB".format(bytes.toDouble() / (1L shl 30))
-    bytes >= 1L shl 20 -> "%.1f MB".format(bytes.toDouble() / (1L shl 20))
-    bytes >= 1L shl 10 -> "%.1f KB".format(bytes.toDouble() / (1L shl 10))
-    else -> "$bytes B"
 }

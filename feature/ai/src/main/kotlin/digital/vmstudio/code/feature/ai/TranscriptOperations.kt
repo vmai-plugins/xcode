@@ -1,5 +1,10 @@
 package digital.vmstudio.code.feature.ai
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
 /**
  * Transcript list operations.
  *
@@ -81,3 +86,50 @@ internal fun List<TranscriptItem>.finishToolCall(
         )
     }
 }
+
+/**
+ * Collects streamed text and hands it on at most every [intervalMillis].
+ *
+ * Models stream dozens of small chunks a second; publishing each one rebuilt the
+ * transcript, re-ran the whole chat screen and re-laid out the full reply per
+ * chunk, which stuttered on long replies. Batched, the reply still types smoothly.
+ * Single-threaded by design: everything runs on the ViewModel's main scope.
+ */
+internal class DeltaBatcher(
+    private val scope: CoroutineScope,
+    private val intervalMillis: Long = DELTA_BATCH_MILLIS,
+    private val publish: (String) -> Unit,
+) {
+    private val pending = StringBuilder()
+    private var flushJob: Job? = null
+
+    fun add(text: String) {
+        pending.append(text)
+        if (flushJob == null) {
+            flushJob = scope.launch {
+                delay(intervalMillis)
+                flushJob = null
+                flush()
+            }
+        }
+    }
+
+    /** Publishes what is waiting now; called before any other event, to keep order. */
+    fun flush() {
+        flushJob?.cancel()
+        flushJob = null
+        if (pending.isEmpty()) return
+        val text = pending.toString()
+        pending.setLength(0)
+        publish(text)
+    }
+
+    /** Drops what is waiting, for a run that was abandoned. */
+    fun clear() {
+        flushJob?.cancel()
+        flushJob = null
+        pending.setLength(0)
+    }
+}
+
+private const val DELTA_BATCH_MILLIS = 50L

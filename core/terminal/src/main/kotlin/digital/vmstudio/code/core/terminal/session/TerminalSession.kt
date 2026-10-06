@@ -8,6 +8,7 @@ import digital.vmstudio.code.core.terminal.emulator.TerminalEmulator
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -120,6 +121,7 @@ class TerminalSession internal constructor(
             _state.value = TerminalSessionState.Running
             val buffer = ByteArray(READ_BUFFER_BYTES)
             var lastPublish = 0L
+            var trailingPublish: Job? = null
 
             try {
                 while (true) {
@@ -131,8 +133,19 @@ class TerminalSession internal constructor(
 
                         val now = System.currentTimeMillis()
                         if (now - lastPublish >= FRAME_INTERVAL_MILLIS) {
+                            trailingPublish?.cancel()
+                            trailingPublish = null
                             publishSnapshot()
                             lastPublish = now
+                        } else if (trailingPublish == null) {
+                            // The end of a burst inside one frame (a prompt, the last
+                            // line of `ls`) used to wait for the next byte to show up.
+                            trailingPublish = scope.launch(emulatorDispatcher) {
+                                delay(FRAME_INTERVAL_MILLIS)
+                                trailingPublish = null
+                                publishSnapshot()
+                                lastPublish = System.currentTimeMillis()
+                            }
                         }
                     }
                 }

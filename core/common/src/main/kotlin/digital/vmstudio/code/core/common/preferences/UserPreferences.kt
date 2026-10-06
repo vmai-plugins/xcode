@@ -79,6 +79,8 @@ data class UserPreferences(
     val aiContextSize: String = CONTEXT_LARGE,
     /** The model last picked in a chat; a new chat starts on it. */
     val lastChatModel: String? = null,
+    /** The last chat was a general one (no project), so new chats open that way. */
+    val lastChatGeneral: Boolean = false,
     /** The folder last used in a chat, per server id; a new chat on that server opens there. */
     val lastFolders: Map<String, String> = emptyMap(),
 ) {

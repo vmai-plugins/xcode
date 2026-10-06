@@ -21,9 +21,11 @@ class VmApplication : Application() {
 
     @Inject lateinit var diagnosticsLogSink: DiagnosticsLogSink
 
-    @Inject lateinit var startupReconciler: StartupReconciler
+    // Lazy: building them pulled Room, OkHttp and TLS setup onto the main thread
+    // before the first frame.
+    @Inject lateinit var startupReconciler: dagger.Lazy<StartupReconciler>
 
-    @Inject lateinit var updateManager: UpdateManager
+    @Inject lateinit var updateManager: dagger.Lazy<UpdateManager>
 
     @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
@@ -32,7 +34,18 @@ class VmApplication : Application() {
         installLogging()
         CrashReporter.install(this, BuildConfig.VERSION_NAME) { diagnosticsLogSink.exportAsText() }
         reconcileInterruptedWork()
-        updateManager.checkForUpdate()
+        checkForUpdateLater()
+    }
+
+    /** Off the startup path, and at most once a day rather than on every launch. */
+    private fun checkForUpdateLater() {
+        applicationScope.launch {
+            val prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            if (now - prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L) < UPDATE_CHECK_INTERVAL_MILLIS) return@launch
+            prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, now).apply()
+            updateManager.get().checkForUpdate()
+        }
     }
 
     private fun installLogging() {
@@ -52,7 +65,7 @@ class VmApplication : Application() {
      */
     private fun reconcileInterruptedWork() {
         applicationScope.launch {
-            startupReconciler.reconcile().onFailure { error ->
+            startupReconciler.get().reconcile().onFailure { error ->
                 VmLog.e(LogCategory.DATABASE, TAG, "Startup reconciliation failed: ${error.summary}")
             }
         }
@@ -60,5 +73,8 @@ class VmApplication : Application() {
 
     private companion object {
         const val TAG = "VmApplication"
+        const val UPDATE_PREFS = "update_check"
+        const val KEY_LAST_UPDATE_CHECK = "last_check_at"
+        const val UPDATE_CHECK_INTERVAL_MILLIS = 24L * 60 * 60 * 1000
     }
 }

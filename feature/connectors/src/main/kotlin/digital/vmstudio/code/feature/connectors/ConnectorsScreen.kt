@@ -115,7 +115,8 @@ fun ConnectorsScreen(
                         )
 
                         VmButton(
-                            text = "Open Terminal",
+                            // It opens the server list, where a terminal is one tap away.
+                            text = "Choose a server",
                             onClick = onOpenTerminal,
                             style = VmButtonStyle.Tertiary,
                             icon = Icons.Default.Terminal,
