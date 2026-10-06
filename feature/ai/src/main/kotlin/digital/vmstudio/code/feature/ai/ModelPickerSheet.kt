@@ -1,6 +1,7 @@
 package digital.vmstudio.code.feature.ai
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -87,7 +88,14 @@ internal fun ModelPicker(
     isClaudeCodeMissing: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
-    ComposerChip(label = modelChipLabel(selectedModel), enabled = enabled, onClick = { open = true })
+    ComposerChip(
+        label = modelChipLabel(selectedModel),
+        enabled = enabled,
+        onClick = { open = true },
+        // Green with a bolt when the model is free, so it reads at a glance.
+        icon = if (selectedModel in omniModels.freeIds) Icons.Default.Bolt else null,
+        accent = if (selectedModel in omniModels.freeIds) VmTheme.colors.success else null,
+    )
     if (open) {
         ModelPickerSheet(
             selectedModel = selectedModel,
@@ -102,6 +110,23 @@ internal fun ModelPicker(
             onDismiss = { open = false },
         )
     }
+}
+
+/**
+ * The gateway model to fall back on when the chosen one is gone: a free one first
+ * (it costs nothing and is what most people pick from), else the first listed.
+ */
+internal fun preferredGatewayModel(ids: List<String>, freeIds: Set<String>): String? =
+    ids.firstOrNull { it in freeIds } ?: ids.firstOrNull()
+
+/**
+ * The model to move to when the selected gateway model is gone from a fresh list,
+ * or null when the selection is fine (a Claude Code alias, a still-listed model,
+ * or no list to judge by).
+ */
+internal fun replacementForMissingModel(selected: String, models: OmniRouteModels): String? {
+    if (ClaudeCodeModels.isClaudeCode(selected) || models.ids.isEmpty() || selected in models.ids) return null
+    return preferredGatewayModel(models.ids, models.freeIds)
 }
 
 /** What the picker lists: everything, only free gateway models, or only Claude Code. */
@@ -284,7 +309,7 @@ private fun SectionLabel(text: String) {
 
 /** A round badge with the provider's initial, tinted per provider so a long list scans by colour. */
 @Composable
-private fun ProviderAvatar(vendor: String) {
+private fun ProviderAvatar(vendor: String, free: Boolean = false) {
     val palette = listOf(
         MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer,
         MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer,
@@ -297,7 +322,9 @@ private fun ProviderAvatar(vendor: String) {
         modifier = Modifier
             .size(32.dp)
             .clip(CircleShape)
-            .background(background),
+            .background(background)
+            // A green ring marks a free model from the avatar alone.
+            .then(if (free) Modifier.border(2.dp, VmTheme.colors.success, CircleShape) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -310,15 +337,27 @@ private fun ProviderAvatar(vendor: String) {
 
 @Composable
 private fun FreeBadge() {
-    Text(
-        text = "FREE",
-        style = MaterialTheme.typography.labelSmall,
-        color = VmTheme.colors.onSuccessContainer,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(VmTheme.colors.successContainer)
+            .background(VmTheme.colors.success)
             .padding(horizontal = 6.dp, vertical = 2.dp),
-    )
+    ) {
+        Icon(
+            imageVector = Icons.Default.Bolt,
+            contentDescription = null,
+            tint = VmTheme.colors.onSuccess,
+            modifier = Modifier.size(11.dp),
+        )
+        Text(
+            text = "FREE",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = VmTheme.colors.onSuccess,
+        )
+    }
 }
 
 @Composable
@@ -330,7 +369,12 @@ private fun ModelRow(
     free: Boolean,
     onClick: () -> Unit,
 ) {
-    val background = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
+    val background = when {
+        selected -> MaterialTheme.colorScheme.secondaryContainer
+        // A faint green wash on free rows, so a long list shows them as a group.
+        free -> VmTheme.colors.success.copy(alpha = FREE_ROW_TINT)
+        else -> Color.Transparent
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -341,7 +385,7 @@ private fun ModelRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ProviderAvatar(vendor)
+        ProviderAvatar(vendor, free)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -410,6 +454,7 @@ private fun relativeAge(millis: Long): String {
     }
 }
 
+private const val FREE_ROW_TINT = 0.08f
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val MINUTES_PER_HOUR = 60L
 private const val CLAUDE_LABEL = "Claude Code · runs on your server"

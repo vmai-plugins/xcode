@@ -232,7 +232,10 @@ internal fun ComposerChip(
     enabled: Boolean,
     onClick: () -> Unit,
     icon: ImageVector? = null,
+    /** Tints the icon and label, e.g. green for a free model. */
+    accent: Color? = null,
 ) {
+    val tint = accent ?: MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
@@ -245,14 +248,14 @@ internal fun ComposerChip(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = tint,
                 modifier = Modifier.size(15.dp),
             )
         }
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = tint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 110.dp),

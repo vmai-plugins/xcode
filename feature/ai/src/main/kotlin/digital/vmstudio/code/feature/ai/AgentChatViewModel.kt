@@ -23,6 +23,7 @@ import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
 import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
 import digital.vmstudio.code.core.ai.repository.StoredEntry
+import digital.vmstudio.code.core.common.error.MODEL_PROBLEM_SUMMARY
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
@@ -170,6 +171,7 @@ class AgentChatViewModel @Inject constructor(
 
     private var runJob: Job? = null
     private var healthJob: Job? = null
+    private var lastProblemSyncAt = 0L
 
     private val deltas = DeltaBatcher(viewModelScope) { text ->
         _uiState.update { it.copy(transcript = it.transcript.appendDelta(text, STREAMING_ID, ::nextId)) }
@@ -187,7 +189,24 @@ class AgentChatViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            modelCatalog.models.collect { models -> _uiState.update { it.copy(omniModels = models) } }
+            modelCatalog.models.collect { models ->
+                _uiState.update { it.copy(omniModels = models) }
+                // A gateway model the list no longer contains cannot be used (the
+                // gateway answers "not a valid combo or provider"): move to one that
+                // exists, a free one first, and say so in the chat.
+                val selected = _uiState.value.selectedModel
+                replacementForMissingModel(selected, models)?.let { replacement ->
+                    selectModel(replacement)
+                    append(
+                        TranscriptItem.Diagnostic(
+                            id = nextId(),
+                            text = "\"${modelChipLabel(selected)}\" is no longer offered by the " +
+                                "gateway. Switched to ${modelChipLabel(replacement)}.",
+                            isStderr = false,
+                        ),
+                    )
+                }
+            }
         }
         // Live model sync: refresh the gateway's list whenever the chat opens on a
         // stale one. A failure here is silent; an explicit sync reports it.
@@ -401,8 +420,10 @@ class AgentChatViewModel @Inject constructor(
             val omniModel = if (prefs.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE) {
                 // The gateway is the default: use its chosen model, else its first
                 // synced one, syncing now if the list is still empty.
+                // The saved choice counts only while the gateway still lists it.
                 prefs.aiSelectedModelId
-                    ?: prefs.aiAvailableModelIds.firstOrNull()
+                    ?.takeIf { prefs.aiAvailableModelIds.isEmpty() || it in prefs.aiAvailableModelIds }
+                    ?: preferredGatewayModel(prefs.aiAvailableModelIds, prefs.aiFreeModelIds)
                     ?: (modelCatalog.sync() as? VmResult.Success)?.value?.firstOrNull()
             } else {
                 null
@@ -789,7 +810,18 @@ class AgentChatViewModel @Inject constructor(
                 ),
             )
 
-            is AgentEvent.Failed -> append(TranscriptItem.Failure(nextId(), event.error))
+            is AgentEvent.Failed -> {
+                append(TranscriptItem.Failure(nextId(), event.error))
+                // "Unknown model" from the gateway usually means the saved list is
+                // stale: refresh it now, and the picker falls back to a model that exists.
+                val now = System.currentTimeMillis()
+                if (event.error.summary == MODEL_PROBLEM_SUMMARY &&
+                    now - lastProblemSyncAt >= PROBLEM_SYNC_MIN_GAP_MILLIS
+                ) {
+                    lastProblemSyncAt = now
+                    viewModelScope.launch { modelCatalog.sync() }
+                }
+            }
 
             is AgentEvent.Diagnostic -> {
                 val line = event.line.trim()
@@ -950,6 +982,7 @@ private suspend fun UserPreferencesSource.contextChars(): Int =
 
 /** How often running background runs are re-read while their chat is open. */
 private const val BACKGROUND_POLL_MILLIS = 15_000L
+private const val PROBLEM_SYNC_MIN_GAP_MILLIS = 60_000L
 
 /** How long a just-started background run is looked for before it is listed. */
 private const val PENDING_START_MILLIS = 60_000L

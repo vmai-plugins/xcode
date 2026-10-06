@@ -1,6 +1,7 @@
 package digital.vmstudio.code.core.network.http
 
 import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
+import digital.vmstudio.code.core.common.error.MODEL_PROBLEM_SUMMARY
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.net.NetworkMonitor
 import digital.vmstudio.code.core.common.result.VmResult
@@ -327,8 +328,6 @@ private fun okhttp3.HttpUrl.redactedForDisplay(): String =
 
 private const val MODEL_PROBLEM_ACTION =
     "Free models come and go on the provider's side. Pick another model (tap the model name below)."
-
-private const val MODEL_PROBLEM_SUMMARY = "This model can't be used right now"
 
 /** The gateway is saying the chosen model (or combo) is gone, unknown or down. */
 private fun mentionsModelProblem(message: String): Boolean {
