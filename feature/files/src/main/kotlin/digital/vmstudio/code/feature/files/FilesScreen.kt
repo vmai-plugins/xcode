@@ -216,8 +216,7 @@ fun FilesScreen(
                             onClick = {
                                 when {
                                     state.inSelectionMode -> viewModel.toggleSelection(entry)
-                                    entry.isDirectory -> viewModel.navigateTo(entry.path)
-                                    else -> viewModel.startAction(FileAction.Details(entry))
+                                    else -> viewModel.open(entry)
                                 }
                             },
                             onLongClick = { viewModel.toggleSelection(entry) },

@@ -8,6 +8,7 @@ import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.database.entity.SshAuthMethod
+import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import digital.vmstudio.code.core.ssh.model.ServerDraft
 import digital.vmstudio.code.core.ssh.model.ServerField
 import digital.vmstudio.code.core.ssh.model.ServerValidation
@@ -38,6 +39,7 @@ data class ServerEditUiState(
 @HiltViewModel
 class ServerEditViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
+    private val connectionManager: SshConnectionManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -136,7 +138,11 @@ class ServerEditViewModel @Inject constructor(
 
         _uiState.update { it.copy(isSaving = true, saveError = null) }
         viewModelScope.launch {
-            when (val result = serverRepository.save(current.draft)) {
+            val result = serverRepository.save(current.draft)
+            // An open connection still uses the old host, user and key; drop it so
+            // the next use connects with what was just saved.
+            if (result is VmResult.Success && serverId != null) connectionManager.disconnect(serverId)
+            when (result) {
                 is VmResult.Success -> _uiState.update {
                     // Clear secret fields from UI state the moment they are stored:
                     // ViewModel state survives configuration changes and can be

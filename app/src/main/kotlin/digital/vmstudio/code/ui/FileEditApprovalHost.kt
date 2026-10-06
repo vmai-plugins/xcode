@@ -95,7 +95,8 @@ private fun FileEditApprovalDialog(
             style = VmTheme.code.mono,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            // The file name is at the end of the path; keep it, cut the start.
+            overflow = TextOverflow.StartEllipsis,
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {

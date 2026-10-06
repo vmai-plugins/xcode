@@ -103,6 +103,27 @@ class EditorStateTest {
     }
 
     @Test
+    fun `typing during a save keeps the file dirty`() {
+        val state = EditorState(initialContent = "a", fileName = "test.kt")
+        state.updateTextFieldValue(state.textFieldValue.copy(text = "ab"))
+        val written = state.textFieldValue.text
+        state.updateTextFieldValue(state.textFieldValue.copy(text = "abc"))
+        state.markSaved(written)
+
+        assertTrue("Text typed after the save started is not on the server", state.isDirty)
+    }
+
+    @Test
+    fun `undo right after typing can be redone`() {
+        val state = EditorState(initialContent = "a", fileName = "test.kt")
+        state.updateTextFieldValue(state.textFieldValue.copy(text = "ab"))
+        state.undo()
+        assertEquals("a", state.textFieldValue.text)
+        state.redo()
+        assertEquals("ab", state.textFieldValue.text)
+    }
+
+    @Test
     fun `language is detected from filename`() {
         val kotlinState = EditorState(initialContent = "", fileName = "main.kt")
         val javaState = EditorState(initialContent = "", fileName = "Main.java")

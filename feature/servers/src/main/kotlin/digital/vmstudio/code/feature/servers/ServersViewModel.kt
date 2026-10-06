@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.model.ServerGroup
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
@@ -34,6 +35,7 @@ data class ServersUiState(
 @HiltViewModel
 class ServersViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
+    private val connectionManager: SshConnectionManager,
 ) : ViewModel() {
 
     private val transientError = MutableStateFlow<VmError?>(null)
@@ -61,7 +63,10 @@ class ServersViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = serverRepository.delete(serverId)) {
                 is VmResult.Failure -> transientError.value = result.error
-                is VmResult.Success -> transientError.value = null
+                is VmResult.Success -> {
+                    transientError.value = null
+                    connectionManager.disconnect(serverId)
+                }
             }
         }
     }
