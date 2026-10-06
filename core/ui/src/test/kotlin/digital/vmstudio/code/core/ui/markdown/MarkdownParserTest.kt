@@ -15,6 +15,11 @@ class MarkdownParserTest {
         is MarkdownBlock.Heading -> block.spans.joinToString("") { it.text }
         is MarkdownBlock.BulletItem -> block.spans.joinToString("") { it.text }
         is MarkdownBlock.CodeBlock -> block.code
+        is MarkdownBlock.Quote -> block.spans.joinToString("") { it.text }
+        is MarkdownBlock.Table -> block.rows.joinToString("\n") { row ->
+            row.joinToString(" | ") { cell -> cell.joinToString("") { it.text } }
+        }
+        MarkdownBlock.Rule -> "---"
     }
 
     // --- code blocks ---------------------------------------------------------------
