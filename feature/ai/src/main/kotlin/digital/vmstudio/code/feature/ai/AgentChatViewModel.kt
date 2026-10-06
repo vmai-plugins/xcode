@@ -676,7 +676,7 @@ class AgentChatViewModel @Inject constructor(
             }
 
             is AgentEvent.AssistantDelta -> _uiState.update {
-                it.copy(transcript = it.transcript.appendDelta(event.text, STREAMING_ID))
+                it.copy(transcript = it.transcript.appendDelta(event.text, STREAMING_ID, ::nextId))
             }
 
             is AgentEvent.Reasoning ->

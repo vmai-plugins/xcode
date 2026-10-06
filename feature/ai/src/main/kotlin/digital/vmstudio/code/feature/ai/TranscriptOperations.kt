@@ -19,13 +19,26 @@ package digital.vmstudio.code.feature.ai
 internal fun List<TranscriptItem>.appendDelta(
     text: String,
     streamingId: String,
+    nextId: () -> String,
 ): List<TranscriptItem> {
     val existing = lastOrNull() as? TranscriptItem.StreamingText
-        ?: return this + TranscriptItem.StreamingText(streamingId, text)
-
-    return toMutableList().also { updated ->
-        updated[updated.lastIndex] = existing.copy(text = existing.text + text)
+    if (existing != null) {
+        return toMutableList().also { updated ->
+            updated[updated.lastIndex] = existing.copy(text = existing.text + text)
+        }
     }
+    // A draft that is no longer last was never closed: the model streamed only
+    // whitespace before a tool call, or a failed stream was retried without one.
+    // Two drafts would share a list key and crash the transcript, so the old one
+    // is settled as a finished reply (or dropped when blank) under its own id.
+    val settled = mapNotNull { item ->
+        if (item is TranscriptItem.StreamingText) {
+            item.text.takeIf { it.isNotBlank() }?.let { TranscriptItem.AssistantText(nextId(), it) }
+        } else {
+            item
+        }
+    }
+    return settled + TranscriptItem.StreamingText(streamingId, text)
 }
 
 /**
