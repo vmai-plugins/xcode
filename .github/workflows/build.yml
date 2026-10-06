@@ -159,10 +159,15 @@ jobs:
           done
           exit 1
 
+      # Built before the emulator starts, so the emulator is not idling meanwhile.
+      - name: Build shrunk release for the launch check
+        run: ./gradlew assembleSmoke --stacktrace
+
       # These cover the parts that cannot be unit tested and that the whole
       # credential story depends on: the real Android Keystore and the real Room
-      # schema with foreign keys enforced.
-      - name: Keystore and database tests
+      # schema with foreign keys enforced. Then the shrunk release build is
+      # installed and launched, because R8 mistakes only show when it runs.
+      - name: Keystore and database tests, release launch check
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -171,7 +176,9 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: ./gradlew :core:security:connectedDebugAndroidTest :core:database:connectedDebugAndroidTest
+          script: |
+            ./gradlew :core:security:connectedDebugAndroidTest :core:database:connectedDebugAndroidTest
+            bash .github/scripts/release-smoke.sh
 
       - name: Upload instrumented test reports
         if: always()

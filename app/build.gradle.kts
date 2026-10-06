@@ -75,6 +75,16 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // The release build exactly (R8 shrinking and all), signed with the debug
+        // key so CI can install it on an emulator and prove it starts. Shrinking
+        // bugs (a stripped serializer, a Hilt class) only show at runtime, and only
+        // in this variant. Its own app id keeps it apart from every real install.
+        create("smoke") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".smoke"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 }
 
