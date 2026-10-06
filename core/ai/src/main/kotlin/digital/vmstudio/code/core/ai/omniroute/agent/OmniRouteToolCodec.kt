@@ -5,6 +5,7 @@ import digital.vmstudio.code.core.ai.omniroute.OmniRouteDialect
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -29,10 +30,49 @@ sealed interface OmniRouteMessage {
 
 /** What a completed (non-streamed) model turn produced. */
 sealed interface OmniRouteTurn {
-    data class Text(val text: String, val usage: Pair<Long, Long>?) : OmniRouteTurn
-    data class ToolCalls(val calls: List<OmniRouteToolCall>, val usage: Pair<Long, Long>?) : OmniRouteTurn
+    /** [truncated]: the model hit its output-token limit, so the text stops early. */
+    data class Text(
+        val text: String,
+        val usage: Pair<Long, Long>?,
+        val truncated: Boolean = false,
+    ) : OmniRouteTurn
+
+    /** [truncated]: cut off at the token limit; the last call's arguments are incomplete. */
+    data class ToolCalls(
+        val calls: List<OmniRouteToolCall>,
+        val usage: Pair<Long, Long>?,
+        val truncated: Boolean = false,
+    ) : OmniRouteTurn
+
     data class ParseFailed(val reason: String) : OmniRouteTurn
+
+    /** The gateway answered with an error object (possibly inside a 200 stream). */
+    data class GatewayError(val message: String, val retryable: Boolean) : OmniRouteTurn
 }
+
+/**
+ * An error object a gateway returned in place of a reply: OpenAI-style
+ * `{"error":{"message":…}}` or Anthropic-style `{"type":"error","error":{…}}`,
+ * sometimes inside a stream that began with HTTP 200. Unread, it looked like an
+ * empty successful answer.
+ */
+internal fun gatewayErrorOf(root: JsonObject): OmniRouteTurn.GatewayError? {
+    val error = root["error"]?.takeUnless { it is JsonNull } ?: return null
+    val obj = error as? JsonObject
+    val message = (obj?.get("message") as? JsonPrimitive)?.content
+        ?: (error as? JsonPrimitive)?.content
+        ?: error.toString()
+    val type = ((obj?.get("type") ?: obj?.get("code")) as? JsonPrimitive)?.content.orEmpty()
+    val retryable = RETRYABLE_ERROR_TYPES.any { type.contains(it, ignoreCase = true) }
+    return OmniRouteTurn.GatewayError(message.ifBlank { type.ifBlank { "Unknown error" } }, retryable)
+}
+
+private val RETRYABLE_ERROR_TYPES = listOf(
+    "overloaded", "rate_limit", "timeout", "server_error", "unavailable",
+)
+
+/** OpenAI's `finish_reason` and Anthropic's `stop_reason` for an output-limit stop. */
+internal fun isLengthStop(reason: String?): Boolean = reason == "length" || reason == "max_tokens"
 
 /**
  * Builds a tool-capable chat request and parses its (non-streamed) response, for
@@ -65,6 +105,7 @@ object OmniRouteToolCodec {
         val root = runCatching { json.parseToJsonElement(body) }.getOrNull() as? JsonObject
             ?: return OmniRouteTurn.ParseFailed("The gateway's response was not a JSON object.")
 
+        gatewayErrorOf(root)?.let { return it }
         return when (dialect) {
             OmniRouteDialect.ANTHROPIC_MESSAGES -> parseAnthropicResponse(root)
             OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN -> parseOpenAiResponse(root)
@@ -163,10 +204,11 @@ object OmniRouteToolCodec {
             OmniRouteToolCall(id, name, arguments)
         }.orEmpty()
 
-        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage)
+        val truncated = isLengthStop(choice.stringOrNull("finish_reason"))
+        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated)
 
         val text = message.stringOrNull("content").orEmpty()
-        return OmniRouteTurn.Text(text, usage)
+        return OmniRouteTurn.Text(text, usage, truncated)
     }
 
     // --- Anthropic dialect -----------------------------------------------------------
@@ -288,8 +330,9 @@ object OmniRouteToolCodec {
             }
         }
 
-        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage)
-        return OmniRouteTurn.Text(text.toString(), usage)
+        val truncated = isLengthStop(root.stringOrNull("stop_reason"))
+        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated)
+        return OmniRouteTurn.Text(text.toString(), usage, truncated)
     }
 
     // --- shared ----------------------------------------------------------------------

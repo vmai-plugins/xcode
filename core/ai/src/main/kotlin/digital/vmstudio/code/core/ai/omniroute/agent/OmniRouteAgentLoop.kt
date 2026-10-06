@@ -123,16 +123,8 @@ class OmniRouteAgentLoop @Inject constructor(
                     }
 
                 when (turn) {
-                    is OmniRouteTurn.ParseFailed -> {
-                        emit(
-                            AgentEvent.Failed(
-                                VmError.Ai(
-                                    summary = "Could not read the model's response",
-                                    reason = turn.reason,
-                                    provider = "omniroute",
-                                ),
-                            ),
-                        )
+                    is OmniRouteTurn.ParseFailed, is OmniRouteTurn.GatewayError -> {
+                        emit(AgentEvent.Failed(turn.failure()))
                         return@flow
                     }
 
@@ -141,7 +133,8 @@ class OmniRouteAgentLoop @Inject constructor(
                             inputTokensTotal += input
                             outputTokensTotal += output
                         }
-                        if (turn.text.isNotBlank()) emit(AgentEvent.AssistantMessage(turn.text))
+                        val shown = if (turn.truncated) turn.text + TRUNCATED_NOTE else turn.text
+                        if (shown.isNotBlank()) emit(AgentEvent.AssistantMessage(shown))
                         // An assistant turn with no content is rejected by the
                         // Anthropic dialect, so a blank reply is stored as a marker.
                         history += OmniRouteMessage.Assistant(
@@ -172,14 +165,8 @@ class OmniRouteAgentLoop @Inject constructor(
                         val calls = turn.calls.withUniqueIds(usedToolCallIds(history)) {
                             "call_" + UUID.randomUUID().toString().take(TOOL_ID_LENGTH)
                         }
-                        history += OmniRouteMessage.Assistant(
-                            text = streamedText.ifBlank { null },
-                            toolCalls = calls,
-                        )
-
-                        for (call in calls) {
-                            currentCoroutineContext().ensureActive()
-                            history += runToolCall(call, config, autonomyLevel, allowedTools)
+                        history += toolRound(turn.truncated, streamedText, calls) { call ->
+                            runToolCall(call, config, autonomyLevel, allowedTools)
                         }
                     }
                 }
@@ -486,13 +473,11 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"query\".", isError = true)
         val path = argument(call.argumentsJson, "path") ?: "."
         val resolved = resolvePath(workingDirectory, path)
-        val caseSensitive = argument(call.argumentsJson, "case_sensitive")?.toBooleanStrictOrNull() ?: false
-
-        val flags = if (caseSensitive) "-rn" else "-rni"
-        val escapedQuery = query.replace("'", "'\\''")
-        val escapedPath = resolved.replace("'", "'\\''")
-        val command = "grep $flags --exclude-dir={.git,node_modules,build,.gradle} " +
-            "'$escapedQuery' '$escapedPath' | head -n 50"
+        val command = grepCommand(
+            query = query,
+            path = resolved,
+            caseSensitive = booleanArgument(call.argumentsJson, "case_sensitive") ?: false,
+        )
 
         return when (val result = commandGuard.run(serverId, command, requestedByAgent = true)) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
@@ -705,6 +690,13 @@ class OmniRouteAgentLoop @Inject constructor(
     private fun resolvePath(workingDirectory: String, path: String): String =
         if (path.startsWith("/") || path.startsWith("~")) path else "${workingDirectory.trimEnd('/')}/$path"
 
+    /** JSON booleans arrive as `true`, not `"true"`; [argument] reads strings only. */
+    private fun booleanArgument(argumentsJson: String, key: String): Boolean? {
+        val root = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull()
+            as? JsonObject ?: return null
+        return (root[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+    }
+
     private fun argument(argumentsJson: String, key: String): String? {
         val root = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull()
             as? JsonObject ?: return null
@@ -768,7 +760,11 @@ class OmniRouteAgentLoop @Inject constructor(
         const val MAX_ITERATIONS = 25
         const val MAX_SESSIONS = 16
         const val MAX_READ_BYTES = 256L * 1024
-        const val DEFAULT_MAX_TOKENS = 4096
+        /**
+         * Room for a whole source file in one write; 4096 cut most writes off. Kept
+         * at 8192, which every common gateway model accepts as a maximum.
+         */
+        const val DEFAULT_MAX_TOKENS = 8192
         const val SIZE_COLUMN_WIDTH = 10
         const val COMMAND_TIMEOUT_MILLIS = 10 * 60_000L
 
@@ -869,6 +865,89 @@ internal fun capToolOutput(output: String, limit: Int = MAX_TOOL_OUTPUT_CHARS): 
     } else {
         output.take(limit) + "\n\n[output truncated: ${output.length - limit} more characters]"
     }
+
+/** What a turn that cannot continue reports to the chat. */
+private fun OmniRouteTurn.failure(): VmError = when (this) {
+    is OmniRouteTurn.GatewayError -> VmError.Ai(
+        summary = "The gateway reported an error",
+        reason = message,
+        retryable = retryable,
+        provider = "omniroute",
+    )
+    is OmniRouteTurn.ParseFailed -> VmError.Ai(
+        summary = "Could not read the model's response",
+        reason = reason,
+        provider = "omniroute",
+    )
+    else -> VmError.Ai(summary = "Unexpected model response", provider = "omniroute")
+}
+
+/**
+ * Runs one round of tool calls, or, when the model's output was cut off at its
+ * length limit mid-arguments, runs none: acting on half a file would be worse.
+ */
+private suspend fun toolRound(
+    truncated: Boolean,
+    text: String,
+    calls: List<OmniRouteToolCall>,
+    run: suspend (OmniRouteToolCall) -> OmniRouteMessage.ToolResult,
+): List<OmniRouteMessage> {
+    if (truncated) return truncatedRound(text, calls)
+    val round = mutableListOf<OmniRouteMessage>(
+        OmniRouteMessage.Assistant(text = text.ifBlank { null }, toolCalls = calls),
+    )
+    for (call in calls) {
+        currentCoroutineContext().ensureActive()
+        round += run(call)
+    }
+    return round
+}
+
+private const val TRUNCATED_NOTE = "\n\n_(Reply cut off at the model's length limit.)_"
+
+/**
+ * A tool round the model's output limit cut off: the calls keep their ids (with
+ * empty arguments, since the cut JSON may not parse on the gateway) and each is
+ * answered with an error that tells the model how to retry.
+ */
+internal fun truncatedRound(text: String, calls: List<OmniRouteToolCall>): List<OmniRouteMessage> =
+    listOf<OmniRouteMessage>(
+        OmniRouteMessage.Assistant(
+            text = text.ifBlank { null },
+            toolCalls = calls.map { it.copy(argumentsJson = "{}") },
+        ),
+    ) + calls.map { call ->
+        OmniRouteMessage.ToolResult(
+            toolCallId = call.id,
+            toolName = call.name,
+            content = "Not run: your output was cut off at the length limit before this call was " +
+                "complete. Write large files in smaller parts (several edit_file calls), then continue.",
+            isError = true,
+        )
+    }
+
+/**
+ * The search command: secrets the path guard blocks for reads are excluded here
+ * too (a project's `.env` or keys were readable through a search), binary files
+ * are skipped, `-e` keeps a query like `-> Unit` from being read as an option, and
+ * each exclude is its own flag because brace expansion needs bash.
+ */
+internal fun grepCommand(query: String, path: String, caseSensitive: Boolean): String {
+    fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+    val flags = if (caseSensitive) "-rnI" else "-rniI"
+    val excludeFlags = GREP_EXCLUDED_DIRS.map { "--exclude-dir=$it" } +
+        GREP_EXCLUDED_FILES.map { "--exclude=$it" }
+    val excludes = excludeFlags.joinToString(" ") { quote(it) }
+    return "grep $flags $excludes -e ${quote(query)} ${quote(path)} | head -n $GREP_MAX_LINES"
+}
+
+private val GREP_EXCLUDED_DIRS = listOf(
+    ".git", "node_modules", "build", ".gradle", ".ssh", ".gnupg", ".aws", ".kube", ".docker",
+)
+private val GREP_EXCLUDED_FILES = listOf(
+    ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "*.kdbx", "id_rsa*", "id_ed25519*", "id_ecdsa*",
+)
+private const val GREP_MAX_LINES = 50
 
 /** Old tool output capped, and whole-file write/edit arguments replaced by a note. */
 private fun OmniRouteMessage.shortened(): OmniRouteMessage = when (this) {
