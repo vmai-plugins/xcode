@@ -264,3 +264,6 @@ fun VmError.displayText(): String = buildString {
     append(summary)
     reason?.let { append(" - ").append(it) }
 }
+
+/** The title the network layer gives an error about an unavailable, unknown or invalid model. */
+const val MODEL_PROBLEM_SUMMARY = "This model can't be used right now"

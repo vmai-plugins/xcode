@@ -1,5 +1,6 @@
 package digital.vmstudio.code.feature.ai
 
+import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -56,5 +57,17 @@ class ModelSearchTest {
         )
         assertEquals(all, visibleGatewayModels(all, free, "", ModelFilter.ALL))
         assertEquals(emptyList<String>(), visibleGatewayModels(all, free, "", ModelFilter.CLAUDE))
+    }
+
+    @Test
+    fun `a model the gateway dropped is replaced by a free one`() {
+        val models = OmniRouteModels(
+            ids = listOf("openai/gpt-4o", "auto/best-coding", "qwen/qwen-coder:free"),
+            freeIds = setOf("qwen/qwen-coder:free"),
+        )
+        assertEquals("qwen/qwen-coder:free", replacementForMissingModel("auto/free-router", models))
+        assertEquals(null, replacementForMissingModel("openai/gpt-4o", models))
+        assertEquals(null, replacementForMissingModel("sonnet", models))
+        assertEquals(null, replacementForMissingModel("auto/free-router", OmniRouteModels()))
     }
 }
