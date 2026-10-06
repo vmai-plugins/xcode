@@ -25,6 +25,24 @@ object NetworkModule {
         // OkHttp's own retry only covers connection-level failures; request retry is
         // handled by VmHttpClient, which knows which status codes deserve it.
         .retryOnConnectionFailure(true)
+        // OkHttp drops Authorization when a redirect leaves the host, but not custom
+        // key headers such as x-api-key: a gateway (or a proxy in front of it) that
+        // redirected elsewhere would have handed the key to that other host.
+        .addInterceptor { chain ->
+            val request = chain.request()
+            if (KEY_HEADERS.none { request.header(it) != null }) return@addInterceptor chain.proceed(request)
+            chain.proceed(request.newBuilder().tag(KeyOwner::class.java, KeyOwner(request.url.host)).build())
+        }
+        .addNetworkInterceptor { chain ->
+            val request = chain.request()
+            val owner = request.tag(KeyOwner::class.java)
+            if (owner == null || owner.host == request.url.host) {
+                return@addNetworkInterceptor chain.proceed(request)
+            }
+            val stripped = request.newBuilder()
+            KEY_HEADERS.forEach { stripped.removeHeader(it) }
+            chain.proceed(stripped.build())
+        }
         // No logging interceptor, at any level. It would write Authorization headers
         // and full request bodies into logcat, which is exactly what the redaction
         // layer exists to prevent.
@@ -38,6 +56,11 @@ object NetworkModule {
         explicitNulls = false
         encodeDefaults = true
     }
+
+    /** The host a request's credentials were meant for; follow-up requests keep the tag. */
+    private class KeyOwner(val host: String)
+
+    private val KEY_HEADERS = listOf("Authorization", "x-api-key", "api-key")
 
     private const val CONNECT_TIMEOUT_SECONDS = 20L
     private const val READ_TIMEOUT_MINUTES = 10L

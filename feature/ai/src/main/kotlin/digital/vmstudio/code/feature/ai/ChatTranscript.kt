@@ -207,10 +207,10 @@ internal fun TranscriptRow(
         // The reply is plain text on the page, not a bubble.
         is TranscriptItem.AssistantText -> AssistantReply(item.text)
 
-        is TranscriptItem.StreamingText -> Text(
-            text = item.text + "▌",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
+        // Formatted while it streams, not only once finished: raw `**`, `##` and
+        // table pipes showed for the whole length of a long reply.
+        is TranscriptItem.StreamingText -> MarkdownText(
+            markdown = item.text + "▌",
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
