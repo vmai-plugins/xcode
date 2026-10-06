@@ -255,7 +255,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
     companion object {
         const val RUN_ID_PREFIX = "xo-"
         private const val TAG = "OmniRouteBackground"
-        private const val RUNNER_VERSION = "3"
+        private const val RUNNER_VERSION = "4"
         private const val RUNNER_RESOURCE = "/xcodes/xcodes_agent.py"
         private const val RUNNER_PATH = ".xcodes/bin/xcodes_agent.py"
         private const val RUNNER = "python3 ~/.xcodes/bin/xcodes_agent.py"

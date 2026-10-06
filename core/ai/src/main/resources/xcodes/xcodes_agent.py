@@ -27,8 +27,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
-VERSION = "3"
+VERSION = "4"
 HOME = os.path.expanduser("~/.xcodes")
 RUNS = os.path.join(HOME, "runs")
 
@@ -237,17 +238,27 @@ def parse_response(dialect, root):
             if block.get("type") == "text":
                 text += block.get("text", "")
             elif block.get("type") == "tool_use":
-                calls.append({"id": block["id"], "name": block["name"],
+                calls.append({"id": block.get("id") or "", "name": block["name"],
                               "arguments": json.dumps(block.get("input") or {})})
         usage = root.get("usage") or {}
         return text, calls, (usage.get("input_tokens", 0), usage.get("output_tokens", 0))
     choice = (root.get("choices") or [{}])[0]
     message = choice.get("message") or {}
-    calls = [{"id": c.get("id") or "call_%d" % i, "name": c["function"]["name"],
+    calls = [{"id": c.get("id") or "", "name": c["function"]["name"],
               "arguments": c["function"].get("arguments") or "{}"}
-             for i, c in enumerate(message.get("tool_calls") or []) if c.get("function")]
+             for c in message.get("tool_calls") or [] if c.get("function")]
     usage = root.get("usage") or {}
     return message.get("content") or "", calls, (usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+
+
+def unique_ids(calls, history):
+    """Gateways may omit tool-call ids or restart them at call_0 every turn; ids pair calls with results."""
+    used = {c["id"] for m in history for c in m.get("tool_calls") or []}
+    for call in calls:
+        if not call["id"] or call["id"] in used:
+            call["id"] = "call_" + uuid.uuid4().hex[:12]
+        used.add(call["id"])
+    return calls
 
 
 # --- tools ----------------------------------------------------------------------
@@ -473,6 +484,7 @@ def run(directory):
             tokens_out += used_out or 0
             if text:
                 state.event("text", text=text)
+            calls = unique_ids(calls, history)
             history.append({"role": "assistant", "content": text, "tool_calls": calls})
             if not calls:
                 state.event("done", input_tokens=tokens_in, output_tokens=tokens_out,

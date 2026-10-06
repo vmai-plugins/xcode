@@ -219,7 +219,11 @@ class AgentChatViewModel @Inject constructor(
     private fun restoreConversation(conversationId: String) {
         viewModelScope.launch {
             val stored = conversations.get(conversationId) ?: return@launch
-            val restored = conversations.transcript(conversationId).map { it.toTranscriptItem(::nextId) }
+            // Chats saved before tool ids were made unique can repeat one; each row
+            // still needs its own key or reopening the chat crashes the list.
+            val seen = mutableSetOf<String>()
+            val restored = conversations.transcript(conversationId)
+                .map { it.toTranscriptItem(::nextId, seen) }
 
             _uiState.update {
                 it.copy(
@@ -676,7 +680,7 @@ class AgentChatViewModel @Inject constructor(
             }
 
             is AgentEvent.AssistantDelta -> _uiState.update {
-                it.copy(transcript = it.transcript.appendDelta(event.text, STREAMING_ID))
+                it.copy(transcript = it.transcript.appendDelta(event.text, STREAMING_ID, ::nextId))
             }
 
             is AgentEvent.Reasoning ->
@@ -684,7 +688,10 @@ class AgentChatViewModel @Inject constructor(
 
             is AgentEvent.ToolStarted -> append(
                 TranscriptItem.ToolCall(
-                    id = toolItemId(event.toolUseId),
+                    // A provider that repeats a tool id must not give two rows one key.
+                    id = toolItemId(event.toolUseId).takeIf { id ->
+                        _uiState.value.transcript.none { it.id == id }
+                    } ?: nextId(),
                     name = event.name,
                     summary = event.summary,
                     affectedPath = event.affectedPath,
@@ -789,7 +796,10 @@ class AgentChatViewModel @Inject constructor(
 }
 
 /** Rebuilds a rendered row from what the conversation store persisted. */
-private fun StoredEntry.toTranscriptItem(nextId: () -> String): TranscriptItem = when (this) {
+private fun StoredEntry.toTranscriptItem(
+    nextId: () -> String,
+    seen: MutableSet<String>,
+): TranscriptItem = when (this) {
     is StoredEntry.User -> TranscriptItem.UserPrompt(nextId(), text)
 
     is StoredEntry.Assistant -> TranscriptItem.AssistantText(nextId(), text)
@@ -797,7 +807,7 @@ private fun StoredEntry.toTranscriptItem(nextId: () -> String): TranscriptItem =
     is StoredEntry.Reasoning -> TranscriptItem.Reasoning(nextId(), text)
 
     is StoredEntry.Tool -> TranscriptItem.ToolCall(
-        id = "tool-$callId",
+        id = "tool-$callId".takeIf(seen::add) ?: nextId(),
         name = name,
         // The human-readable summary is not persisted, so the tool name stands in.
         summary = name,

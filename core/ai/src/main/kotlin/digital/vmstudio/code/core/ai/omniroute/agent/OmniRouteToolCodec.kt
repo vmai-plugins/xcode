@@ -157,7 +157,7 @@ object OmniRouteToolCodec {
         val toolCalls = (message["tool_calls"] as? JsonArray)?.mapNotNull { element ->
             val call = element as? JsonObject ?: return@mapNotNull null
             val function = call["function"] as? JsonObject ?: return@mapNotNull null
-            val id = call.stringOrNull("id") ?: return@mapNotNull null
+            val id = call.stringOrNull("id").orEmpty()
             val name = function.stringOrNull("name") ?: return@mapNotNull null
             val arguments = function.stringOrNull("arguments") ?: "{}"
             OmniRouteToolCall(id, name, arguments)
@@ -278,9 +278,9 @@ object OmniRouteToolCodec {
             when (block.stringOrNull("type")) {
                 "text" -> block.stringOrNull("text")?.let(text::append)
                 "tool_use" -> {
-                    val id = block.stringOrNull("id")
+                    val id = block.stringOrNull("id").orEmpty()
                     val name = block.stringOrNull("name")
-                    if (id != null && name != null) {
+                    if (name != null) {
                         val input = (block["input"] as? JsonObject) ?: JsonObject(emptyMap())
                         toolCalls += OmniRouteToolCall(id, name, input.toString())
                     }
@@ -310,3 +310,28 @@ private fun JsonObject.stringOrNull(key: String): String? =
 
 private fun JsonObject.longOrNull(key: String): Long? =
     (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
+
+/**
+ * Gives every tool call an id no earlier call in the conversation used.
+ *
+ * Some gateways send no id at all, others number calls from zero on every turn
+ * ("call_0" again and again). The id pairs a call with its result, and it keys the
+ * call's row in the chat, so a repeat both confuses the model and crashed the
+ * transcript. Blank or already-used ids are replaced; the history then carries the
+ * new ids, so calls and results still match.
+ */
+internal fun List<OmniRouteToolCall>.withUniqueIds(
+    used: MutableSet<String>,
+    freshId: () -> String,
+): List<OmniRouteToolCall> = map { call ->
+    val id = call.id.takeIf { it.isNotBlank() && it !in used }
+        ?: generateSequence(freshId).first { it !in used }
+    used += id
+    if (id == call.id) call else call.copy(id = id)
+}
+
+/** Ids of every tool call already in [history]. */
+internal fun usedToolCallIds(history: List<OmniRouteMessage>): MutableSet<String> =
+    history.filterIsInstance<OmniRouteMessage.Assistant>()
+        .flatMap { message -> message.toolCalls.map { it.id } }
+        .toMutableSet()
