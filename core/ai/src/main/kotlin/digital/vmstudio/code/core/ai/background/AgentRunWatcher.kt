@@ -24,6 +24,8 @@ data class WatchResult(
     val newlyBlocked: List<BackgroundRun>,
     /** Runs still working; the watcher keeps polling while this is non-empty. */
     val stillRunning: List<BackgroundRun>,
+    /** The server could not be asked (no signal, SSH down); nothing is known. */
+    val unreachable: Boolean = false,
 ) {
     val hasWork: Boolean get() = stillRunning.isNotEmpty()
     val hasAnnouncements: Boolean get() = newlyFinished.isNotEmpty() || newlyBlocked.isNotEmpty()
@@ -55,7 +57,8 @@ class AgentRunWatcher @Inject constructor(
     suspend fun poll(serverId: String): WatchResult {
         val runs = when (val result = runner.list(serverId)) {
             is VmResult.Success -> result.value.filter { it.isBackground }
-            is VmResult.Failure -> return WatchResult(emptyList(), emptyList(), emptyList())
+            is VmResult.Failure ->
+                return WatchResult(emptyList(), emptyList(), emptyList(), unreachable = true)
         }
 
         // Kept as two separate records, not one: a run that was blocked (announced,

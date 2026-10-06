@@ -63,9 +63,10 @@ class DiffReviewViewModel @Inject constructor(
             // Get the diff for the specific file
             when (val result = gitService.diffAll(serverId, repoPath)) {
                 is GitResult.Success -> {
-                    // Filter to just this file
+                    // Git names files relative to the repository root while the
+                    // path here is absolute, so an exact match never hit.
                     val fileDiff = result.value.files.find {
-                        it.newPath == filePath || it.oldPath == filePath
+                        filePath.isSamePath(it.newPath) || filePath.isSamePath(it.oldPath)
                     }
                     val filteredDiff = if (fileDiff != null) {
                         GitDiff(files = listOf(fileDiff))
@@ -185,4 +186,11 @@ class DiffReviewViewModel @Inject constructor(
         const val ARG_SERVER_ID = "serverId"
         const val ARG_FILE_PATH = "filePath"
     }
+}
+
+/** True when [repoRelative] (as git prints it) names this absolute or relative path. */
+internal fun String.isSamePath(repoRelative: String?): Boolean {
+    if (repoRelative.isNullOrBlank()) return false
+    val relative = repoRelative.removePrefix("./")
+    return this == relative || endsWith("/$relative")
 }

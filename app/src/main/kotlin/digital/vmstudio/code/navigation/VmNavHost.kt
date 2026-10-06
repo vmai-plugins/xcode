@@ -238,20 +238,8 @@ fun VmNavHost(
                     defaultValue = null
                 },
             ),
-        ) { backStackEntry ->
-            val agentServerId = backStackEntry.arguments?.getString(VmDestination.ServerAgent.ARG_SERVER_ID) ?: ""
-            AgentChatScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onOpenMenu = onOpenMenu,
-                onOpenSettings = { navController.navigate(VmDestination.Settings.route) },
-                onWatchBackgroundRuns = startWatchingRuns,
-                onOpenDiff = { filePath ->
-                    navController.navigate(VmDestination.ServerDiff.routeFor(agentServerId, filePath))
-                },
-                onOpenFiles = {
-                    navController.navigate(VmDestination.ServerFiles.routeFor(agentServerId))
-                },
-            )
+        ) {
+            AgentChat(navController, onOpenMenu, startWatchingRuns)
         }
 
         composable(
@@ -295,12 +283,8 @@ fun VmNavHost(
                 },
             ),
         ) {
-            AgentChatScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onOpenMenu = onOpenMenu,
-                onOpenSettings = { navController.navigate(VmDestination.Settings.route) },
-                onWatchBackgroundRuns = startWatchingRuns,
-            )
+            // A reopened chat gets the same Files and diff buttons as a new one.
+            AgentChat(navController, onOpenMenu, startWatchingRuns)
         }
 
         composable(VmDestination.Tasks.route) {
@@ -324,6 +308,24 @@ fun VmNavHost(
             }
         }
     }
+}
+
+@Composable
+private fun AgentChat(
+    navController: NavHostController,
+    onOpenMenu: () -> Unit,
+    startWatchingRuns: (String) -> Unit,
+) {
+    AgentChatScreen(
+        onNavigateBack = { navController.popBackStack() },
+        onOpenMenu = onOpenMenu,
+        onOpenSettings = { navController.navigate(VmDestination.Settings.route) },
+        onWatchBackgroundRuns = startWatchingRuns,
+        onOpenDiff = { serverId, filePath ->
+            navController.navigate(VmDestination.ServerDiff.routeFor(serverId, filePath))
+        },
+        onOpenFiles = { serverId -> navController.navigate(VmDestination.ServerFiles.routeFor(serverId)) },
+    )
 }
 
 /** Clears the stack and reopens the start screen, which forwards into a fresh chat. */

@@ -2,6 +2,7 @@ package digital.vmstudio.code.feature.ai
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,8 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -27,6 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,6 +63,14 @@ fun AgentConversationsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
+    var pending by remember { mutableStateOf<Pair<ConversationSummary, ConversationAction>?>(null) }
+
+    ConversationActionDialogs(
+        pending = pending,
+        onDismiss = { pending = null },
+        onRename = viewModel::rename,
+        onDelete = viewModel::delete,
+    )
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -119,7 +131,7 @@ fun AgentConversationsScreen(
                         ConversationRow(
                             conversation = conversation,
                             onOpen = { onOpenConversation(conversation.id) },
-                            onDelete = { viewModel.delete(conversation.id) },
+                            onAction = { action -> pending = conversation to action },
                         )
                     }
                 }
@@ -132,9 +144,10 @@ fun AgentConversationsScreen(
 private fun ConversationRow(
     conversation: ConversationSummary,
     onOpen: () -> Unit,
-    onDelete: () -> Unit,
+    onAction: (ConversationAction) -> Unit,
 ) {
     val spacing = VmTheme.spacing
+    var menuOpen by remember { mutableStateOf(false) }
 
     VmCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
@@ -172,13 +185,16 @@ private fun ConversationRow(
                 }
             }
 
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Delete conversation",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Rename or delete chat",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                ConversationMenu(expanded = menuOpen, onDismiss = { menuOpen = false }, onAction = onAction)
             }
         }
     }

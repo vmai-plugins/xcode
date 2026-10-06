@@ -83,6 +83,15 @@ class AgentConversationsViewModel @Inject constructor(
         }
     }
 
+    fun rename(id: String, title: String) {
+        viewModelScope.launch {
+            when (val result = conversations.rename(id, title)) {
+                is VmResult.Failure -> error.value = result.error
+                is VmResult.Success -> Unit
+            }
+        }
+    }
+
     fun dismissError() {
         error.value = null
     }

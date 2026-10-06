@@ -25,6 +25,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -81,7 +82,8 @@ class OmniRouteProvider @Inject constructor(
                     kind = kind,
                     isAvailable = false,
                     endpoint = baseUrl,
-                    diagnosis = "No gateway URL is set. Add your OmniRoute address in Settings.",
+                    diagnosis = "No valid gateway URL is set. Add your OmniRoute address " +
+                        "(like https://ai.example.com) in Settings.",
                 ),
             )
         }
@@ -436,8 +438,14 @@ class OmniRouteProvider @Inject constructor(
  * trailing `/v1` are dropped, because every path this provider builds already
  * starts with `v1/`. Without this, `https://host/v1` produced `/v1/v1/models`.
  */
-internal fun normalizeBaseUrl(raw: String): String =
-    raw.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+internal fun normalizeBaseUrl(raw: String): String {
+    val trimmed = raw.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+    if (trimmed.isEmpty()) return ""
+    // "192.168.1.5:20128" or "ai.example.com" typed without a scheme made OkHttp
+    // throw on every request, which crashed the app on each launch.
+    val withScheme = if ("://" in trimmed) trimmed else "https://$trimmed"
+    return withScheme.takeIf { it.toHttpUrlOrNull() != null }.orEmpty()
+}
 
 /** Gateway connection details handed to a server-side run. */
 class GatewayAccess(val baseUrl: String, val dialect: OmniRouteDialect, val key: Secret)
