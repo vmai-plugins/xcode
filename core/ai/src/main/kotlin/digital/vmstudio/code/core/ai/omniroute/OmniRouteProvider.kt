@@ -21,6 +21,10 @@ import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.network.http.VmHttpException
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
+import java.io.IOException
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
@@ -34,9 +38,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import javax.inject.Inject
-import javax.inject.Singleton
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Talks to an OmniRoute-style HTTP gateway directly from the device.
@@ -255,6 +256,21 @@ class OmniRouteProvider @Inject constructor(
             throw cancellation
         } catch (httpFailure: VmHttpException) {
             emit(AgentEvent.Failed(httpFailure.error))
+        } catch (dropped: IOException) {
+            // "Software caused connection abort" and friends: the connection was cut
+            // mid-reply (network switch, the gateway or a proxy dropping a long
+            // stream). Said plainly, and safe to resend.
+            emit(
+                AgentEvent.Failed(
+                    VmError.Network(
+                        summary = "The connection to the gateway was interrupted",
+                        reason = dropped.message,
+                        suggestedAction = "Check your connection and send the message again.",
+                        retryable = true,
+                        cause = dropped,
+                    ),
+                ),
+            )
         } catch (throwable: Throwable) {
             emit(
                 AgentEvent.Failed(
@@ -432,9 +448,13 @@ class OmniRouteProvider @Inject constructor(
             }
         }
 
+        // OpenAI-style first. A gateway that serves both (OmniRoute does) answers
+        // either probe, and asking Anthropic first sent every model, GPT, Gemini and
+        // the free combos included, through its Anthropic translation layer. The
+        // OpenAI route is its native one; Anthropic-only gateways still end up here.
         return when {
-            probe(OmniRouteDialect.ANTHROPIC_MESSAGES) -> OmniRouteDialect.ANTHROPIC_MESSAGES
             probe(OmniRouteDialect.OPENAI_CHAT) -> OmniRouteDialect.OPENAI_CHAT
+            probe(OmniRouteDialect.ANTHROPIC_MESSAGES) -> OmniRouteDialect.ANTHROPIC_MESSAGES
             else -> OmniRouteDialect.UNKNOWN
         }.also {
             VmLog.i(LogCategory.AI, TAG, "Gateway dialect detected: ${it.displayName}")

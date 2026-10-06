@@ -4,17 +4,6 @@ import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.net.NetworkMonitor
 import digital.vmstudio.code.core.common.result.VmResult
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.runInterruptible
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -25,6 +14,20 @@ import javax.inject.Singleton
 import javax.net.ssl.SSLHandshakeException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.pow
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 
 /** Retry policy for a request. */
 data class RetryPolicy(
@@ -176,7 +179,10 @@ class VmHttpClient @Inject constructor(
 
     private fun mapHttpError(response: Response, body: String, request: Request): VmError {
         val endpoint = request.url.redactedForDisplay()
-        val excerpt = body.take(400).takeIf { it.isNotBlank() }
+        // The gateway's own sentence, not the JSON around it: the chat showed
+        // {"error":{"type":"server_error","message":"…"}} verbatim.
+        val excerpt = (gatewayMessage(body) ?: body).take(400).takeIf { it.isNotBlank() }
+        val modelProblem = excerpt?.let(::mentionsModelProblem) == true
 
         return when (response.code) {
             401, 403 -> VmError.Authentication(
@@ -207,27 +213,39 @@ class VmHttpClient @Inject constructor(
             )
 
             in 500..599 -> VmError.Network(
-                summary = "The provider is unavailable",
+                summary = if (modelProblem) MODEL_PROBLEM_SUMMARY else "The provider is unavailable",
                 reason = if (response.code == 502) {
                     "The gateway could not reach its upstream service."
                 } else {
                     excerpt ?: "Status ${response.code}."
                 },
-                suggestedAction = "This is a problem on the server side. Check the " +
-                    "gateway is running and try again.",
+                suggestedAction = if (modelProblem) {
+                    MODEL_PROBLEM_ACTION
+                } else {
+                    "This is a problem on the server side. Check the gateway is running and try again."
+                },
                 retryable = true,
                 statusCode = response.code,
                 endpoint = endpoint,
             )
 
             else -> VmError.Network(
-                summary = "Request failed",
+                summary = if (modelProblem) MODEL_PROBLEM_SUMMARY else "Request failed",
                 reason = excerpt ?: "Status ${response.code}.",
+                suggestedAction = if (modelProblem) MODEL_PROBLEM_ACTION else null,
                 retryable = false,
                 statusCode = response.code,
                 endpoint = endpoint,
             )
         }
+    }
+
+    /** The `error.message` of an OpenAI- or Anthropic-style error body, or null. */
+    private fun gatewayMessage(body: String): String? {
+        val root = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? JsonObject ?: return null
+        val error = root["error"]
+        val message = ((error as? JsonObject)?.get("message") ?: root["message"]) as? JsonPrimitive
+        return message?.takeIf { it.isString }?.content ?: (error as? JsonPrimitive)?.content
     }
 
     private fun mapTransportError(throwable: Throwable, request: Request): VmError {
@@ -306,3 +324,15 @@ class VmHttpException(val error: VmError) : IOException(error.summary)
  */
 private fun okhttp3.HttpUrl.redactedForDisplay(): String =
     "$scheme://$host${if (port != -1 && port != 443 && port != 80) ":$port" else ""}$encodedPath"
+
+private const val MODEL_PROBLEM_ACTION =
+    "Free models come and go on the provider's side. Pick another model (tap the model name below)."
+
+private const val MODEL_PROBLEM_SUMMARY = "This model can't be used right now"
+
+/** The gateway is saying the chosen model (or combo) is gone, unknown or down. */
+private fun mentionsModelProblem(message: String): Boolean {
+    val text = message.lowercase()
+    return "unavailable" in text || "not a valid" in text || "no such model" in text ||
+        ("unknown" in text && "model" in text) || "unknown built-in" in text
+}
