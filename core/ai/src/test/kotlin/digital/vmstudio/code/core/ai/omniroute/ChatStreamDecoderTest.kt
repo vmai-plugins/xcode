@@ -176,4 +176,23 @@ class ChatStreamDecoderTest {
         assertEquals("v1/messages", OmniRouteDialect.ANTHROPIC_MESSAGES.chatPath)
         assertEquals("v1/chat/completions", OmniRouteDialect.OPENAI_CHAT.chatPath)
     }
+
+    @Test
+    fun `a paged model list gives the cursor for the next page`() {
+        assertEquals(
+            "m20",
+            ChatStreamDecoder.nextModelsCursor("""{"data":[{"id":"m20"}],"has_more":true,"last_id":"m20"}"""),
+        )
+        assertEquals(null, ChatStreamDecoder.nextModelsCursor("""{"data":[{"id":"a"}],"has_more":false}"""))
+        assertEquals(null, ChatStreamDecoder.nextModelsCursor("""{"data":[{"id":"a"}]}"""))
+    }
+
+    @Test
+    fun `models that cannot chat are left out of the list`() {
+        val models = ChatStreamDecoder.parseModels(
+            """{"data":[{"id":"gpt-4o"},{"id":"text-embedding-3-small"},{"id":"whisper-1"},""" +
+                """{"id":"gpt-4o-mini-tts"},{"id":"deepseek-chat"},{"id":"x","type":"embedding"}]}""",
+        )
+        assertEquals(listOf("gpt-4o", "deepseek-chat"), models)
+    }
 }

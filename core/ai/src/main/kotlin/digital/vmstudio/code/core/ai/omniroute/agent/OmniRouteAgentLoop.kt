@@ -293,6 +293,10 @@ class OmniRouteAgentLoop @Inject constructor(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (streamFailure: VmHttpException) {
+            // A refused key, a missing model or a rate limit is not "streaming is
+            // unsupported": retrying the same turn without streaming hammered a
+            // rate-limited gateway and switched streaming off for good.
+            if (streamFailure.error.isFinalForTurn()) return VmResult.Failure(streamFailure.error)
             VmLog.i(
                 LogCategory.AI,
                 TAG,
@@ -865,6 +869,12 @@ internal fun capToolOutput(output: String, limit: Int = MAX_TOOL_OUTPUT_CHARS): 
     } else {
         output.take(limit) + "\n\n[output truncated: ${output.length - limit} more characters]"
     }
+
+/** HTTP failures a non-streaming retry of the same turn cannot fix. */
+private fun VmError.isFinalForTurn(): Boolean =
+    this is VmError.Authentication || (this as? VmError.Network)?.statusCode in FINAL_STATUSES
+
+private val FINAL_STATUSES = setOf(401, 403, 404, 429)
 
 /** What a turn that cannot continue reports to the chat. */
 private fun OmniRouteTurn.failure(): VmError = when (this) {

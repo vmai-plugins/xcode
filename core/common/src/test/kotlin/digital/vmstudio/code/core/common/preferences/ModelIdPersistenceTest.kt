@@ -38,6 +38,12 @@ class ModelIdPersistenceTest {
     }
 
     @Test
+    fun `keeps a large gateway's full list`() {
+        val many = (1..1_500).map { "model-$it" }
+        assertEquals(1_500, sanitizeModelIds(many).size)
+    }
+
+    @Test
     fun `drops ids that are unreasonably long`() {
         val garbage = "x".repeat(MAX_MODEL_ID_LENGTH + 1)
         val result = sanitizeModelIds(listOf(garbage, "good-model"))

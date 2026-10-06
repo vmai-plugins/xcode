@@ -357,23 +357,41 @@ class OmniRouteProvider @Inject constructor(
         // x-api-key only if that is rejected. Sending both at once would hand the
         // key, in two forms, to an endpoint whose identity is not yet confirmed —
         // and a mistyped base URL is exactly when that matters.
-        fun request(dialect: OmniRouteDialect) = Request.Builder()
-            .url("$baseUrl/v1/models")
+        // A large page size, and paging when the gateway says there is more: an
+        // Anthropic-style list returns 20 per page by default, and only the first
+        // page was ever read.
+        fun request(dialect: OmniRouteDialect, after: String?) = Request.Builder()
+            .url(
+                "$baseUrl/v1/models?limit=$MODELS_PAGE_SIZE" +
+                    after?.let { "&after_id=" + java.net.URLEncoder.encode(it, "UTF-8") }.orEmpty(),
+            )
             .get()
             .applyOmniRouteAuth(key, dialect)
             .build()
 
-        val bearer = httpClient.execute(request(OmniRouteDialect.OPENAI_CHAT), RetryPolicy(maxAttempts = 2))
-        val result = when {
-            bearer is VmResult.Failure && bearer.error is VmError.Authentication ->
-                httpClient.execute(request(OmniRouteDialect.ANTHROPIC_MESSAGES), RetryPolicy(maxAttempts = 2))
-            else -> bearer
+        val retry = RetryPolicy(maxAttempts = 2)
+        val bearer = httpClient.execute(request(OmniRouteDialect.OPENAI_CHAT, null), retry)
+        val dialect = if (bearer is VmResult.Failure && bearer.error is VmError.Authentication) {
+            OmniRouteDialect.ANTHROPIC_MESSAGES
+        } else {
+            OmniRouteDialect.OPENAI_CHAT
         }
-
-        return when (result) {
-            is VmResult.Failure -> result
-            is VmResult.Success -> VmResult.Success(ChatStreamDecoder.parseModels(result.value))
+        var page = if (dialect == OmniRouteDialect.OPENAI_CHAT) {
+            bearer
+        } else {
+            httpClient.execute(request(dialect, null), retry)
         }
+        val ids = mutableListOf<String>()
+        repeat(MAX_MODEL_PAGES) {
+            val body = when (val current = page) {
+                is VmResult.Failure -> return if (ids.isEmpty()) current else VmResult.Success(ids.distinct())
+                is VmResult.Success -> current.value
+            }
+            ids += ChatStreamDecoder.parseModels(body)
+            val cursor = ChatStreamDecoder.nextModelsCursor(body) ?: return VmResult.Success(ids.distinct())
+            page = httpClient.execute(request(dialect, cursor), retry)
+        }
+        return VmResult.Success(ids.distinct())
     }
 
     /**
@@ -455,6 +473,8 @@ class OmniRouteProvider @Inject constructor(
     private companion object {
         const val TAG = "OmniRouteProvider"
         const val DEFAULT_MAX_TOKENS = 8192
+        const val MODELS_PAGE_SIZE = 1000
+        const val MAX_MODEL_PAGES = 20
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }

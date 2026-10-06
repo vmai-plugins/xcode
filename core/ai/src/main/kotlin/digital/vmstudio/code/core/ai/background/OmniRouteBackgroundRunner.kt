@@ -209,7 +209,9 @@ class OmniRouteBackgroundRunner @Inject constructor(
         val run = "python3 ${quote("$home/$RUNNER_PATH")} run ${quote(runDir)} " +
             "> ${quote("$runDir/stdout.log")} 2>&1 < /dev/null"
         // setsid detaches from the SSH session so closing it cannot stop the run.
-        return "cd ${quote(workingDirectory)} && " +
+        // `|| exit 1`: with `&&` the trailing `echo started` still ran after a failed
+        // cd, so a missing folder looked like a successful start.
+        return "cd ${quote(workingDirectory)} || exit 1; " +
             "if command -v setsid >/dev/null; then setsid nohup $run & else nohup $run & fi; echo started"
     }
 
@@ -217,7 +219,20 @@ class OmniRouteBackgroundRunner @Inject constructor(
         connectionManager.withSession(serverId) { session ->
             when (val result = session.execute(command, CommandLimits.QUICK)) {
                 is VmResult.Failure -> result
-                is VmResult.Success -> VmResult.Success(result.value.combinedOutput())
+                // A command that ran but failed (a missing folder for `cd`, a refused
+                // mkdir) used to count as success: the run was reported as started
+                // and the cleanup that removes the gateway key never ran.
+                is VmResult.Success -> if (result.value.isSuccess) {
+                    VmResult.Success(result.value.combinedOutput())
+                } else {
+                    VmResult.Failure(
+                        VmError.Command(
+                            summary = "The server refused to start the run",
+                            reason = result.value.combinedOutput().trim().take(MAX_ERROR_CHARS)
+                                .ifBlank { "Exit code ${result.value.exitCode}" },
+                        ),
+                    )
+                }
             }
         }
 
@@ -264,6 +279,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
         private const val RUNNER_PATH = ".xcodes/bin/xcodes_agent.py"
         private const val RUNNER = "python3 ~/.xcodes/bin/xcodes_agent.py"
         private const val RUN_ID_BYTES = 4
+        private const val MAX_ERROR_CHARS = 300
 
         /** Single-quotes for the shell; a quote inside becomes '\''. */
         fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
