@@ -129,7 +129,9 @@ internal fun isPrivateHost(url: HttpUrl): Boolean {
     return when {
         host == "localhost" || PRIVATE_SUFFIXES.any(host::endsWith) -> true
         // IPv6 literal: loopback, unique-local (fc00::/7) and link-local (fe80::/10).
-        host.contains(':') -> host == "::1" || PRIVATE_V6_PREFIXES.any(host::startsWith)
+        // "::" (unspecified) reaches the phone's own loopback, like "::1".
+        host.contains(':') -> host == "::1" || host == "::" || host.startsWith("::ffff:") ||
+            PRIVATE_V6_PREFIXES.any(host::startsWith)
         else -> isPrivateIpv4(host)
     }
 }
