@@ -213,7 +213,10 @@ class OmniRouteAgentLoop @Inject constructor(
             // Saved however the run ends (done, stopped, failed, out of turns), so
             // "continue" in the next message still knows what was already changed.
             // Images are sent once; later turns keep only the text.
-            sessions.put(sessionId, history.closedForResume())
+            // Kept trimmed: up to 16 sessions of untrimmed tool output could hold tens
+            // of MB for the life of the process. Twice the send budget keeps headroom.
+            val budget = config.contextChars ?: MAX_HISTORY_CHARS
+            sessions.put(sessionId, trimHistory(history.closedForResume(), budget * 2))
         }
     }
 

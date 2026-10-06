@@ -178,7 +178,7 @@ fun AgentChatScreen(
                     contentPadding = PaddingValues(spacing.md),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    items(groupedTranscript, key = { it.id }) { rowItem ->
+                    items(groupedTranscript, key = { it.id }, contentType = { it::class }) { rowItem ->
                         when (rowItem) {
                             is TranscriptRowItem.Single -> TranscriptRow(
                                 item = rowItem.item,

@@ -23,6 +23,12 @@ import javax.inject.Singleton
 interface NetworkMonitor {
     /** Emits the current state immediately, then on every change. */
     val isOnline: Flow<Boolean>
+
+    /**
+     * A quick check before a request, or null when unknown. Collecting [isOnline]
+     * for that registered and removed a system callback on every request.
+     */
+    fun isOnlineNow(): Boolean? = null
 }
 
 @Singleton
@@ -74,6 +80,17 @@ class ConnectivityNetworkMonitor @Inject constructor(
     }
         .distinctUntilChanged()
         .conflate()
+
+    /**
+     * Any network that offers internet counts, validated or not: a gateway on the
+     * local Wi-Fi works even when that Wi-Fi has no route to the internet, and the
+     * request itself reports a real failure.
+     */
+    override fun isOnlineNow(): Boolean? {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return null
+        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
 
     private fun ConnectivityManager.currentlyOnline(): Boolean {
         val capabilities = getNetworkCapabilities(activeNetwork) ?: return false

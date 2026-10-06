@@ -329,7 +329,7 @@ private class SyntaxHighlightTransformation(
     }
 }
 
-private const val MAX_HIGHLIGHT_CHARS = 200_000
+private const val MAX_HIGHLIGHT_CHARS = 60_000
 
 @Composable
 private fun editorColorScheme(): ColorScheme {

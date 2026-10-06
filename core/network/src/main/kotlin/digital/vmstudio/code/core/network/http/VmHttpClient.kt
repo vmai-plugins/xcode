@@ -137,8 +137,10 @@ class VmHttpClient @Inject constructor(
      * succeeded; failing fast with a specific offline error also beats a 30-second
      * DNS timeout the user has to sit through.
      */
-    private suspend fun offlineCheck(): VmError? =
-        if (networkMonitor.isOnline.first()) null else VmError.Offline()
+    private suspend fun offlineCheck(): VmError? {
+        val online = networkMonitor.isOnlineNow() ?: networkMonitor.isOnline.first()
+        return if (online) null else VmError.Offline()
+    }
 
     /**
      * A non-idempotent request (a POST that may have been processed before the

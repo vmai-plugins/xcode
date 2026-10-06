@@ -1,9 +1,9 @@
 package digital.vmstudio.code.core.common.log
 
 import android.util.Log
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.onSubscription
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
@@ -105,15 +105,21 @@ class DiagnosticsLogSink @Inject constructor() : LogSink {
     private val lock = Any()
     private val _entries = MutableStateFlow<List<LogEntry>>(emptyList())
 
-    val entries: StateFlow<List<LogEntry>> = _entries.asStateFlow()
+    /** Live entries, filled from the buffer when collection starts. */
+    val entries: Flow<List<LogEntry>> = _entries.onSubscription {
+        _entries.value = synchronized(lock) { buffer.toList() }
+    }
 
     override fun write(entry: LogEntry) {
+        // Copying the whole buffer on every line is only worth it while someone
+        // watches; otherwise each log call allocated a 2,000-entry list.
+        val watched = _entries.subscriptionCount.value > 0
         val snapshot = synchronized(lock) {
             if (buffer.size >= CAPACITY) buffer.removeFirst()
             buffer.addLast(entry)
-            buffer.toList()
+            if (watched) buffer.toList() else null
         }
-        _entries.value = snapshot
+        snapshot?.let { _entries.value = it }
     }
 
     fun clear() {

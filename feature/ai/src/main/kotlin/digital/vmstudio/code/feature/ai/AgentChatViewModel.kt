@@ -171,6 +171,10 @@ class AgentChatViewModel @Inject constructor(
     private var runJob: Job? = null
     private var healthJob: Job? = null
 
+    private val deltas = DeltaBatcher(viewModelScope) { text ->
+        _uiState.update { it.copy(transcript = it.transcript.appendDelta(text, STREAMING_ID, ::nextId)) }
+    }
+
     /** Until then the run list is re-read even though nothing is listed as running yet. */
     private var listRunsUntil = 0L
     private var itemCounter = 0L
@@ -218,8 +222,13 @@ class AgentChatViewModel @Inject constructor(
         viewModelScope.launch {
             while (true) {
                 delay(BACKGROUND_POLL_MILLIS)
+                // Only while the chat is on screen (collected while started): in the
+                // background the run service already watches, and a second poller
+                // kept the radio and the SSH connection awake.
+                val visible = _uiState.subscriptionCount.value > 0
                 val starting = System.currentTimeMillis() < listRunsUntil
-                if (starting || _uiState.value.backgroundRuns.any { it.isRunning }) refreshBackgroundRuns()
+                val anyRunning = _uiState.value.backgroundRuns.any { it.isRunning }
+                if (visible && (starting || anyRunning)) refreshBackgroundRuns()
             }
         }
     }
@@ -684,6 +693,7 @@ class AgentChatViewModel @Inject constructor(
     /** Forgets the provider session so the next prompt starts a fresh conversation. */
     fun startNewConversation() {
         runJob?.cancel()
+        deltas.clear()
         _uiState.update {
             it.copy(
                 transcript = emptyList(),
@@ -725,6 +735,8 @@ class AgentChatViewModel @Inject constructor(
         }
 
     private fun applyEvent(event: AgentEvent) {
+        // Streamed text waiting to be shown goes first, so events stay in order.
+        if (event !is AgentEvent.AssistantDelta) deltas.flush()
         when (event) {
             is AgentEvent.SessionStarted ->
                 _uiState.update { it.copy(providerSessionId = event.sessionId) }
@@ -738,9 +750,7 @@ class AgentChatViewModel @Inject constructor(
                 )
             }
 
-            is AgentEvent.AssistantDelta -> _uiState.update {
-                it.copy(transcript = it.transcript.appendDelta(event.text, STREAMING_ID, ::nextId))
-            }
+            is AgentEvent.AssistantDelta -> deltas.add(event.text)
 
             is AgentEvent.Reasoning ->
                 append(TranscriptItem.Reasoning(nextId(), event.text))
