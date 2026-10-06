@@ -150,4 +150,45 @@ class MarkdownParserTest {
         assertTrue(MarkdownParser.parse("").isEmpty())
         assertTrue(MarkdownParser.parse("\n\n").isEmpty())
     }
+
+    @Test
+    fun `a pipe table becomes a table with br turned into line breaks`() {
+        val blocks = MarkdownParser.parse(
+            """
+            | Area | Fix |
+            |------|-----|
+            | **Speed** | Cache<br>CDN |
+            """.trimIndent(),
+        )
+        val table = blocks.single() as MarkdownBlock.Table
+        assertEquals("Area", table.header[0].single().text)
+        assertTrue(table.rows.single()[0].single().bold)
+        assertEquals("Cache\nCDN", table.rows.single()[1].joinToString("") { it.text })
+    }
+
+    @Test
+    fun `a dashed line is a rule, not part of the next paragraph`() {
+        val blocks = MarkdownParser.parse("Intro\n---\nNext")
+        assertEquals(MarkdownBlock.Rule, blocks[1])
+        assertEquals(3, blocks.size)
+    }
+
+    @Test
+    fun `links keep their text and url`() {
+        val span = MarkdownParser.parseSpans("see [the docs](https://example.com)").last()
+        assertEquals("the docs", span.text)
+        assertEquals("https://example.com", span.url)
+    }
+
+    @Test
+    fun `snake case names are not italic`() {
+        val spans = MarkdownParser.parseSpans("edit file_name_here now")
+        assertEquals(listOf("edit file_name_here now"), spans.map { it.text })
+    }
+
+    @Test
+    fun `nested bullets carry their depth`() {
+        val items = MarkdownParser.parse("- top\n  - nested").map { it as MarkdownBlock.BulletItem }
+        assertEquals(listOf(0, 1), items.map { it.depth })
+    }
 }
