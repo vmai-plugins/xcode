@@ -62,6 +62,8 @@ data class UserPreferences(
      * never fabricated — the list is only ever what the gateway itself answered.
      */
     val aiAvailableModelIds: List<String> = emptyList(),
+    /** The subset of [aiAvailableModelIds] the gateway marked as free (no charge). */
+    val aiFreeModelIds: Set<String> = emptySet(),
     /** When [aiAvailableModelIds] was last refreshed from the gateway; 0 if never. */
     val aiModelsSyncedAtMillis: Long = 0L,
     val aiModelPreset: String = "balanced",

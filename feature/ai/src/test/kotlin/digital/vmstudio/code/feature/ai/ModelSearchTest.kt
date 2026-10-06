@@ -44,4 +44,17 @@ class ModelSearchTest {
         assertEquals("best-coding", modelChipLabel("auto/best-coding"))
         assertEquals("glm-5.3", modelChipLabel("glm-5.3"))
     }
+
+    @Test
+    fun `the free filter keeps only free gateway models, still searchable`() {
+        val all = listOf("deepseek/deepseek-r1:free", "openai/gpt-4o", "qwen/qwen-coder:free")
+        val free = setOf("deepseek/deepseek-r1:free", "qwen/qwen-coder:free")
+        assertEquals(free.toList(), visibleGatewayModels(all, free, "", ModelFilter.FREE))
+        assertEquals(
+            listOf("qwen/qwen-coder:free"),
+            visibleGatewayModels(all, free, "qwen", ModelFilter.FREE),
+        )
+        assertEquals(all, visibleGatewayModels(all, free, "", ModelFilter.ALL))
+        assertEquals(emptyList<String>(), visibleGatewayModels(all, free, "", ModelFilter.CLAUDE))
+    }
 }

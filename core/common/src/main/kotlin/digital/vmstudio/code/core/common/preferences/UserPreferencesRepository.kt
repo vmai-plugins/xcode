@@ -111,7 +111,7 @@ class UserPreferencesRepository @Inject constructor(
      * misbehaving gateway can neither inject separators into an id nor grow the
      * preferences file without bound.
      */
-    suspend fun setAiModels(models: List<String>) = edit {
+    suspend fun setAiModels(models: List<String>, freeIds: Collection<String>? = null) = edit {
         val sanitised = sanitizeModelIds(models)
         if (sanitised.isEmpty()) {
             it.remove(Keys.AI_MODELS)
@@ -119,11 +119,18 @@ class UserPreferencesRepository @Inject constructor(
             it[Keys.AI_MODELS] = sanitised.joinToString(MODEL_ID_SEPARATOR)
             it[Keys.AI_MODELS_SYNCED_AT] = System.currentTimeMillis()
         }
+        // Only a sync that read the gateway's pricing replaces the free set; a bare
+        // id list (from the connection test) leaves it as it was.
+        if (freeIds != null) {
+            val listed = sanitised.toSet()
+            it[Keys.AI_FREE_MODELS] = freeIds.filter { id -> id in listed }.joinToString(MODEL_ID_SEPARATOR)
+        }
     }
 
     /** Forgets the synced model list, e.g. when the gateway it came from changes. */
     suspend fun clearAiModels() = edit {
         it.remove(Keys.AI_MODELS)
+        it.remove(Keys.AI_FREE_MODELS)
         it.remove(Keys.AI_MODELS_SYNCED_AT)
     }
 
@@ -154,6 +161,7 @@ class UserPreferencesRepository @Inject constructor(
             aiApiKeyCredentialId = this[Keys.AI_API_KEY_CREDENTIAL],
             aiSelectedModelId = this[Keys.AI_MODEL],
             aiAvailableModelIds = parseModelIds(this[Keys.AI_MODELS]),
+            aiFreeModelIds = parseModelIds(this[Keys.AI_FREE_MODELS]).toSet(),
             aiModelsSyncedAtMillis = this[Keys.AI_MODELS_SYNCED_AT] ?: defaults.aiModelsSyncedAtMillis,
             aiModelPreset = this[Keys.AI_MODEL_PRESET] ?: defaults.aiModelPreset,
             aiToolsEnabled = this[Keys.AI_TOOLS_ENABLED] ?: defaults.aiToolsEnabled,
@@ -181,6 +189,7 @@ class UserPreferencesRepository @Inject constructor(
         val AI_API_KEY_CREDENTIAL = stringPreferencesKey("ai_api_key_credential")
         val AI_MODEL = stringPreferencesKey("ai_model")
         val AI_MODELS = stringPreferencesKey("ai_models")
+        val AI_FREE_MODELS = stringPreferencesKey("ai_free_models")
         val AI_MODELS_SYNCED_AT = longPreferencesKey("ai_models_synced_at")
         val AI_MODEL_PRESET = stringPreferencesKey("ai_model_preset")
         val AI_TOOLS_ENABLED = booleanPreferencesKey("ai_tools_enabled")
