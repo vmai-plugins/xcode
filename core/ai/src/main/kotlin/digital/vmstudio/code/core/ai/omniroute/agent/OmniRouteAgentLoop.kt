@@ -289,10 +289,14 @@ class OmniRouteAgentLoop @Inject constructor(
         val streamed = if (streamKey in nonStreaming) null else try {
             httpClient.stream(buildRequest(target, workingDirectory, allowedTools, history, stream = true))
                 .collect { event ->
-                    assembler.accept(event.data)?.takeIf { it.isNotEmpty() }?.let {
-                        emit(AgentEvent.AssistantDelta(it))
-                    }
+                    val delta = assembler.accept(event.data)?.takeIf { it.isNotEmpty() }
+                    // Thinking goes above the reply it led to, so it is shown the
+                    // moment the reply starts.
+                    if (delta != null) assembler.takeReasoning()?.let { emit(AgentEvent.Reasoning(it)) }
+                    delta?.let { emit(AgentEvent.AssistantDelta(it)) }
                 }
+            // A turn that only thought and then called tools shows its thinking too.
+            assembler.takeReasoning()?.let { emit(AgentEvent.Reasoning(it)) }
             assembler.finish()
         } catch (cancellation: CancellationException) {
             throw cancellation

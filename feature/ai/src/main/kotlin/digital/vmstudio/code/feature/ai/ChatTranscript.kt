@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,7 +34,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +54,7 @@ import digital.vmstudio.code.core.ui.component.VmChip
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.markdown.MarkdownText
 import digital.vmstudio.code.core.ui.theme.VmTheme
+import kotlinx.coroutines.delay
 
 internal sealed interface TranscriptRowItem {
     val id: String
@@ -502,3 +506,46 @@ private fun AssistantReply(text: String) {
         }
     }
 }
+
+/**
+ * A live "Thinking… 12s" line while the agent works with nothing else moving.
+ *
+ * Without it a run looked dead: a reasoning model can think for a minute before
+ * its first word, and the transcript showed only the user's message. Hidden while
+ * reply text streams in or a tool row already shows its own spinner.
+ */
+internal fun LazyListScope.runStatus(isRunning: Boolean, transcript: List<TranscriptItem>) {
+    if (!isRunning) return
+    val label = when (val last = transcript.lastOrNull()) {
+        is TranscriptItem.StreamingText -> return
+        is TranscriptItem.ToolCall -> if (last.isRunning) return else "Reading the results"
+        else -> "Thinking"
+    }
+    item(key = RUN_STATUS_KEY) { RunStatusRow(label) }
+}
+
+@Composable
+private fun RunStatusRow(label: String) {
+    var seconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(ONE_SECOND_MILLIS)
+            seconds++
+        }
+    }
+    Row(
+        modifier = Modifier.padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+        Text(
+            text = "$label… ${seconds}s",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private const val RUN_STATUS_KEY = "run-status"
+private const val ONE_SECOND_MILLIS = 1_000L

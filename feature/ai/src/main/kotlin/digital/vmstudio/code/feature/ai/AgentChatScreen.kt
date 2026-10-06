@@ -306,6 +306,7 @@ fun AgentChatScreen(
                             )
                         }
                     }
+                    runStatus(state.isRunning, state.transcript)
                 }
             }
 
