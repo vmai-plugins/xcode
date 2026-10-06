@@ -176,4 +176,14 @@ class ChatStreamDecoderTest {
         assertEquals("v1/messages", OmniRouteDialect.ANTHROPIC_MESSAGES.chatPath)
         assertEquals("v1/chat/completions", OmniRouteDialect.OPENAI_CHAT.chatPath)
     }
+
+    @Test
+    fun `a paged model list gives the cursor for the next page`() {
+        assertEquals(
+            "m20",
+            ChatStreamDecoder.nextModelsCursor("""{"data":[{"id":"m20"}],"has_more":true,"last_id":"m20"}"""),
+        )
+        assertEquals(null, ChatStreamDecoder.nextModelsCursor("""{"data":[{"id":"a"}],"has_more":false}"""))
+        assertEquals(null, ChatStreamDecoder.nextModelsCursor("""{"data":[{"id":"a"}]}"""))
+    }
 }

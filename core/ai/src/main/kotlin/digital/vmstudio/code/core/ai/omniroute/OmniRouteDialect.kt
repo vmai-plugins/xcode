@@ -76,6 +76,16 @@ object ChatStreamDecoder {
         return (input ?: 0L) to (output ?: 0L)
     }
 
+    /**
+     * The cursor for the next page of a paged model list (Anthropic style:
+     * `has_more` with `last_id`), or null when this page is the last.
+     */
+    fun nextModelsCursor(body: String): String? {
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull() as? JsonObject ?: return null
+        val hasMore = (root["has_more"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
+        return if (hasMore) root.string("last_id") else null
+    }
+
     /** Model ids from a `GET /v1/models` body. Both dialects use `data[].id`. */
     fun parseModels(body: String): List<String> {
         val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return emptyList()

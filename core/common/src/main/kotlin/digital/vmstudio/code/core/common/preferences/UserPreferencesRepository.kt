@@ -198,8 +198,12 @@ class UserPreferencesRepository @Inject constructor(
 /** Model ids are joined with this separator when persisted. */
 internal const val MODEL_ID_SEPARATOR = "\n"
 
-/** Upper bound so a gateway answering with thousands of ids cannot bloat the store. */
-internal const val MAX_SYNCED_MODEL_IDS = 200
+/**
+ * Upper bound so a runaway answer cannot bloat the store. It was 200, which cut
+ * real gateways off: OmniRoute serves far more, and everything past the 200th id
+ * silently vanished from the picker. 5000 ids of ~40 characters is ~200 KB.
+ */
+internal const val MAX_SYNCED_MODEL_IDS = 5_000
 
 /** A model id longer than this is not a model id; it is garbage. */
 internal const val MAX_MODEL_ID_LENGTH = 128
