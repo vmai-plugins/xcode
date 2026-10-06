@@ -11,6 +11,7 @@ import digital.vmstudio.code.core.sftp.model.RemoteFileEntry
 import digital.vmstudio.code.core.sftp.model.RemoteListingOptions
 import digital.vmstudio.code.core.sftp.model.RemotePath
 import digital.vmstudio.code.core.sftp.model.RemoteSortOrder
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -111,17 +112,25 @@ class FilesViewModel @Inject constructor(
         return true
     }
 
+    private var refreshJob: Job? = null
+
     fun refresh() {
         val state = _uiState.value
         if (state.path.isEmpty()) return
         _uiState.update { it.copy(isLoading = true) }
-        viewModelScope.launch {
-            when (val result = remoteFileSystem.list(serverId, state.path, state.options)) {
-                is VmResult.Success -> _uiState.update {
-                    it.copy(entries = result.value, isLoading = false, error = null)
-                }
-                is VmResult.Failure -> _uiState.update {
-                    it.copy(entries = emptyList(), isLoading = false, error = result.error)
+        // A slow listing that lands after the user moved on must not overwrite the
+        // folder now shown, so the old request is dropped and stale results ignored.
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            val result = remoteFileSystem.list(serverId, state.path, state.options)
+            _uiState.update {
+                when {
+                    it.path != state.path -> it
+                    result is VmResult.Success ->
+                        it.copy(entries = result.value, isLoading = false, error = null)
+                    result is VmResult.Failure ->
+                        it.copy(entries = emptyList(), isLoading = false, error = result.error)
+                    else -> it
                 }
             }
         }

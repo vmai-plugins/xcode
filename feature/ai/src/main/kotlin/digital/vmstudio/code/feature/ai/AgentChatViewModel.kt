@@ -35,6 +35,7 @@ import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /** One rendered entry in the transcript. */
@@ -152,9 +154,11 @@ class AgentChatViewModel @Inject constructor(
     /** Set when reopening a stored conversation rather than starting a new one. */
     private val existingConversationId: String? = savedStateHandle[ARG_CONVERSATION_ID]
 
-    /** Supplied when the agent was opened from a project; decoded from the route. */
+    /**
+     * Supplied when the agent was opened from a project. Navigation already decodes
+     * it; decoding again turned "+" into spaces and crashed on a "%".
+     */
     private val projectPath: String? = savedStateHandle.get<String>(ARG_PATH)
-        ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
 
     private val _uiState = MutableStateFlow(AgentChatUiState(serverId = serverId))
     val uiState: StateFlow<AgentChatUiState> = _uiState.asStateFlow()
@@ -231,8 +235,13 @@ class AgentChatViewModel @Inject constructor(
                     providerSessionId = stored.providerSessionId,
                     workingDirectory = stored.workingDirectory ?: it.workingDirectory,
                     transcript = restored,
+                    // The route of a reopened chat carries no server; without this
+                    // the chat could be read but never continued.
+                    serverId = it.serverId ?: stored.serverId,
                 )
             }
+            checkHealth()
+            refreshBackgroundRuns()
         }
     }
 
@@ -395,7 +404,7 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(isCheckingHealth = true) }
         viewModelScope.launch {
             val provider = providers.forModel(_uiState.value.selectedModel)
-            when (val result = providers.checkHealth(provider, serverId)) {
+            when (val result = providers.checkHealth(provider, _uiState.value.serverId)) {
                 is VmResult.Success -> _uiState.update {
                     val checkedClaude = result.value.kind == AiProviderKind.CLAUDE_CODE_CLI
                     it.copy(
@@ -576,10 +585,25 @@ class AgentChatViewModel @Inject constructor(
                 }
             } catch (cancelled: CancellationException) {
                 // stop() cancels this job; the task row must not outlive it as RUNNING.
-                taskId?.let { tasks.cancel(it) }
+                // NonCancellable, or the write itself is cancelled before it starts.
+                withContext(NonCancellable) { taskId?.let { tasks.cancel(it) } }
                 throw cancelled
+            } catch (failure: Throwable) {
+                // A provider or storage bug ends this run with a visible error
+                // instead of crashing the whole app.
+                taskId?.let { tasks.fail(it, failure.message ?: "The run failed") }
+                append(
+                    TranscriptItem.Failure(
+                        id = nextId(),
+                        error = VmError.Ai(
+                            summary = "The run failed",
+                            reason = failure.message,
+                            cause = failure,
+                        ),
+                    ),
+                )
             }
-            _uiState.update { it.copy(isRunning = false) }
+            if (runJob === selfJob) _uiState.update { it.copy(isRunning = false) }
         }
     }
 
@@ -735,7 +759,7 @@ class AgentChatViewModel @Inject constructor(
     }
 
     fun rollbackFile(toolCallId: String, filePath: String) {
-        val sId = serverId ?: return
+        val sId = _uiState.value.serverId ?: return
         viewModelScope.launch {
             val repoPath = _uiState.value.workingDirectory.ifBlank {
                 val idx = filePath.lastIndexOf('/')

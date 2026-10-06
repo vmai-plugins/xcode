@@ -1,6 +1,8 @@
 package digital.vmstudio.code.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,10 +12,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -24,6 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,6 +42,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import digital.vmstudio.code.crash.CrashReportDialog
 import digital.vmstudio.code.feature.ai.AgentConversationsViewModel
+import digital.vmstudio.code.feature.ai.ConversationAction
+import digital.vmstudio.code.feature.ai.ConversationActionDialogs
+import digital.vmstudio.code.feature.ai.ConversationMenu
+import digital.vmstudio.code.feature.ai.ConversationSummary
 import digital.vmstudio.code.navigation.VmDestination
 import digital.vmstudio.code.navigation.VmNavHost
 import digital.vmstudio.code.navigation.navigateToNewChat
@@ -65,6 +76,21 @@ fun VmApp(
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var pendingChatAction by remember {
+        mutableStateOf<Pair<ConversationSummary, ConversationAction>?>(null)
+    }
+    var chatMenuFor by remember { mutableStateOf<String?>(null) }
+
+    ConversationActionDialogs(
+        pending = pendingChatAction,
+        onDismiss = { pendingChatAction = null },
+        onRename = conversationsViewModel::rename,
+        onDelete = { id ->
+            conversationsViewModel.delete(id)
+            // The open chat is gone; leave it instead of showing a deleted transcript.
+            if (id == currentConversationId) navigateToNewChat(navController)
+        },
+    )
 
     // Forms and detail screens own the full screen; swiping the drawer open
     // mid-edit would invite an accidental context switch.
@@ -126,6 +152,25 @@ fun VmApp(
                                     )
                                 },
                                 selected = chat.id == currentConversationId,
+                                badge = {
+                                    Box {
+                                        IconButton(
+                                            onClick = { chatMenuFor = chat.id },
+                                            modifier = Modifier.size(32.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.MoreVert,
+                                                contentDescription = "Rename or delete chat",
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                        ConversationMenu(
+                                            expanded = chatMenuFor == chat.id,
+                                            onDismiss = { chatMenuFor = null },
+                                            onAction = { action -> pendingChatAction = chat to action },
+                                        )
+                                    }
+                                },
                                 onClick = {
                                     closeDrawerThen {
                                         navController.navigate(
@@ -136,7 +181,8 @@ fun VmApp(
                                 modifier = Modifier.padding(horizontal = 12.dp),
                             )
                         }
-                        if (conversations.conversations.size > DRAWER_RECENT_CHATS) {
+                        // Always reachable: it is where every chat can be found, renamed or deleted.
+                        if (conversations.conversations.isNotEmpty()) {
                             item(key = "all-chats") {
                                 NavigationDrawerItem(
                                     label = { Text("All chats") },
@@ -185,7 +231,9 @@ fun VmApp(
             },
         ) {
             Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-                Box(modifier = Modifier.padding(padding)) {
+                // Consumed so each screen's own top bar does not add the status bar
+                // height a second time (it showed as a tall empty band above headers).
+                Box(modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
                     VmNavHost(
                         navController = navController,
                         isOnline = isOnline,

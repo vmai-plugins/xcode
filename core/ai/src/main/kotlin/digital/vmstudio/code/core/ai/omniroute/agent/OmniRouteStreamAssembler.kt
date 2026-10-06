@@ -22,6 +22,9 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
     }
 
     private val text = StringBuilder()
+
+    /** Thinking the model streamed and the chat has not shown yet. */
+    private val pendingReasoning = StringBuilder()
     private val tools = sortedMapOf<Int, ToolDraft>()
     private var inputTokens = 0L
     private var outputTokens = 0L
@@ -75,8 +78,16 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
                 function.string("arguments")?.let(draft.arguments::append)
             }
         }
+        // Reasoning models (and gateways in front of them) stream their thinking
+        // under one of these names before any content; without it the chat sat
+        // blank for the whole think.
+        (delta.string("reasoning_content") ?: delta.string("reasoning"))?.let(pendingReasoning::append)
         return delta.string("content")?.also(text::append)
     }
+
+    /** Thinking streamed since the last call, or null; the caller shows it once. */
+    fun takeReasoning(): String? = pendingReasoning.toString().takeIf { it.isNotBlank() }
+        ?.also { pendingReasoning.setLength(0) }
 
     private fun acceptAnthropic(root: JsonObject): String? {
         val index = root.long("index")?.toInt()
@@ -104,6 +115,10 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
 
     private fun anthropicDelta(index: Int?, delta: JsonObject?): String? = when (delta?.string("type")) {
         "text_delta" -> delta.string("text")?.also(text::append)
+        "thinking_delta" -> {
+            delta.string("thinking")?.let(pendingReasoning::append)
+            null
+        }
         "input_json_delta" -> {
             val draft = index?.let(tools::get)
             delta.string("partial_json")?.let { draft?.arguments?.append(it) }

@@ -18,6 +18,7 @@ import digital.vmstudio.code.core.network.http.VmHttpException
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandGuard
+import digital.vmstudio.code.core.ssh.command.CommandLimits
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.currentCoroutineContext
@@ -31,6 +32,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -90,6 +92,8 @@ class OmniRouteAgentLoop @Inject constructor(
         // transcript the chat screen sends along is left, which is still enough
         // for the model to follow the conversation.
         val previous = sessions.get(sessionId) ?: config.history.toMessages()
+        val history = previous.orEmpty().toMutableList()
+        history += OmniRouteMessage.User(config.prompt, config.images)
 
         try {
             emit(
@@ -101,8 +105,6 @@ class OmniRouteAgentLoop @Inject constructor(
                 ),
             )
 
-            val history = previous.orEmpty().toMutableList()
-            history += OmniRouteMessage.User(config.prompt, config.images)
             var inputTokensTotal = 0L
             var outputTokensTotal = 0L
 
@@ -145,12 +147,6 @@ class OmniRouteAgentLoop @Inject constructor(
                         history += OmniRouteMessage.Assistant(
                             text = turn.text.ifBlank { "(no reply)" },
                             toolCalls = emptyList(),
-                        )
-                        // Images are sent once; later turns keep only the text so the
-                        // conversation does not re-upload them on every request.
-                        sessions.put(
-                            sessionId,
-                            history.map { it.withoutImages() },
                         )
                         emit(
                             AgentEvent.Completed(
@@ -213,6 +209,11 @@ class OmniRouteAgentLoop @Inject constructor(
                     ),
                 ),
             )
+        } finally {
+            // Saved however the run ends (done, stopped, failed, out of turns), so
+            // "continue" in the next message still knows what was already changed.
+            // Images are sent once; later turns keep only the text.
+            sessions.put(sessionId, history.closedForResume())
         }
     }
 
@@ -286,13 +287,18 @@ class OmniRouteAgentLoop @Inject constructor(
     ): VmResult<Pair<OmniRouteTurn, String>> {
         val assembler = OmniRouteStreamAssembler(target.dialect)
         val streamKey = target.baseUrl + "|" + target.model
+        var droppedConnection = false
         val streamed = if (streamKey in nonStreaming) null else try {
             httpClient.stream(buildRequest(target, workingDirectory, allowedTools, history, stream = true))
                 .collect { event ->
-                    assembler.accept(event.data)?.takeIf { it.isNotEmpty() }?.let {
-                        emit(AgentEvent.AssistantDelta(it))
-                    }
+                    val delta = assembler.accept(event.data)?.takeIf { it.isNotEmpty() }
+                    // Thinking goes above the reply it led to, so it is shown the
+                    // moment the reply starts.
+                    if (delta != null) assembler.takeReasoning()?.let { emit(AgentEvent.Reasoning(it)) }
+                    delta?.let { emit(AgentEvent.AssistantDelta(it)) }
                 }
+            // A turn that only thought and then called tools shows its thinking too.
+            assembler.takeReasoning()?.let { emit(AgentEvent.Reasoning(it)) }
             assembler.finish()
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -303,12 +309,18 @@ class OmniRouteAgentLoop @Inject constructor(
                 "Streaming turn failed, retrying without: ${streamFailure.error.summary}",
             )
             null
+        } catch (transport: IOException) {
+            // A timeout or dropped connection mid-stream: retry this turn whole
+            // rather than failing the run, but keep streaming for later turns.
+            VmLog.i(LogCategory.AI, TAG, "Stream dropped, retrying without: ${transport.message}")
+            droppedConnection = true
+            null
         }
         if (streamed != null && streamed !is OmniRouteTurn.ParseFailed) {
             return VmResult.Success(streamed to assembler.textSoFar)
         }
         // Don't pay for a failing stream attempt on every later turn.
-        if (streamKey !in nonStreaming) nonStreaming += streamKey
+        if (!droppedConnection && streamKey !in nonStreaming) nonStreaming += streamKey
 
         val request = buildRequest(target, workingDirectory, allowedTools, history, stream = false)
         return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
@@ -408,7 +420,7 @@ class OmniRouteAgentLoop @Inject constructor(
                 writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.EDIT_FILE ->
                 editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
-            OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId)
+            OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId, workingDirectory)
             OmniRouteTool.WEB_FETCH -> webFetch(call)
         }
     }
@@ -647,11 +659,20 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
-    private suspend fun runCommand(call: OmniRouteToolCall, serverId: String): ToolOutcome {
-        val command = argument(call.argumentsJson, "command")
+    private suspend fun runCommand(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
+        val requested = argument(call.argumentsJson, "command")
             ?: return ToolOutcome("Missing required argument \"command\".", isError = true)
+        // The model is told it works in the project, so its commands run there, not
+        // in the SSH login directory; builds and tests get time to finish.
+        val directory = workingDirectory.trim().replace("'", "'\\''")
+        val command = if (directory.isBlank()) requested else "cd '$directory' && $requested"
 
-        return when (val result = commandGuard.run(serverId, command, requestedByAgent = true)) {
+        val result = commandGuard.run(serverId, command, AGENT_COMMAND_LIMITS, requestedByAgent = true)
+        return when (result) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
             is VmResult.Success -> {
                 val output = result.value.combinedOutput()
@@ -746,6 +767,10 @@ class OmniRouteAgentLoop @Inject constructor(
         const val MAX_READ_BYTES = 256L * 1024
         const val DEFAULT_MAX_TOKENS = 4096
         const val SIZE_COLUMN_WIDTH = 10
+        const val COMMAND_TIMEOUT_MILLIS = 10 * 60_000L
+
+        /** Long enough for a build or test run; output stays at the usual cap. */
+        val AGENT_COMMAND_LIMITS = CommandLimits(timeoutMillis = COMMAND_TIMEOUT_MILLIS)
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
@@ -774,6 +799,30 @@ private class SessionMemory(private val capacity: Int) {
 
 private fun OmniRouteMessage.withoutImages(): OmniRouteMessage =
     if (this is OmniRouteMessage.User) copy(images = emptyList()) else this
+
+/**
+ * The history as it can be resumed: images dropped, and a run cut off mid-tool
+ * closed properly. Every tool call needs a result and the model must speak last,
+ * or the gateway rejects the next request.
+ */
+internal fun List<OmniRouteMessage>.closedForResume(): List<OmniRouteMessage> {
+    val closed = map { it.withoutImages() }.toMutableList()
+    val answered = closed.filterIsInstance<OmniRouteMessage.ToolResult>()
+        .mapTo(HashSet()) { it.toolCallId }
+    val lastAssistant = closed.filterIsInstance<OmniRouteMessage.Assistant>().lastOrNull()
+    lastAssistant?.toolCalls.orEmpty().filterNot { it.id in answered }.forEach { call ->
+        closed += OmniRouteMessage.ToolResult(
+            toolCallId = call.id,
+            toolName = call.name,
+            content = "Not run: the run stopped before this tool finished.",
+            isError = true,
+        )
+    }
+    if (lastAssistant != null && closed.last() !is OmniRouteMessage.Assistant) {
+        closed += OmniRouteMessage.Assistant(text = "(The run stopped here.)", toolCalls = emptyList())
+    }
+    return closed
+}
 
 /**
  * Rebuilds plain-text history. Consecutive turns from the same side are merged,

@@ -92,7 +92,7 @@ sealed class VmDestination(val route: String) {
                 "servers/{$ARG_SERVER_ID}/agent?$ARG_PATH={$ARG_PATH}"
 
             fun routeFor(serverId: String, path: String? = null): String {
-                val encoded = path?.let { java.net.URLEncoder.encode(it, "UTF-8") }
+                val encoded = path?.let { android.net.Uri.encode(it) }
                 return "servers/$serverId/agent" + (encoded?.let { "?path=$it" } ?: "")
             }
         }
@@ -103,10 +103,10 @@ sealed class VmDestination(val route: String) {
             const val ARG_SERVER_ID = "serverId"
             const val ARG_FILE_PATH = "filePath"
             const val ROUTE_PATTERN =
-                "servers/{$ARG_SERVER_ID}/editor?{$ARG_FILE_PATH}={$ARG_FILE_PATH}"
+                "servers/{$ARG_SERVER_ID}/editor?$ARG_FILE_PATH={$ARG_FILE_PATH}"
 
             fun routeFor(serverId: String, filePath: String): String {
-                val encoded = java.net.URLEncoder.encode(filePath, "UTF-8")
+                val encoded = android.net.Uri.encode(filePath)
                 return "servers/$serverId/editor?filePath=$encoded"
             }
         }
@@ -117,10 +117,10 @@ sealed class VmDestination(val route: String) {
             const val ARG_SERVER_ID = "serverId"
             const val ARG_FILE_PATH = "filePath"
             const val ROUTE_PATTERN =
-                "servers/{$ARG_SERVER_ID}/diff?{$ARG_FILE_PATH}={$ARG_FILE_PATH}"
+                "servers/{$ARG_SERVER_ID}/diff?$ARG_FILE_PATH={$ARG_FILE_PATH}"
 
             fun routeFor(serverId: String, filePath: String): String {
-                val encoded = java.net.URLEncoder.encode(filePath, "UTF-8")
+                val encoded = android.net.Uri.encode(filePath)
                 return "servers/$serverId/diff?filePath=$encoded"
             }
         }

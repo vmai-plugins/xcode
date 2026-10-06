@@ -93,13 +93,27 @@ class AgentRunService : Service() {
 
     private suspend fun pollLoop() {
         var idleRounds = 0
+        // A lost signal is not "nothing running": keep asking for a while.
+        val failedPolls = mutableMapOf<String, Int>()
 
         while (true) {
             var running = 0
+            var unreachable = 0
 
             val snapshot = synchronized(watchedServersLock) { watchedServers.toList() }
             snapshot.forEach { serverId ->
                 val result = watcher.poll(serverId)
+                if (result.unreachable) {
+                    val failures = (failedPolls[serverId] ?: 0) + 1
+                    failedPolls[serverId] = failures
+                    if (failures >= MAX_FAILED_POLLS) {
+                        synchronized(watchedServersLock) { watchedServers -= serverId }
+                    } else {
+                        unreachable++
+                    }
+                    return@forEach
+                }
+                failedPolls -= serverId
 
                 result.newlyFinished.forEach(notifications::notifyFinished)
                 result.newlyBlocked.forEach(notifications::notifyBlocked)
@@ -120,7 +134,7 @@ class AgentRunService : Service() {
             if (running > 0) {
                 idleRounds = 0
                 startForegroundSafely(running)
-            } else {
+            } else if (unreachable == 0) {
                 idleRounds++
             }
 
@@ -181,6 +195,9 @@ class AgentRunService : Service() {
          */
         private const val POLL_INTERVAL_MILLIS = 20_000L
         private const val MAX_IDLE_ROUNDS = 2
+
+        /** About ten minutes of failed polls before a server is given up on. */
+        private const val MAX_FAILED_POLLS = 30
 
         /** Starts watching [serverId]; safe to call for a server already watched. */
         fun start(context: Context, serverId: String) {

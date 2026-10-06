@@ -40,6 +40,17 @@ android {
     namespace = "digital.vmstudio.code"
 
     signingConfigs {
+        // One debug key for every machine. Without it each CI runner signed test
+        // builds with its own throwaway ~/.android/debug.keystore, so no nightly
+        // could install over the previous one ("package conflicts") and updating
+        // meant uninstalling, which wiped servers and keys. Debug keys are not
+        // secret: this one only signs test builds, never a release.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (hasReleaseSigning) {
             create("release") {
                 storeFile = file(releaseStoreFile!!)
