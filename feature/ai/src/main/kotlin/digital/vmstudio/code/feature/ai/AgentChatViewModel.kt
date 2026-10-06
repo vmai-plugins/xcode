@@ -164,6 +164,10 @@ class AgentChatViewModel @Inject constructor(
     val uiState: StateFlow<AgentChatUiState> = _uiState.asStateFlow()
 
     private var runJob: Job? = null
+    private var healthJob: Job? = null
+
+    /** Until then the run list is re-read even though nothing is listed as running yet. */
+    private var listRunsUntil = 0L
     private var itemCounter = 0L
 
     init {
@@ -209,7 +213,8 @@ class AgentChatViewModel @Inject constructor(
         viewModelScope.launch {
             while (true) {
                 delay(BACKGROUND_POLL_MILLIS)
-                if (_uiState.value.backgroundRuns.any { it.isRunning }) refreshBackgroundRuns()
+                val starting = System.currentTimeMillis() < listRunsUntil
+                if (starting || _uiState.value.backgroundRuns.any { it.isRunning }) refreshBackgroundRuns()
             }
         }
     }
@@ -310,6 +315,9 @@ class AgentChatViewModel @Inject constructor(
                         ),
                     )
                     _uiState.update { it.copy(watchServerId = server) }
+                    // A run registers on the server a moment after it starts, so the
+                    // first read can miss it; keep reading for a minute.
+                    listRunsUntil = System.currentTimeMillis() + PENDING_START_MILLIS
                     refreshBackgroundRuns()
                 }
                 is VmResult.Failure -> _uiState.update { it.copy(error = result.error) }
@@ -402,7 +410,11 @@ class AgentChatViewModel @Inject constructor(
 
     fun checkHealth() {
         _uiState.update { it.copy(isCheckingHealth = true) }
-        viewModelScope.launch {
+        // Only the newest check may report: a slow Claude Code probe over SSH that
+        // lands after a quick gateway check showed the wrong backend's health and
+        // disabled the composer for a model that works.
+        healthJob?.cancel()
+        healthJob = viewModelScope.launch {
             val provider = providers.forModel(_uiState.value.selectedModel)
             when (val result = providers.checkHealth(provider, _uiState.value.serverId)) {
                 is VmResult.Success -> _uiState.update {
@@ -433,7 +445,15 @@ class AgentChatViewModel @Inject constructor(
         val switching = !current.isRunning && current.transcript.isNotEmpty()
         _uiState.update {
             if (switching) {
-                it.copy(workingDirectory = path, conversationId = null, providerSessionId = null)
+                // A clean new chat: keeping the old transcript on screen while the
+                // ids were dropped forked it, so Recents and reopening never matched
+                // what was shown.
+                it.copy(
+                    workingDirectory = path,
+                    conversationId = null,
+                    providerSessionId = null,
+                    transcript = emptyList(),
+                )
             } else {
                 it.copy(workingDirectory = path)
             }
@@ -452,6 +472,7 @@ class AgentChatViewModel @Inject constructor(
                 workingDirectory = project.remotePath,
                 conversationId = null,
                 providerSessionId = null,
+                transcript = emptyList(),
             )
         }
         _uiState.value.serverId?.let { server ->
@@ -562,9 +583,9 @@ class AgentChatViewModel @Inject constructor(
             val config = AgentRunConfig(
                 serverId = server,
                 workingDirectory = state.workingDirectory.trim(),
-                prompt = fullPrompt,
+                prompt = withCarriedContext(fullPrompt, state),
                 images = staged.images,
-                resumeSessionId = state.providerSessionId,
+                resumeSessionId = state.providerSessionId?.takeIf { fitsBackend(it, state.selectedModel) },
                 permissionMode = state.permissionMode,
                 model = state.selectedModel,
                 history = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
@@ -770,16 +791,16 @@ class AgentChatViewModel @Inject constructor(
                     _uiState.update { state ->
                         state.copy(
                             transcript = state.transcript.map { item ->
-                                if (item is TranscriptItem.ToolCall &&
-                                    (item.id == toolCallId || item.affectedPath == filePath)
-                                ) {
+                                // Only the row that was undone; other edits to the same
+                                // file may be older or newer than it.
+                                if (item is TranscriptItem.ToolCall && item.id == toolCallId) {
                                     item.copy(isReverted = true)
                                 } else {
                                     item
                                 }
                             } + TranscriptItem.Diagnostic(
                                 id = nextId(),
-                                text = "⏮️ Checkpoint rollback successful: restored $filePath",
+                                text = "Restored $filePath to its last committed version",
                                 isStderr = false,
                             ),
                         )
@@ -790,7 +811,7 @@ class AgentChatViewModel @Inject constructor(
                         state.copy(
                             transcript = state.transcript + TranscriptItem.Diagnostic(
                                 id = nextId(),
-                                text = "❌ Rollback failed for $filePath: ${result.error}",
+                                text = "Could not undo changes to $filePath: ${result.error}",
                                 isStderr = true,
                             ),
                         )
@@ -862,6 +883,33 @@ private fun List<TranscriptItem>.toConversationTurns(): List<ConversationTurn> =
     }
 }
 
+/**
+ * Whether a stored session id belongs to the backend [model] runs on. A chat made
+ * with a gateway model and reopened while a Claude model is selected used to send
+ * `claude --resume omniroute-…`, which failed on every message.
+ */
+private fun fitsBackend(sessionId: String, model: String): Boolean =
+    sessionId.startsWith(GATEWAY_SESSION_PREFIX) != ClaudeCodeModels.isClaudeCode(model)
+
+private const val GATEWAY_SESSION_PREFIX = "omniroute-"
+
+/**
+ * Claude Code cannot be handed earlier turns, only resume its own session. When a
+ * chat moves to Claude with no session to resume, the visible conversation goes in
+ * front of the prompt, so "fix the bug we found" still means something to it.
+ */
+private fun withCarriedContext(prompt: String, state: AgentChatUiState): String {
+    val resumable = state.providerSessionId?.let { fitsBackend(it, state.selectedModel) } == true
+    if (!ClaudeCodeModels.isClaudeCode(state.selectedModel) || resumable) return prompt
+    val earlier = state.transcript.toConversationTurns()
+        .joinToString("\n\n") { (if (it.fromUser) "User: " else "Assistant: ") + it.text }
+        .takeLast(MAX_CARRIED_CONTEXT_CHARS)
+    if (earlier.isBlank()) return prompt
+    return "Earlier in this conversation:\n\n$earlier\n\n---\n\n$prompt"
+}
+
+private const val MAX_CARRIED_CONTEXT_CHARS = 12_000
+
 /** First line of the first message, shortened on a word boundary. */
 internal fun chatTitle(prompt: String): String {
     val line = prompt.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
@@ -878,3 +926,6 @@ private suspend fun UserPreferencesSource.contextChars(): Int =
 
 /** How often running background runs are re-read while their chat is open. */
 private const val BACKGROUND_POLL_MILLIS = 15_000L
+
+/** How long a just-started background run is looked for before it is listed. */
+private const val PENDING_START_MILLIS = 60_000L

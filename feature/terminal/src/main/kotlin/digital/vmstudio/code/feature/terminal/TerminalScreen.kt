@@ -40,6 +40,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
@@ -261,7 +262,7 @@ private fun TerminalInputBar(
     onInterrupt: () -> Unit,
     onClear: () -> Unit,
 ) {
-    var value by remember { mutableStateOf(TextFieldValue()) }
+    var value by remember { mutableStateOf(EMPTY_INPUT) }
     var controlArmed by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -302,7 +303,10 @@ private fun TerminalInputBar(
             BasicTextField(
                 value = value,
                 onValueChange = { newValue ->
-                    val added = newValue.text.removePrefix(value.text)
+                    val added = newValue.text.removePrefix(value.text).replace("\u200B", "")
+                    // The field always holds one invisible character, so the keyboard's
+                    // Backspace has something to delete; in an empty field it changed
+                    // nothing, onValueChange never ran and Backspace did nothing.
                     when {
                         // Text was appended: forward just the new characters.
                         newValue.text.length > value.text.length && added.isNotEmpty() -> {
@@ -325,7 +329,7 @@ private fun TerminalInputBar(
                     }
                     // The field is a keystroke conduit, not a buffer; clearing it
                     // keeps it from accumulating a shadow copy of the command line.
-                    value = TextFieldValue()
+                    value = EMPTY_INPUT
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -345,7 +349,7 @@ private fun TerminalInputBar(
                 singleLine = true,
                 decorationBox = { inner ->
                     Box {
-                        if (value.text.isEmpty()) {
+                        if (value.text == EMPTY_INPUT.text) {
                             Text(
                                 text = "Type a command",
                                 style = VmTheme.code.mono,
@@ -385,3 +389,6 @@ private fun KeyChip(label: String, onClick: () -> Unit) {
 
 private const val DEFAULT_COLUMNS = 80
 private const val DEFAULT_ROWS = 24
+
+/** One zero-width space with the cursor after it: what a Backspace deletes. */
+private val EMPTY_INPUT = TextFieldValue("\u200B", selection = TextRange(1))

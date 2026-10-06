@@ -172,7 +172,6 @@ class DefaultSshConnectionManager @Inject constructor(
 
                 runInterruptible { created.connect(server.host, server.port) }
                 authenticate(created, server)
-                configureKeepAlive(created, server)
 
                 val info = ServerProbe.probe(created, server, ioDispatcher)
                 SshSession(
@@ -229,12 +228,23 @@ class DefaultSshConnectionManager @Inject constructor(
         return SSHClient(config).apply {
             addHostKeyVerifier(verifier)
             connectTimeout = server.connectTimeoutMillis
-            // Socket read timeout. Left generous: a long-running command legitimately
-            // produces no traffic for minutes, and keepalives cover a dead peer.
-            timeout = SOCKET_TIMEOUT_MILLIS
-        }
+            // Socket read timeout. sshj drops the whole connection when it expires,
+            // so it must outlast the gap between keepalive replies; with keepalives
+            // off there is no traffic on an idle terminal at all, so no timeout.
+            val keepAliveSeconds = server.keepAliveIntervalSeconds
+            timeout = if (keepAliveSeconds > 0) {
+                maxOf(SOCKET_TIMEOUT_MILLIS, keepAliveSeconds * KEEPALIVE_TIMEOUT_FACTOR * MILLIS_PER_SECOND)
+            } else {
+                0
+            }
+        }.also { configureKeepAlive(it, server) }
     }
 
+    /**
+     * Set before connecting: sshj starts its keepalive thread on connect only when
+     * an interval is already set, so setting it afterwards (as before) meant no
+     * keepalives were ever sent and idle sessions dropped.
+     */
     private fun configureKeepAlive(client: SSHClient, server: Server) {
         if (server.keepAliveIntervalSeconds <= 0) return
         runCatching {
@@ -336,6 +346,8 @@ class DefaultSshConnectionManager @Inject constructor(
         // instead of hanging a feature coroutine indefinitely. Keepalives cover idle
         // peers; this covers peers that never fully disconnect but stop responding.
         const val SOCKET_TIMEOUT_MILLIS = 60_000
+        const val KEEPALIVE_TIMEOUT_FACTOR = 3
+        const val MILLIS_PER_SECOND = 1_000
 
         /** See disconnectAll()'s doc comment for what this bounds. */
         const val MAX_DISCONNECT_ALL_SWEEPS = 3

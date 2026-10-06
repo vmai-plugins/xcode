@@ -3,6 +3,7 @@ package digital.vmstudio.code.core.ai.omniroute
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
 import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
+import digital.vmstudio.code.core.ai.model.ConversationTurn
 import digital.vmstudio.code.core.ai.omniroute.agent.OmniRouteAgentLoop
 import digital.vmstudio.code.core.ai.provider.AiProvider
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
@@ -196,14 +197,19 @@ class OmniRouteProvider @Inject constructor(
         }
 
         try {
-            val request = buildChatRequest(baseUrl, key, dialect, model, config.prompt)
+            val request = buildChatRequest(baseUrl, key, dialect, model, plainChatMessages(config))
             val text = StringBuilder()
             var inputTokens = 0L
             var outputTokens = 0L
             val startedAt = System.currentTimeMillis()
 
             httpClient.stream(request).collect { event ->
-                ChatStreamDecoder.textDelta(dialect, event.data)?.let(text::append)
+                // Shown as it arrives, like the agent's replies, instead of all at
+                // once at the end behind "Thinking…".
+                ChatStreamDecoder.textDelta(dialect, event.data)?.takeIf { it.isNotEmpty() }?.let { delta ->
+                    text.append(delta)
+                    emit(AgentEvent.AssistantDelta(delta))
+                }
                 ChatStreamDecoder.usage(event.data)?.let { (input, output) ->
                     if (input > 0) inputTokens = input
                     if (output > 0) outputTokens = output
@@ -398,15 +404,15 @@ class OmniRouteProvider @Inject constructor(
         key: Secret,
         dialect: OmniRouteDialect,
         model: String,
-        prompt: String,
+        turns: List<ConversationTurn>,
     ): Request {
         val messages = JsonArray(
-            listOf(
+            turns.map { turn ->
                 buildJsonObject {
-                    put("role", "user")
-                    put("content", prompt)
-                },
-            ),
+                    put("role", if (turn.fromUser) "user" else "assistant")
+                    put("content", turn.text)
+                }
+            },
         )
 
         val body = buildJsonObject {
@@ -431,6 +437,33 @@ class OmniRouteProvider @Inject constructor(
         const val DEFAULT_MAX_TOKENS = 4096
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
+}
+
+/**
+ * The conversation for a chat without tools: earlier turns, then the prompt. It
+ * used to send only the prompt, so every follow-up started from nothing. Turns from
+ * the same side are merged, because the Anthropic dialect requires the roles to
+ * alternate.
+ */
+internal fun plainChatMessages(config: AgentRunConfig): List<ConversationTurn> =
+    (config.history + ConversationTurn(fromUser = true, text = config.prompt)).alternating()
+
+/**
+ * Drops blank turns, merges neighbours from the same side (the Anthropic dialect
+ * requires roles to alternate: a reply split around tool calls, or a prompt that
+ * never got an answer, broke that) and starts with the user, as both dialects expect.
+ */
+internal fun List<ConversationTurn>.alternating(): List<ConversationTurn> {
+    val merged = mutableListOf<ConversationTurn>()
+    filter { it.text.isNotBlank() }.forEach { turn ->
+        val last = merged.lastOrNull()
+        if (last != null && last.fromUser == turn.fromUser) {
+            merged[merged.lastIndex] = last.copy(text = last.text + "\n\n" + turn.text)
+        } else {
+            merged += turn
+        }
+    }
+    return merged.dropWhile { !it.fromUser }
 }
 
 /**
