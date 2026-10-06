@@ -16,6 +16,13 @@ sealed class VmDestination(val route: String) {
 
     data object Projects : VmDestination("projects")
 
+    /**
+     * The drawer's file browser. No server in the route: it opens on the most
+     * recently used one and switches between servers itself, unlike [ServerFiles],
+     * which is pinned to the server (and folder) it was opened from.
+     */
+    data object Files : VmDestination("files")
+
     data object Settings : VmDestination("settings")
 
     /** Every stored conversation, with delete; the drawer only shows the latest few. */
