@@ -75,7 +75,7 @@ fun AgentChatScreen(
 
     val currentProjectName = remember(state.workingDirectory, state.availableProjects) {
         state.availableProjects.firstOrNull { it.remotePath == state.workingDirectory }?.name
-            ?: state.workingDirectory.trimEnd('/').substringAfterLast('/').ifBlank { "AI Agent" }
+            ?: state.workingDirectory.trimEnd('/').substringAfterLast('/').ifBlank { "General chat" }
     }
 
     val groupedTranscript = remember(state.transcript) { groupTranscript(state.transcript) }
@@ -103,7 +103,8 @@ fun AgentChatScreen(
         )
     }
 
-    val canSwitchProject = state.availableProjects.isNotEmpty() && !state.isRunning
+    // Always offered: the menu also holds "General chat".
+    val canSwitchProject = !state.isRunning
     val previewTarget = rememberHtmlPreview(state.serverId)
     // A reopened chat learns its server only once restored, so it is read at tap time.
     val openDiff: (String) -> Unit = { path -> state.serverId?.let { onOpenDiff(it, path) } }

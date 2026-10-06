@@ -12,6 +12,9 @@ sealed class VmDestination(val route: String) {
     /** Start screen: resolves to a fresh chat on the most recently used server. */
     data object NewChat : VmDestination("new")
 
+    /** A chat with no project: gateway models, no server or folder needed. */
+    data object GeneralChat : VmDestination("chat")
+
     data object Servers : VmDestination("servers")
 
     data object Projects : VmDestination("projects")

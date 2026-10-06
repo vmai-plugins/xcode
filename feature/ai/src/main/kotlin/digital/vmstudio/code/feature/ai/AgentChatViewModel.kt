@@ -122,12 +122,17 @@ data class AgentChatUiState(
     val omniModels: OmniRouteModels = OmniRouteModels(),
     val isSyncingModels: Boolean = false,
 ) {
-    /** The chat-only backend has no server or working directory to satisfy. */
+    /**
+     * Claude Code runs on a server, in a folder. A gateway model needs neither: with
+     * no project it is a general chat, like the Claude app's.
+     */
     val canRun: Boolean
-        get() = serverId != null &&
-            workingDirectory.isNotBlank() &&
+        get() = (!ClaudeCodeModels.isClaudeCode(selectedModel) || hasProject) &&
             !isRunning &&
             health?.isAvailable == true
+
+    /** A server and folder are chosen; tools and Claude Code have somewhere to work. */
+    val hasProject: Boolean get() = serverId != null && workingDirectory.isNotBlank()
 
     val isResuming: Boolean get() = providerSessionId != null
 }
@@ -464,21 +469,29 @@ class AgentChatViewModel @Inject constructor(
         refreshBackgroundRuns()
     }
 
-    fun selectProject(project: Project) {
+    /**
+     * Starts a new chat in [project], or with null a general chat with no server or
+     * folder (gateway models only). New chats open the way the last one was set.
+     */
+    fun selectProject(project: Project?) {
         if (_uiState.value.isRunning) return
         _uiState.update {
             it.copy(
-                serverId = project.serverId ?: it.serverId,
-                workingDirectory = project.remotePath,
+                serverId = if (project == null) null else project.serverId ?: it.serverId,
+                workingDirectory = project?.remotePath.orEmpty(),
                 conversationId = null,
                 providerSessionId = null,
                 transcript = emptyList(),
+                backgroundRuns = if (project == null) emptyList() else it.backgroundRuns,
             )
         }
-        _uiState.value.serverId?.let { server ->
-            viewModelScope.launch { preferenceStore.setLastFolder(server, project.remotePath) }
+        viewModelScope.launch {
+            preferenceStore.setLastChatGeneral(project == null)
+            val server = _uiState.value.serverId
+            if (project != null && server != null) preferenceStore.setLastFolder(server, project.remotePath)
         }
         refreshBackgroundRuns()
+        checkHealth()
     }
 
     /**
@@ -520,8 +533,9 @@ class AgentChatViewModel @Inject constructor(
 
     fun send(prompt: String, attachments: List<Uri> = emptyList()) {
         val state = _uiState.value
-        val server = state.serverId ?: return
-        if (prompt.isBlank() || state.isRunning) return
+        // Blank in a general chat: the gateway then answers without tools.
+        val server = state.serverId.orEmpty()
+        if (prompt.isBlank() || !state.canRun) return
 
         append(TranscriptItem.UserPrompt(nextId(), prompt))
         _uiState.update { it.copy(isRunning = true, error = null) }
@@ -697,8 +711,8 @@ class AgentChatViewModel @Inject constructor(
                 title = chatTitle(prompt),
                 providerId = providers.forModel(state.selectedModel).kind.name,
                 modelId = state.health?.version.orEmpty(),
-                serverId = server,
-                workingDirectory = state.workingDirectory.trim(),
+                serverId = server.ifBlank { null },
+                workingDirectory = state.workingDirectory.trim().ifBlank { null },
             )
         ) {
             is VmResult.Success -> created.value.also { id ->

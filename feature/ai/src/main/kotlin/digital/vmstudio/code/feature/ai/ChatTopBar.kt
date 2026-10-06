@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,7 +66,8 @@ internal fun ChatTopBar(
     scrollBehavior: TopAppBarScrollBehavior,
     onOpenMenu: (() -> Unit)?,
     onNavigateBack: () -> Unit,
-    onSelectProject: (Project) -> Unit,
+    /** Null starts a general chat with no project. */
+    onSelectProject: (Project?) -> Unit,
     onNewChat: () -> Unit,
     onOpenFiles: () -> Unit,
     onConversationAction: (ConversationAction) -> Unit,
@@ -178,9 +181,39 @@ private fun ProjectMenu(
     projects: List<Project>,
     workingDirectory: String,
     onDismiss: () -> Unit,
-    onSelect: (Project) -> Unit,
+    onSelect: (Project?) -> Unit,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        // Not every question is about code on a server.
+        DropdownMenuItem(
+            text = {
+                Column {
+                    Text(
+                        text = "General chat",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (workingDirectory.isBlank()) FontWeight.Bold else FontWeight.Normal,
+                    )
+                    Text(
+                        text = "No project · gateway models",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = if (workingDirectory.isBlank()) {
+                        Icons.Default.Check
+                    } else {
+                        Icons.Default.ChatBubbleOutline
+                    },
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+            onClick = { onSelect(null) },
+        )
+        if (projects.isNotEmpty()) HorizontalDivider()
         projects.forEach { project ->
             val isSelected = project.remotePath == workingDirectory
             val tint = if (isSelected) {

@@ -94,6 +94,8 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setLastChatModel(model: String) = edit { it[Keys.LAST_CHAT_MODEL] = model }
 
+    suspend fun setLastChatGeneral(general: Boolean) = edit { it[Keys.LAST_CHAT_GENERAL] = general }
+
     suspend fun setLastFolder(serverId: String, path: String) = edit {
         val folders = parseFolders(it[Keys.LAST_FOLDERS]) + (serverId to path)
         it[Keys.LAST_FOLDERS] = formatFolders(folders)
@@ -157,6 +159,7 @@ class UserPreferencesRepository @Inject constructor(
             aiToolsEnabled = this[Keys.AI_TOOLS_ENABLED] ?: defaults.aiToolsEnabled,
             aiContextSize = this[Keys.AI_CONTEXT_SIZE] ?: defaults.aiContextSize,
             lastChatModel = this[Keys.LAST_CHAT_MODEL],
+            lastChatGeneral = this[Keys.LAST_CHAT_GENERAL] ?: false,
             lastFolders = parseFolders(this[Keys.LAST_FOLDERS]),
         )
     }
@@ -183,6 +186,7 @@ class UserPreferencesRepository @Inject constructor(
         val AI_TOOLS_ENABLED = booleanPreferencesKey("ai_tools_enabled")
         val AI_CONTEXT_SIZE = stringPreferencesKey("ai_context_size")
         val LAST_CHAT_MODEL = stringPreferencesKey("last_chat_model")
+        val LAST_CHAT_GENERAL = booleanPreferencesKey("last_chat_general")
         val LAST_FOLDERS = stringPreferencesKey("last_folders")
     }
 

@@ -265,6 +265,7 @@ fun VmApp(
 
 private val DRAWER_ROUTES = setOf(
     VmDestination.NewChat.route,
+    VmDestination.GeneralChat.route,
     VmDestination.Servers.route,
     VmDestination.Projects.route,
     VmDestination.Settings.route,

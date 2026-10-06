@@ -22,3 +22,4 @@ keystore.properties
 build_output.txt
 gradle_build_log.txt
 google-services.json
+.claude/worktrees/

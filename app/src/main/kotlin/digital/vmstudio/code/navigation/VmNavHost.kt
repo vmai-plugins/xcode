@@ -65,12 +65,13 @@ fun VmNavHost(
             NewChatScreen(
                 onOpenChat = { serverId ->
                     // Replace the start screen so Back leaves the app instead of
-                    // bouncing through a redirect.
-                    navController.navigate(VmDestination.ServerAgent.routeFor(serverId)) {
+                    // bouncing through a redirect. No server: a general chat.
+                    val route = serverId?.let(VmDestination.ServerAgent::routeFor)
+                        ?: VmDestination.GeneralChat.route
+                    navController.navigate(route) {
                         popUpTo(VmDestination.NewChat.route) { inclusive = true }
                     }
                 },
-                onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
                 onOpenMenu = onOpenMenu,
             )
         }
@@ -294,6 +295,10 @@ fun VmNavHost(
             ),
         ) {
             // A reopened chat gets the same Files and diff buttons as a new one.
+            AgentChat(navController, onOpenMenu, startWatchingRuns)
+        }
+
+        composable(VmDestination.GeneralChat.route) {
             AgentChat(navController, onOpenMenu, startWatchingRuns)
         }
 
