@@ -29,6 +29,9 @@ data class EditorUiState(
     val filePath: String = "",
 ) {
     val canSave: Boolean get() = snapshot?.isDirty == true && !isSaving
+
+    /** The last save was refused because the file changed on the server since loading. */
+    val hasConflict: Boolean get() = saveError?.summary == EditorViewModel.CONFLICT_SUMMARY
 }
 
 /**
@@ -108,7 +111,9 @@ class EditorViewModel @Inject constructor(
         viewModelScope.launch {
             isLoading.value = true
             loadError.value = null
-            when (val result = remoteFileSystem.readText(serverId, filePath)) {
+            // The editor keeps whole copies of the text for undo and redraws every
+            // line, so it opens files up to 1 MiB rather than the 8 MiB read limit.
+            when (val result = remoteFileSystem.readText(serverId, filePath, maxBytes = MAX_EDIT_BYTES)) {
                 is VmResult.Success -> {
                     editor = EditorState(
                         initialContent = result.value,
@@ -146,20 +151,22 @@ class EditorViewModel @Inject constructor(
         publishSnapshot()
     }
 
-    fun save() {
+    /** [overwrite] saves even though the file changed on the server since it was loaded. */
+    fun save(overwrite: Boolean = false) {
         val state = editor ?: return
         viewModelScope.launch {
             isSaving.value = true
             saveError.value = null
 
             val loadedAt = loadedModifiedAtSeconds
-            val remoteAt = currentModifiedAtSeconds()
+            val remoteAt = if (overwrite) null else currentModifiedAtSeconds()
             if (loadedAt != null && remoteAt != null && remoteAt != loadedAt) {
                 saveError.value = VmError.FileSystem(
-                    summary = "This file changed on the server",
+                    summary = CONFLICT_SUMMARY,
                     reason = "It was modified after this editor last loaded it - " +
                         "saving now would overwrite those changes.",
-                    suggestedAction = "Reload to see the current version, or save a copy elsewhere first.",
+                    suggestedAction = "Overwrite to keep your version, or go back and reopen the file " +
+                        "to see theirs.",
                     path = filePath,
                 )
                 isSaving.value = false
@@ -169,7 +176,7 @@ class EditorViewModel @Inject constructor(
             val text = state.snapshot().textFieldValue.text
             when (val result = remoteFileSystem.writeText(serverId, filePath, text)) {
                 is VmResult.Success -> {
-                    state.markSaved()
+                    state.markSaved(text)
                     loadedModifiedAtSeconds = currentModifiedAtSeconds()
                     publishSnapshot()
                     isSaving.value = false
@@ -196,5 +203,7 @@ class EditorViewModel @Inject constructor(
     companion object {
         const val ARG_SERVER_ID = "serverId"
         const val ARG_FILE_PATH = "filePath"
+        internal const val CONFLICT_SUMMARY = "This file changed on the server"
+        private const val MAX_EDIT_BYTES = 1L shl 20
     }
 }

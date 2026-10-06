@@ -1,5 +1,6 @@
 package digital.vmstudio.code.feature.editor
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -24,11 +27,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -38,14 +44,15 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.editor.ColorScheme
 import digital.vmstudio.code.core.editor.SyntaxHighlighter
 import digital.vmstudio.code.core.editor.SyntaxHighlighters
+import digital.vmstudio.code.core.ui.component.VmErrorAction
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.theme.VmTheme
 import kotlinx.coroutines.delay
@@ -63,6 +70,36 @@ fun EditorScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
+
+    // Unsaved edits live only in this screen; leaving must not drop them silently.
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val leave = { if (state.snapshot?.isDirty == true) confirmDiscard = true else onNavigateBack() }
+    BackHandler(enabled = state.snapshot?.isDirty == true) { confirmDiscard = true }
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text("Unsaved changes") },
+            text = { Text("Save your changes to the server before leaving?") },
+            confirmButton = {
+                TextButton(
+                    enabled = state.canSave,
+                    onClick = {
+                        confirmDiscard = false
+                        viewModel.save()
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { confirmDiscard = false }) { Text("Cancel") }
+                    TextButton(onClick = {
+                        confirmDiscard = false
+                        onNavigateBack()
+                    }) { Text("Discard", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+        )
+    }
 
     // Auto-commit changes after typing pauses (for undo checkpoints)
     LaunchedEffect(state.snapshot?.textFieldValue?.text) {
@@ -88,7 +125,7 @@ fun EditorScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = leave) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -135,7 +172,9 @@ fun EditorScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                // Edge-to-edge windows no longer resize for the keyboard.
+                .imePadding(),
         ) {
             when {
                 state.isLoading -> {
@@ -155,6 +194,8 @@ fun EditorScreen(
                         snapshot = state.snapshot!!,
                         isSaving = state.isSaving,
                         saveError = state.saveError,
+                        hasConflict = state.hasConflict,
+                        onOverwrite = { viewModel.save(overwrite = true) },
                         onValueChange = viewModel::onTextFieldValueChange,
                         onClearSaveError = viewModel::clearSaveError,
                     )
@@ -169,24 +210,28 @@ private fun EditorContent(
     snapshot: digital.vmstudio.code.core.editor.EditorSnapshot,
     isSaving: Boolean,
     saveError: VmError?,
+    hasConflict: Boolean,
+    onOverwrite: () -> Unit,
     onValueChange: (TextFieldValue) -> Unit,
     onClearSaveError: () -> Unit,
 ) {
     val spacing = VmTheme.spacing
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
-    val lineCount = snapshot.textFieldValue.text.lines().size
+    val text = snapshot.textFieldValue.text
+    val lineCount = remember(text) { text.count { it == '\n' } + 1 }
+    val lineNumbers = remember(lineCount) { (1..lineCount).joinToString("\n") }
+    // The size chosen in Settings; mono at a fixed 12sp ignored it.
+    val editorStyle = VmTheme.code.editor
     val gutterWidth = (lineCount.toString().length * 8 + 16).dp
 
     Column(modifier = Modifier.fillMaxSize()) {
         saveError?.let { err ->
             VmErrorPanel(
                 error = err,
-                actions = listOf(
-                    digital.vmstudio.code.core.ui.component.VmErrorAction(
-                        label = "Dismiss",
-                        onClick = onClearSaveError,
-                    ),
+                actions = listOfNotNull(
+                    VmErrorAction(label = "Overwrite", onClick = onOverwrite).takeIf { hasConflict },
+                    VmErrorAction(label = "Dismiss", onClick = onClearSaveError),
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -205,16 +250,16 @@ private fun EditorContent(
                     .padding(end = spacing.sm),
                 horizontalAlignment = Alignment.End,
             ) {
-                for (lineNum in 1..lineCount) {
-                    Text(
-                        text = lineNum.toString(),
-                        style = VmTheme.code.mono.copy(
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        ),
-                        modifier = Modifier.padding(vertical = 1.dp),
-                    )
-                }
+                // One text block in the editor's own style, so each number sits on
+                // its line at any font size instead of drifting further down.
+                Text(
+                    text = lineNumbers,
+                    style = editorStyle.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        textAlign = TextAlign.End,
+                    ),
+                    modifier = Modifier.padding(vertical = spacing.xs),
+                )
             }
 
             // Editor
@@ -232,10 +277,7 @@ private fun EditorContent(
                 BasicTextField(
                     value = snapshot.textFieldValue,
                     onValueChange = onValueChange,
-                    textStyle = VmTheme.code.mono.copy(
-                        fontSize = 12.sp,
-                        color = colorScheme.plain,
-                    ),
+                    textStyle = editorStyle.copy(color = colorScheme.plain),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     visualTransformation = highlight,
                     modifier = Modifier
@@ -271,6 +313,8 @@ private class SyntaxHighlightTransformation(
 ) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val source = text.text
+        // Re-tokenising a very large file on every keystroke freezes the screen.
+        if (source.length > MAX_HIGHLIGHT_CHARS) return TransformedText(text, OffsetMapping.Identity)
         val tokens = runCatching { highlighter.tokenize(source, scheme) }
             .getOrDefault(emptyList())
         val annotated = buildAnnotatedString {
@@ -284,6 +328,8 @@ private class SyntaxHighlightTransformation(
         return TransformedText(annotated, OffsetMapping.Identity)
     }
 }
+
+private const val MAX_HIGHLIGHT_CHARS = 200_000
 
 @Composable
 private fun editorColorScheme(): ColorScheme {

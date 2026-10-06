@@ -63,8 +63,13 @@ sealed class VmDestination(val route: String) {
     data class ServerFiles(val serverId: String) : VmDestination(routeFor(serverId)) {
         companion object {
             const val ARG_SERVER_ID = "serverId"
-            const val ROUTE_PATTERN = "servers/{$ARG_SERVER_ID}/files"
-            fun routeFor(serverId: String) = "servers/$serverId/files"
+            const val ARG_PATH = "path"
+            const val ROUTE_PATTERN = "servers/{$ARG_SERVER_ID}/files?$ARG_PATH={$ARG_PATH}"
+
+            /** [path] opens that folder (a project's, a chat's) instead of the login home. */
+            fun routeFor(serverId: String, path: String? = null) =
+                "servers/$serverId/files" +
+                    (path?.takeIf { it.isNotBlank() }?.let { "?path=${android.net.Uri.encode(it)}" } ?: "")
         }
     }
 

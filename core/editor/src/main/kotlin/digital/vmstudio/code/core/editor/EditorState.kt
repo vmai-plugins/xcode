@@ -77,13 +77,19 @@ class EditorState(
             undoStack.addLast(checkpointText)
             redoStack.clear()
             checkpointText = currentText
-            if (undoStack.size > MAX_UNDO_SIZE) {
+            // Each entry is a full copy of the file, so the history is bounded
+            // by total size too, or a large file runs the app out of memory.
+            while (undoStack.size > MAX_UNDO_SIZE ||
+                (undoStack.size > 1 && undoStack.sumOf { it.length } > MAX_UNDO_CHARS)
+            ) {
                 undoStack.removeFirst()
             }
         }
     }
 
     fun undo() {
+        // Typing since the last checkpoint becomes one, so Redo can bring it back.
+        commitChange()
         if (undoStack.isEmpty()) return
         redoStack.addLast(checkpointText)
         val previous = undoStack.removeLast()
@@ -99,10 +105,13 @@ class EditorState(
         applyText(next)
     }
 
-    fun markSaved() {
-        savedText = textFieldValue.text
-        checkpointText = textFieldValue.text
-        isDirty = false
+    /**
+     * Records [written] as what is on disk. Typing that happened while the save
+     * was in flight is not in it, so the file stays dirty until saved again.
+     */
+    fun markSaved(written: String = textFieldValue.text) {
+        savedText = written
+        isDirty = textFieldValue.text != written
     }
 
     fun snapshot(): EditorSnapshot = EditorSnapshot(
@@ -121,5 +130,6 @@ class EditorState(
 
     private companion object {
         const val MAX_UNDO_SIZE = 100
+        const val MAX_UNDO_CHARS = 4_000_000
     }
 }

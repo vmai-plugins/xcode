@@ -46,7 +46,7 @@ fun AgentChatScreen(
      */
     onWatchBackgroundRuns: (serverId: String) -> Unit = {},
     onOpenDiff: (serverId: String, filePath: String) -> Unit = { _, _ -> },
-    onOpenFiles: (serverId: String) -> Unit = {},
+    onOpenFiles: (serverId: String, path: String) -> Unit = { _, _ -> },
     viewModel: AgentChatViewModel = hiltViewModel(),
     conversationsViewModel: AgentConversationsViewModel = hiltViewModel(),
 ) {
@@ -131,7 +131,7 @@ fun AgentChatScreen(
                 onNavigateBack = onNavigateBack,
                 onSelectProject = viewModel::selectProject,
                 onNewChat = viewModel::startNewConversation,
-                onOpenFiles = { state.serverId?.let(onOpenFiles) },
+                onOpenFiles = { state.serverId?.let { onOpenFiles(it, state.workingDirectory.trim()) } },
                 onConversationAction = { action -> currentChat?.let { pendingChatAction = it to action } },
             )
         },

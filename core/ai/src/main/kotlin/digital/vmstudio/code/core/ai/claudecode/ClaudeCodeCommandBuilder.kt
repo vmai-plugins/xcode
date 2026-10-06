@@ -74,7 +74,9 @@ internal object ClaudeCodeCommandBuilder {
             parts += shellQuote(it)
         }
 
-        // The prompt goes last, as the positional argument.
+        // The prompt goes last, as the positional argument. "--" ends the options,
+        // so a prompt such as "- add tests" is not read as an unknown flag.
+        parts += "--"
         parts += shellQuote(config.prompt)
 
         return parts.joinToString(" ")
@@ -104,6 +106,7 @@ internal object ClaudeCodeCommandBuilder {
         add(permissionMode.cliValue())
         // The prompt is the positional argument; quoted because it is arbitrary
         // user text being placed into a command that runs on the user's server.
+        add("--")
         add(shellQuote(prompt))
     }.joinToString(" ") + " 2>&1"
 

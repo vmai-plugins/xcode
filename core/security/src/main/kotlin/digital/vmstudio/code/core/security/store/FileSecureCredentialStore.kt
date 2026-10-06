@@ -18,6 +18,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -58,7 +60,14 @@ class FileSecureCredentialStore @Inject constructor(
     private val indexFile: File by lazy { File(rootDir, INDEX_FILE) }
 
     private val _credentials = MutableStateFlow<List<CredentialRef>>(emptyList())
-    override val credentials: Flow<List<CredentialRef>> = _credentials.asStateFlow()
+    /**
+     * Loads the index on first collection: only writes loaded it before, so after a
+     * cold start Settings showed "0 stored" and disabled Erase all credentials.
+     */
+    override val credentials: Flow<List<CredentialRef>> = flow {
+        if (!indexLoaded) withContext(ioDispatcher) { mutex.withLock { loadIndexLocked() } }
+        emitAll(_credentials.asStateFlow())
+    }
 
     @Volatile
     private var indexLoaded = false

@@ -8,6 +8,7 @@ import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.sftp.model.RemoteFileEntry
+import digital.vmstudio.code.core.sftp.model.RemoteFileType
 import digital.vmstudio.code.core.sftp.model.RemoteListingOptions
 import digital.vmstudio.code.core.sftp.model.RemotePath
 import digital.vmstudio.code.core.sftp.model.RemoteSortOrder
@@ -75,8 +76,12 @@ class FilesViewModel @Inject constructor(
     /** Directories visited, so Back walks up rather than leaving the screen. */
     private val history = ArrayDeque<String>()
 
+    /** A starting folder (a project's or a chat's), when the caller has one. */
+    private val startPath: String? = savedStateHandle.get<String>(ARG_PATH)?.takeIf { it.isNotBlank() }
+
     init {
         viewModelScope.launch {
+            if (startPath != null) return@launch navigateTo(startPath, recordHistory = false)
             when (val home = remoteFileSystem.homeDirectory(serverId)) {
                 is VmResult.Success -> navigateTo(home.value, recordHistory = false)
                 is VmResult.Failure -> {
@@ -165,6 +170,23 @@ class FilesViewModel @Inject constructor(
         _uiState.update { it.copy(selectedPaths = emptySet()) }
     }
 
+    /**
+     * Opens a tapped entry. A link to a folder lists as a link, not a folder, so its
+     * target is looked up first; otherwise links like ~/app -> /srv/app were dead ends.
+     */
+    fun open(entry: RemoteFileEntry) {
+        if (entry.isDirectory) return navigateTo(entry.path)
+        if (entry.type != RemoteFileType.SYMLINK) return startAction(FileAction.Details(entry))
+        viewModelScope.launch {
+            val target = (remoteFileSystem.stat(serverId, entry.path) as? VmResult.Success)?.value
+            if (target?.isDirectory == true) {
+                navigateTo(entry.path)
+            } else {
+                startAction(FileAction.Details(entry))
+            }
+        }
+    }
+
     fun startAction(action: FileAction?) {
         _uiState.update { it.copy(pendingAction = action) }
     }
@@ -219,5 +241,6 @@ class FilesViewModel @Inject constructor(
 
     companion object {
         const val ARG_SERVER_ID = "serverId"
+        const val ARG_PATH = "path"
     }
 }

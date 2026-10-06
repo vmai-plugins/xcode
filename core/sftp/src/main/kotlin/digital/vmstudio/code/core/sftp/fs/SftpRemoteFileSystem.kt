@@ -29,6 +29,9 @@ import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.sftp.SFTPException
 import net.schmizz.sshj.sftp.Response
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.io.RandomAccessFile
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -159,7 +162,7 @@ class SftpRemoteFileSystem @Inject constructor(
                 if (read <= 0) break
                 offset += read
             }
-            String(buffer, 0, offset, Charsets.UTF_8)
+            decodeTextStrictly(buffer, offset)
         }
     }
 
@@ -545,4 +548,24 @@ private fun FileMode.Type.toRemoteType(): RemoteFileType = when (this) {
     FileMode.Type.SOCKET_SPECIAL,
     -> RemoteFileType.SPECIAL
     else -> RemoteFileType.UNKNOWN
+}
+
+/**
+ * Text that is not valid UTF-8 (Latin-1 configs, binaries) is refused instead of
+ * decoded with replacement characters, because saving that text back would
+ * silently rewrite every such byte on the server.
+ */
+internal fun decodeTextStrictly(bytes: ByteArray, length: Int = bytes.size): String {
+    if ((0 until length).any { bytes[it] == 0.toByte() }) {
+        error("This looks like a binary file; it cannot be opened as text.")
+    }
+    return try {
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes, 0, length))
+            .toString()
+    } catch (notUtf8: CharacterCodingException) {
+        error("This file is not UTF-8 text; editing it here would corrupt it (${notUtf8.message}).")
+    }
 }

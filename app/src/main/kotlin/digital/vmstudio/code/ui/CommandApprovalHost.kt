@@ -1,5 +1,7 @@
 package digital.vmstudio.code.ui
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -113,6 +115,9 @@ private fun ApprovalDialog(
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.small)
                 .background(VmTheme.colors.codeSurface)
+                // A long script must be readable to the end before it is approved.
+                .heightIn(max = 240.dp)
+                .verticalScroll(rememberScrollState())
                 .padding(spacing.sm),
         )
 
