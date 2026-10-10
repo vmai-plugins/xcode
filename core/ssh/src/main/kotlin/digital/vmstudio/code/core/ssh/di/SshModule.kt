@@ -12,8 +12,6 @@ import digital.vmstudio.code.core.ssh.connection.DefaultSshConnectionManager
 import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import digital.vmstudio.code.core.ssh.host.DefaultHostKeyRepository
 import digital.vmstudio.code.core.ssh.host.HostKeyRepository
-import digital.vmstudio.code.core.ssh.recipes.DefaultRecipeExecutor
-import digital.vmstudio.code.core.ssh.recipes.RecipeExecutor
 import digital.vmstudio.code.core.ssh.repository.DefaultServerRepository
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import javax.inject.Singleton
@@ -45,8 +43,4 @@ abstract class SshModule {
     @Binds
     @Singleton
     abstract fun bindCommandGuard(impl: DefaultCommandGuard): CommandGuard
-
-    @Binds
-    @Singleton
-    abstract fun bindRecipeExecutor(impl: DefaultRecipeExecutor): RecipeExecutor
 }

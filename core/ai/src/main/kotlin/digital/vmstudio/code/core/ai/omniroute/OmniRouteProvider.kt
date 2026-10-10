@@ -13,6 +13,7 @@ import digital.vmstudio.code.core.ai.provider.AiProviderKind
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
+import digital.vmstudio.code.core.common.preferences.AgentAutonomyLevel
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.map
@@ -22,6 +23,7 @@ import digital.vmstudio.code.core.network.http.VmHttpException
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -68,13 +70,18 @@ class OmniRouteProvider @Inject constructor(
      * reuses the old answer, and cached so a connection test does not send two
      * billed probe requests every time.
      */
-    @Volatile
-    private var detected: Pair<String, OmniRouteDialect>? = null
+    private val dialectCache = java.util.concurrent.ConcurrentHashMap<String, OmniRouteDialect>()
 
-    private suspend fun dialectFor(baseUrl: String, key: Secret): OmniRouteDialect {
-        detected?.let { (url, dialect) -> if (url == baseUrl) return dialect }
-        return detectDialect(baseUrl, key).also { dialect ->
-            detected = if (dialect == OmniRouteDialect.UNKNOWN) null else baseUrl to dialect
+    private suspend fun dialectFor(
+        baseUrl: String,
+        key: Secret,
+        preferredModel: String? = null,
+    ): OmniRouteDialect {
+        dialectCache[baseUrl]?.let { return it }
+        return detectDialect(baseUrl, key, preferredModel).also { dialect ->
+            if (dialect != OmniRouteDialect.UNKNOWN) {
+                dialectCache[baseUrl] = dialect
+            }
         }
     }
 
@@ -121,7 +128,7 @@ class OmniRouteProvider @Inject constructor(
                 )
 
                 is VmResult.Success -> {
-                    val dialect = dialectFor(baseUrl, key)
+                    val dialect = dialectFor(baseUrl, key, models.value.firstOrNull())
                     VmResult.Success(
                         AiProviderHealth(
                             kind = kind,
@@ -150,111 +157,113 @@ class OmniRouteProvider @Inject constructor(
     override fun run(config: AgentRunConfig): Flow<AgentEvent> = flow {
         val settings = preferences.preferences.first()
         val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
-        // A Claude Code alias means nothing to the gateway; fall back to the model
-        // chosen for OmniRoute rather than sending an id it will reject.
         val model = config.model?.takeUnless { it in ClaudeCodeModels.ALIASES }
             ?: settings.aiSelectedModelId
 
         if (model.isNullOrBlank()) {
-            emit(
-                AgentEvent.Failed(
-                    VmError.Ai(
-                        summary = "No model selected",
-                        reason = "This provider needs an explicit model.",
-                        suggestedAction = "Choose one in Settings after running the " +
-                            "connection test.",
-                        retryable = false,
-                        provider = "omniroute",
-                    ),
-                ),
-            )
+            emit(noModelSelectedError())
             return@flow
         }
 
         val key = resolveApiKey(settings.aiApiKeyCredentialId)
         if (key == null) {
-            emit(
-                AgentEvent.Failed(
-                    VmError.Authentication(
-                        summary = "No API key is stored",
-                        suggestedAction = "Add the gateway's API key in Settings.",
-                    ),
-                ),
-            )
+            emit(noApiKeyError())
             return@flow
         }
 
         val dialect = dialectFor(baseUrl, key)
+        val fallbackModel = settings.aiAvailableModelIds.firstOrNull { it != model }
 
-        // The agent loop needs somewhere to act and the user's consent (the Tool
-        // use switch, on by default); otherwise this is a plain chat.
         val canUseTools = settings.aiToolsEnabled &&
             config.serverId.isNotBlank() &&
             config.workingDirectory.isNotBlank()
-        if (canUseTools) {
-            try {
-                emitAll(agentLoop.run(baseUrl, key, dialect, model, config, settings.agentAutonomyLevel))
-            } finally {
-                key.wipe()
-            }
-            return@flow
-        }
-
         try {
-            val request = buildChatRequest(baseUrl, key, dialect, model, plainChatMessages(config))
-            val text = StringBuilder()
-            var inputTokens = 0L
-            var outputTokens = 0L
-            val startedAt = System.currentTimeMillis()
-            var streamError: OmniRouteTurn.GatewayError? = null
-
-            httpClient.stream(request).collect { event ->
-                // An error object inside a 200 stream used to end as an empty reply.
-                (runCatching { json.parseToJsonElement(event.data) }.getOrNull() as? JsonObject)
-                    ?.let(::gatewayErrorOf)?.let { streamError = it }
-                // Shown as it arrives, like the agent's replies, instead of all at
-                // once at the end behind "Thinking…".
-                ChatStreamDecoder.textDelta(dialect, event.data)?.takeIf { it.isNotEmpty() }?.let { delta ->
-                    text.append(delta)
-                    emit(AgentEvent.AssistantDelta(delta))
-                }
-                ChatStreamDecoder.usage(event.data)?.let { (input, output) ->
-                    if (input > 0) inputTokens = input
-                    if (output > 0) outputTokens = output
-                }
+            if (canUseTools) {
+                runToolAgent(baseUrl, key, dialect, model, fallbackModel, config, settings.agentAutonomyLevel)
+            } else {
+                runPlainChat(baseUrl, key, dialect, model, fallbackModel, config)
             }
+        } finally {
+            key.wipe()
+        }
+    }
 
-            if (text.isNotEmpty()) emit(AgentEvent.AssistantMessage(text.toString()))
-            streamError?.let { error ->
+    @Suppress("LongParameterList")
+    private suspend fun FlowCollector<AgentEvent>.runToolAgent(
+        baseUrl: String,
+        key: Secret,
+        dialect: OmniRouteDialect,
+        model: String,
+        fallbackModel: String?,
+        config: AgentRunConfig,
+        autonomyLevel: AgentAutonomyLevel,
+    ) {
+        var emittedAny = false
+        var failureEvent: AgentEvent.Failed? = null
+        agentLoop.run(baseUrl, key, dialect, model, config, autonomyLevel).collect { event ->
+            if (event is AgentEvent.Failed) {
+                failureEvent = event
+            } else {
+                if (event !is AgentEvent.SessionStarted) emittedAny = true
+                emit(event)
+            }
+        }
+        failureEvent?.let { failure ->
+            val status = (failure.error as? VmError.Network)?.statusCode
+            if (isRecoverableStatus(status) && !emittedAny && fallbackModel != null) {
                 emit(
-                    AgentEvent.Failed(
-                        VmError.Ai(
-                            summary = "The gateway reported an error",
-                            reason = error.message,
-                            retryable = error.retryable,
-                            provider = "omniroute",
-                        ),
+                    AgentEvent.AssistantDelta(
+                        "\n[Rate limit on $model; retrying with fallback model $fallbackModel...]\n\n",
                     ),
                 )
-                return@flow
+                emitAll(
+                    agentLoop.run(
+                        baseUrl,
+                        key,
+                        dialect,
+                        fallbackModel,
+                        config,
+                        autonomyLevel,
+                    ),
+                )
+            } else {
+                emit(failure)
             }
-            emit(
-                AgentEvent.Completed(
-                    sessionId = null,
-                    resultText = text.toString().takeIf { it.isNotEmpty() },
-                    durationMillis = System.currentTimeMillis() - startedAt,
-                    // The gateway bills upstream; the app does not attempt to price
-                    // a request it cannot see the rate card for.
-                    costUsd = 0.0,
-                    inputTokens = inputTokens,
-                    outputTokens = outputTokens,
-                    isError = false,
-                ),
-            )
+        }
+    }
+
+    @Suppress("LongParameterList")
+    private suspend fun FlowCollector<AgentEvent>.runPlainChat(
+        baseUrl: String,
+        key: Secret,
+        dialect: OmniRouteDialect,
+        model: String,
+        fallbackModel: String?,
+        config: AgentRunConfig,
+    ) {
+        try {
+            executeChatStream(baseUrl, key, dialect, model, config)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (httpFailure: VmHttpException) {
-            emit(AgentEvent.Failed(httpFailure.error))
+            val status = (httpFailure.error as? VmError.Network)?.statusCode
+            if (isRecoverableStatus(status) && fallbackModel != null) {
+                emit(
+                    AgentEvent.AssistantDelta(
+                        "\n[Rate limit on $model; retrying with fallback model $fallbackModel...]\n\n",
+                    ),
+                )
+                try {
+                    executeChatStream(baseUrl, key, dialect, fallbackModel, config)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (fallbackFailure: Throwable) {
+                    VmLog.w(LogCategory.AI, TAG, "Fallback plain chat also failed", fallbackFailure)
+                    emit(AgentEvent.Failed(httpFailure.error))
+                }
+            } else {
+                emit(AgentEvent.Failed(httpFailure.error))
+            }
         } catch (throwable: Throwable) {
             emit(
                 AgentEvent.Failed(
@@ -266,10 +275,88 @@ class OmniRouteProvider @Inject constructor(
                     ),
                 ),
             )
-        } finally {
-            key.wipe()
         }
     }
+
+    private suspend fun FlowCollector<AgentEvent>.executeChatStream(
+        baseUrl: String,
+        key: Secret,
+        dialect: OmniRouteDialect,
+        model: String,
+        config: AgentRunConfig,
+    ) {
+        val request = buildChatRequest(baseUrl, key, dialect, model, plainChatMessages(config))
+        val text = StringBuilder()
+        val reasoning = StringBuilder()
+        var inputTokens = 0L
+        var outputTokens = 0L
+        val startedAt = System.currentTimeMillis()
+        var streamError: OmniRouteTurn.GatewayError? = null
+
+        httpClient.stream(request).collect { event ->
+            (runCatching { json.parseToJsonElement(event.data) }.getOrNull() as? JsonObject)
+                ?.let(::gatewayErrorOf)?.let { streamError = it }
+            ChatStreamDecoder.reasoningDelta(dialect, event.data)?.takeIf { it.isNotEmpty() }?.let { rDelta ->
+                reasoning.append(rDelta)
+            }
+            ChatStreamDecoder.textDelta(dialect, event.data)?.takeIf { it.isNotEmpty() }?.let { delta ->
+                if (reasoning.isNotEmpty()) {
+                    emit(AgentEvent.Reasoning(reasoning.toString()))
+                    reasoning.setLength(0)
+                }
+                text.append(delta)
+                emit(AgentEvent.AssistantDelta(delta))
+            }
+            ChatStreamDecoder.usage(event.data)?.let { (input, output) ->
+                if (input > 0) inputTokens = input
+                if (output > 0) outputTokens = output
+            }
+        }
+
+        if (reasoning.isNotEmpty()) emit(AgentEvent.Reasoning(reasoning.toString()))
+        if (text.isNotEmpty()) emit(AgentEvent.AssistantMessage(text.toString()))
+        streamError?.let { error ->
+            emit(
+                AgentEvent.Failed(
+                    VmError.Ai(
+                        summary = "The gateway reported an error",
+                        reason = error.message,
+                        retryable = error.retryable,
+                        provider = "omniroute",
+                    ),
+                ),
+            )
+            return
+        }
+        emit(
+            AgentEvent.Completed(
+                sessionId = null,
+                resultText = text.toString().takeIf { it.isNotEmpty() },
+                durationMillis = System.currentTimeMillis() - startedAt,
+                costUsd = 0.0,
+                inputTokens = inputTokens,
+                outputTokens = outputTokens,
+                isError = false,
+            ),
+        )
+    }
+
+    private fun noModelSelectedError(): AgentEvent.Failed = AgentEvent.Failed(
+        VmError.Ai(
+            summary = "No model selected",
+            reason = "This provider needs an explicit model.",
+            suggestedAction = "Choose one in Settings after running the connection test.",
+            retryable = false,
+            provider = "omniroute",
+        ),
+    )
+
+    private fun noApiKeyError(): AgentEvent.Failed = AgentEvent.Failed(
+        VmError.Authentication(
+            summary = "No API key is stored",
+            suggestedAction = "Add the gateway's API key in Settings.",
+        ),
+    )
 
     /**
      * Fetches the gateway's current model list, for the live model picker.
@@ -353,7 +440,9 @@ class OmniRouteProvider @Inject constructor(
         }
     }
 
-    private suspend fun fetchModels(baseUrl: String, key: Secret): VmResult<GatewayModelList> {
+    private suspend fun fetchModels(baseUrl: String, key: Secret): VmResult<GatewayModelList> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fetchModelsInternal(baseUrl, key) }
+
+    private suspend fun fetchModelsInternal(baseUrl: String, key: Secret): VmResult<GatewayModelList> {
         // Try the OpenAI-style bearer header first, then the Anthropic-style
         // x-api-key only if that is rejected. Sending both at once would hand the
         // key, in two forms, to an endpoint whose identity is not yet confirmed —
@@ -405,10 +494,15 @@ class OmniRouteProvider @Inject constructor(
      * A 404 rules a dialect out; anything else — including a 400 about the body —
      * means the route exists, which is what is being tested.
      */
-    private suspend fun detectDialect(baseUrl: String, key: Secret): OmniRouteDialect {
+    private suspend fun detectDialect(
+        baseUrl: String,
+        key: Secret,
+        preferredModel: String? = null,
+    ): OmniRouteDialect {
+        val probeModel = preferredModel?.takeIf { it.isNotBlank() } ?: "probe"
         suspend fun probe(dialect: OmniRouteDialect): Boolean {
             val body = buildJsonObject {
-                put("model", "probe")
+                put("model", probeModel)
                 put("max_tokens", 1)
                 put("stream", false)
                 put(
@@ -427,16 +521,28 @@ class OmniRouteProvider @Inject constructor(
                 is VmResult.Success -> true
                 is VmResult.Failure -> {
                     val status = (result.error as? VmError.Network)?.statusCode
-                    status != null && status != 404
+                    status in VALID_DIALECT_STATUSES
                 }
             }
         }
 
-        return when {
-            probe(OmniRouteDialect.ANTHROPIC_MESSAGES) -> OmniRouteDialect.ANTHROPIC_MESSAGES
-            probe(OmniRouteDialect.OPENAI_CHAT) -> OmniRouteDialect.OPENAI_CHAT
-            else -> OmniRouteDialect.UNKNOWN
-        }.also {
+        val dialectsToProbe = if (probeModel.contains("claude", ignoreCase = true) ||
+            probeModel.contains("anthropic", ignoreCase = true)
+        ) {
+            listOf(OmniRouteDialect.ANTHROPIC_MESSAGES, OmniRouteDialect.OPENAI_CHAT)
+        } else {
+            listOf(OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.ANTHROPIC_MESSAGES)
+        }
+
+        var detectedDialect = OmniRouteDialect.UNKNOWN
+        for (dialect in dialectsToProbe) {
+            if (probe(dialect)) {
+                detectedDialect = dialect
+                break
+            }
+        }
+
+        return detectedDialect.also {
             VmLog.i(LogCategory.AI, TAG, "Gateway dialect detected: ${it.displayName}")
         }
     }
@@ -480,6 +586,14 @@ class OmniRouteProvider @Inject constructor(
         const val MODELS_PAGE_SIZE = 1000
         const val MAX_MODEL_PAGES = 20
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        val VALID_DIALECT_STATUSES = setOf(200, 400, 401, 403, 422, 429)
+        const val HTTP_TOO_MANY_REQUESTS = 429
+        const val HTTP_BAD_GATEWAY = 502
+        const val HTTP_GATEWAY_TIMEOUT = 504
+
+        fun isRecoverableStatus(status: Int?): Boolean =
+            status == HTTP_TOO_MANY_REQUESTS ||
+                (status != null && status in HTTP_BAD_GATEWAY..HTTP_GATEWAY_TIMEOUT)
     }
 }
 
@@ -529,3 +643,4 @@ data class GatewayModelList(val ids: List<String>, val freeIds: Set<String>)
 
 /** Gateway connection details handed to a server-side run. */
 class GatewayAccess(val baseUrl: String, val dialect: OmniRouteDialect, val key: Secret)
+

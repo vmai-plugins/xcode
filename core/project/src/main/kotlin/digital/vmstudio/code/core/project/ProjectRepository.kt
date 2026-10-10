@@ -7,6 +7,7 @@ import digital.vmstudio.code.core.common.result.vmCatching
 import digital.vmstudio.code.core.database.dao.ProjectDao
 import digital.vmstudio.code.core.database.entity.ProjectEntity
 import digital.vmstudio.code.core.database.entity.ProjectLocation
+import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -31,8 +32,15 @@ data class Project(
     val projectTypeId: String,
     val isFavorite: Boolean,
     val lastOpenedAtMillis: Long,
+    val branch: String? = null,
+    val environment: ServerEnvironment = ServerEnvironment.UNSPECIFIED,
+    val runtime: String? = null,
+    val packageManager: String? = null,
+    val colorHex: String? = null,
+    val location: ProjectLocation = ProjectLocation.LOCAL,
 ) {
-    val isRemote: Boolean get() = serverId != null
+    val isRemote: Boolean get() = serverId != null && serverId != "local"
+    val isLocal: Boolean get() = !isRemote
 }
 
 interface ProjectRepository {
@@ -43,17 +51,24 @@ interface ProjectRepository {
 
     suspend fun get(id: String): Project?
 
+    @Suppress("LongParameterList")
     suspend fun create(
         name: String,
-        serverId: String,
+        serverId: String?,
         remotePath: String,
         description: String = "",
         projectTypeId: String = DEFAULT_TYPE,
+        branch: String? = null,
+        environment: ServerEnvironment = ServerEnvironment.DEVELOPMENT,
+        runtime: String? = null,
+        packageManager: String? = null,
     ): VmResult<String>
 
     suspend fun markOpened(id: String): VmResult<Unit>
 
     suspend fun setFavorite(id: String, favorite: Boolean): VmResult<Unit>
+
+    suspend fun updateColor(id: String, colorHex: String?): VmResult<Unit>
 
     suspend fun delete(id: String): VmResult<Unit>
 
@@ -78,12 +93,17 @@ class DefaultProjectRepository @Inject constructor(
         projectDao.getById(id)?.toProject()
     }
 
+    @Suppress("LongParameterList")
     override suspend fun create(
         name: String,
-        serverId: String,
+        serverId: String?,
         remotePath: String,
         description: String,
         projectTypeId: String,
+        branch: String?,
+        environment: ServerEnvironment,
+        runtime: String?,
+        packageManager: String?,
     ): VmResult<String> = withContext(ioDispatcher) {
         val trimmedName = name.trim()
         val trimmedPath = remotePath.trim()
@@ -97,18 +117,20 @@ class DefaultProjectRepository @Inject constructor(
         // Validated here rather than only in the UI: this path becomes the agent's
         // filesystem scope, and a relative one would resolve against whatever
         // directory a non-interactive shell happens to start in.
-        if (!trimmedPath.startsWith("/")) {
+        if (!trimmedPath.startsWith("/") && !trimmedPath.startsWith("~/")) {
             return@withContext VmResult.Failure(
                 VmError.Validation(
                     summary = "The path must be absolute",
                     fieldName = "remotePath",
-                    reason = "A relative path resolves against an unpredictable working " +
-                        "directory on the server.",
-                    suggestedAction = "Start it with \"/\", for example /root/myapp.",
+                    reason = "A relative path resolves against an unpredictable working directory.",
+                    suggestedAction = "Start it with \"/\", for example /sdcard/VMStudio or /root/myapp.",
                 ),
             )
         }
 
+        val isLocal = serverId == null || serverId == "local" || serverId == "device"
+        val location = if (isLocal) ProjectLocation.LOCAL else ProjectLocation.REMOTE_SSH
+        val storedServerId = if (isLocal) null else serverId
         val now = System.currentTimeMillis()
         val id = UUID.randomUUID().toString()
         vmCatching(::mapError) {
@@ -117,10 +139,15 @@ class DefaultProjectRepository @Inject constructor(
                     id = id,
                     name = trimmedName,
                     description = description.trim(),
-                    location = ProjectLocation.REMOTE_SSH,
-                    serverId = serverId,
+                    location = location,
+                    serverId = storedServerId,
                     remotePath = normalisePath(trimmedPath),
+                    localTreeUri = if (isLocal) normalisePath(trimmedPath) else null,
                     projectTypeId = projectTypeId,
+                    branch = branch?.trim()?.takeIf { it.isNotBlank() },
+                    environment = environment,
+                    runtime = runtime?.trim()?.takeIf { it.isNotBlank() },
+                    packageManager = packageManager?.trim()?.takeIf { it.isNotBlank() },
                     createdAtMillis = now,
                     updatedAtMillis = now,
                 ),
@@ -138,6 +165,11 @@ class DefaultProjectRepository @Inject constructor(
             vmCatching(::mapError) { projectDao.setFavorite(id, favorite) }
         }
 
+    override suspend fun updateColor(id: String, colorHex: String?): VmResult<Unit> =
+        withContext(ioDispatcher) {
+            vmCatching(::mapError) { projectDao.updateColor(id, colorHex, System.currentTimeMillis()) }
+        }
+
     override suspend fun delete(id: String): VmResult<Unit> = withContext(ioDispatcher) {
         vmCatching(::mapError) { projectDao.deleteById(id) }
     }
@@ -150,13 +182,17 @@ class DefaultProjectRepository @Inject constructor(
         id = id,
         name = name,
         description = description,
-        serverId = serverId,
-        // Remote projects always carry a path; the column is nullable only because
-        // local (SAF) projects use a tree URI instead.
-        remotePath = remotePath ?: "/",
+        serverId = serverId ?: if (location == ProjectLocation.LOCAL) "local" else null,
+        remotePath = remotePath ?: localTreeUri ?: "/",
         projectTypeId = projectTypeId,
         isFavorite = isFavorite,
         lastOpenedAtMillis = lastOpenedAtMillis,
+        branch = branch,
+        environment = environment,
+        runtime = runtime,
+        packageManager = packageManager,
+        colorHex = colorHex,
+        location = location,
     )
 
     private fun mapError(throwable: Throwable) = VmError.Storage(

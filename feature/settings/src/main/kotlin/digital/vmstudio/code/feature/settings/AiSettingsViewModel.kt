@@ -153,6 +153,18 @@ class AiSettingsViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.setAiToolsEnabled(enabled) }
     }
 
+    fun setWebAccessEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setAiWebAccessEnabled(enabled) }
+    }
+
+    fun setMaxIterations(iterations: Int) {
+        viewModelScope.launch { preferencesRepository.setAgentMaxIterations(iterations) }
+    }
+
+    fun setMaxCommandsPerRun(commands: Int) {
+        viewModelScope.launch { preferencesRepository.setAgentMaxCommandsPerRun(commands) }
+    }
+
     /**
      * Runs the connection test.
      *

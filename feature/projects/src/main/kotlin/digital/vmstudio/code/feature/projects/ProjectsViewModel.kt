@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import javax.inject.Inject
 
 data class ProjectsUiState(
@@ -27,16 +28,15 @@ data class ProjectsUiState(
 ) {
     /**
      * Server lookup keyed once per state update rather than scanned per row.
-     *
-     * `serverFor` used to do `servers.firstOrNull { it.id == ... }` inside the list
-     * composable — an O(servers) scan on every row on every recomposition. Building
-     * the map here means the list only pays for the index once per state change.
      */
     private val serversById: Map<String, ServerOption> by lazy { servers.associateBy { it.id } }
 
-    fun serverFor(project: Project): ServerOption? = project.serverId?.let(serversById::get)
+    fun serverFor(project: Project): ServerOption? {
+        val id = project.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+        return serversById[id]
+    }
 
-    val canCreate: Boolean get() = servers.isNotEmpty()
+    val canCreate: Boolean get() = true
 }
 
 @HiltViewModel
@@ -53,9 +53,15 @@ class ProjectsViewModel @Inject constructor(
         servers.servers,
         error,
     ) { projectList, serverList, currentError ->
+        val localOption = ServerOption(
+            id = RemoteFileSystem.LOCAL_SERVER_ID,
+            name = "This Device (Local)",
+            target = "Local Phone Storage",
+        )
+        val allOptions = listOf(localOption) + serverList.toServerOptions()
         ProjectsUiState(
             projects = projectList,
-            servers = serverList.toServerOptions(),
+            servers = allOptions,
             isLoading = false,
             error = currentError,
         )
@@ -84,6 +90,10 @@ class ProjectsViewModel @Inject constructor(
 
     fun toggleFavorite(project: Project) {
         viewModelScope.launch { projects.setFavorite(project.id, !project.isFavorite) }
+    }
+
+    fun updateColor(project: Project, colorHex: String?) {
+        viewModelScope.launch { projects.updateColor(project.id, colorHex) }
     }
 
     fun delete(project: Project) {

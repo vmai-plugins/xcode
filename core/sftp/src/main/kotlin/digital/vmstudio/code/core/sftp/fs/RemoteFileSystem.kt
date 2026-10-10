@@ -107,7 +107,11 @@ interface RemoteFileSystem {
     ): Flow<TransferEvent>
 
     companion object {
+        const val LOCAL_SERVER_ID: String = "local"
         const val DEFAULT_MAX_TEXT_BYTES: Long = 8L * 1024 * 1024
+
+        fun isLocalServer(serverId: String?): Boolean =
+            serverId == null || serverId == LOCAL_SERVER_ID || serverId == "device" || serverId.isBlank()
     }
 }
 

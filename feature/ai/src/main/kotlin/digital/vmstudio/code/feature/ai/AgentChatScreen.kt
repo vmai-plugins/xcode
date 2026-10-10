@@ -1,4 +1,4 @@
-package digital.vmstudio.code.feature.ai
+﻿package digital.vmstudio.code.feature.ai
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
@@ -125,6 +125,10 @@ fun AgentChatScreen(
                 onOpenMenu = onOpenMenu,
                 onNavigateBack = onNavigateBack,
                 onSelectProject = viewModel::selectProject,
+                onSelectGithubRepo = viewModel::selectGithubRepo,
+                onChooseDirectory = { showDirectoryDialog = true },
+                discoveredGitRepos = state.discoveredGitRepos,
+                onSelectDiscoveredRepo = viewModel::selectDiscoveredGitRepo,
                 onNewChat = viewModel::startNewConversation,
                 onOpenFiles = { state.serverId?.let { onOpenFiles(it, state.workingDirectory.trim()) } },
                 onConversationAction = { action -> currentChat?.let { pendingChatAction = it to action } },

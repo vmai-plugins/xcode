@@ -137,6 +137,15 @@ sealed interface GitResult<out T> {
 }
 
 /**
+ * A Git repository discovered on a remote server without needing to clone.
+ */
+data class DiscoveredGitRepo(
+    val path: String,
+    val name: String,
+    val branch: String? = null,
+)
+
+/**
  * Errors that can occur during Git operations.
  */
 sealed class GitError {

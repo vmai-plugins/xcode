@@ -54,7 +54,7 @@ class VmApplication : Application() {
         // a report from a release build; logcat output is debug-only.
         VmLog.addSink(diagnosticsLogSink)
         if (BuildConfig.DEBUG) VmLog.addSink(LogcatSink())
-        VmLog.i(LogCategory.UI, TAG, "VMStudio Code ${BuildConfig.VERSION_NAME} starting")
+        VmLog.i(LogCategory.UI, TAG, "X-codes ${BuildConfig.VERSION_NAME} starting")
     }
 
     /**
@@ -78,3 +78,4 @@ class VmApplication : Application() {
         const val UPDATE_CHECK_INTERVAL_MILLIS = 24L * 60 * 60 * 1000
     }
 }
+

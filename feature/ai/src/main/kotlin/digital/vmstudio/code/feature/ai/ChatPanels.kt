@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -97,54 +99,86 @@ internal fun EmptyChatHero(
         workingDirectory.trimEnd('/').substringAfterLast('/', "")
             .ifBlank { "General chat · pick a project above to work on code" }
     }
+    val greeting = remember {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        when (hour) {
+            in 5..11 -> "Good morning"
+            in 12..17 -> "Good afternoon"
+            else -> "Good evening"
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
+            .padding(horizontal = 20.dp, vertical = spacing.md),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = Icons.Default.AutoAwesome,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(36.dp),
-        )
+        // --- Kimi Glowing Orb Avatar ---
+        Surface(
+            shape = RoundedCornerShape(32.dp),
+            color = Color(0xFF1E88E5).copy(alpha = 0.15f),
+            modifier = Modifier.size(72.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFF29B6F6),
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(modifier = Modifier.size(4.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                            Box(modifier = Modifier.size(4.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                        }
+                    }
+                }
+            }
+        }
+
         Text(
-            text = if (isGeneral) "How can I help?" else "What should we work on?",
-            style = MaterialTheme.typography.headlineSmall,
+            text = "$greeting! What would you like to build today?",
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = spacing.md),
-        )
-        Text(
-            text = dirName,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp, bottom = spacing.lg),
+            modifier = Modifier.padding(top = 20.dp),
         )
 
-        val suggestions = if (isGeneral) GENERAL_SUGGESTIONS else listOf(
-            "Explain this project" to
-                "Explain the structure of this project, its dependencies and key entry points.",
-            "Find bugs" to "Review recent changes for bugs and runtime issues.",
-            "Write tests" to "Write tests for the core flows of this project.",
-            "Git status" to "Summarize the uncommitted changes in this repository.",
+        Text(
+            text = if (isGeneral) "General workspace · No project pinned" else "Active folder: $dirName",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp, bottom = 28.dp),
         )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            suggestions.forEach { (label, prompt) ->
+
+        // --- Kimi Horizontal Quick Action Pills ---
+        val actions = listOf(
+            "Project Audit" to "Audit the current workspace, check architecture, dependencies, and potential bugs.",
+            "Explain Code" to "Explain the structure of this project, its dependencies, and entry points.",
+            "Write Tests" to "Write tests for the critical components and business logic in this repo.",
+            "Git Status" to "Check git status, show uncommitted diffs, and review changes.",
+            "Fix Errors" to "Review recent runtime errors and propose complete, robust fixes.",
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            actions.forEach { (label, prompt) ->
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(1.dp, VmTheme.colors.divider),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .clickable { onSuggestionClick(prompt) },
                 ) {
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     )
@@ -153,14 +187,6 @@ internal fun EmptyChatHero(
         }
     }
 }
-
-/** For a chat with no project: nothing here can touch a server. */
-private val GENERAL_SUGGESTIONS = listOf(
-    "Explain a concept" to "Explain how HTTPS works, step by step, with a simple example.",
-    "Write code" to "Write a small, well-commented function that ",
-    "Debug an error" to "Here is an error message, what causes it and how do I fix it?\n\n",
-    "Plan a feature" to "Help me plan a feature: ",
-)
 
 /**
  * Shown only when the chosen backend cannot run, naming that backend and the fix.

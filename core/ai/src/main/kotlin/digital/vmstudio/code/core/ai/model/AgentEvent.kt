@@ -96,7 +96,7 @@ enum class AgentPermissionMode {
     BYPASS,
 }
 
-/** Configuration for a single agent run. */
+@Suppress("LongParameterList")
 data class AgentRunConfig(
     val serverId: String,
     /** Absolute path on the server. The agent's filesystem scope. */
@@ -135,6 +135,12 @@ data class AgentRunConfig(
     val images: List<ImageAttachment> = emptyList(),
     /** History budget in characters for gateway models; null uses the built-in default. */
     val contextChars: Int? = null,
+    /** Whether web_fetch tool is permitted to fetch public URLs. */
+    val webAccessEnabled: Boolean = true,
+    /** Maximum model iteration turns before stopping. */
+    val maxIterations: Int? = null,
+    /** Maximum command tool invocations allowed per run. */
+    val maxCommandsPerRun: Int? = null,
 ) {
     companion object {
         /**

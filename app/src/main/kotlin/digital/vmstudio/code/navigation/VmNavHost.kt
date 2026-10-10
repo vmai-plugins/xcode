@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -28,15 +29,22 @@ import digital.vmstudio.code.feature.servers.ServerEditScreen
 import digital.vmstudio.code.feature.projects.ProjectCreateScreen
 import digital.vmstudio.code.feature.ai.DiffReviewScreen
 import digital.vmstudio.code.feature.editor.EditorScreen
-import digital.vmstudio.code.feature.servers.RecipeScreen
-import digital.vmstudio.code.feature.servers.ServerAppsScreen
 import digital.vmstudio.code.feature.projects.ProjectsScreen
 import digital.vmstudio.code.feature.projects.ProjectDetailScreen
-import digital.vmstudio.code.feature.connectors.ConnectorsScreen
 import digital.vmstudio.code.feature.servers.ServersScreen
+import digital.vmstudio.code.feature.settings.AboutSettingsScreen
+import digital.vmstudio.code.feature.settings.AgentSettingsScreen
+import digital.vmstudio.code.feature.settings.AiSettingsScreen
+import digital.vmstudio.code.feature.settings.AppearanceSettingsScreen
+import digital.vmstudio.code.feature.settings.DiagnosticsSettingsScreen
+import digital.vmstudio.code.feature.settings.EditorSettingsScreen
+import digital.vmstudio.code.feature.settings.SecuritySettingsScreen
 import digital.vmstudio.code.feature.settings.SettingsScreen
 import digital.vmstudio.code.feature.terminal.TerminalRoute
 import digital.vmstudio.code.ui.NewChatScreen
+
+import digital.vmstudio.code.ui.onboarding.OnboardingScreen
+import digital.vmstudio.code.ui.activity.ActivityTimelineScreen
 
 /**
  * The app's single navigation graph.
@@ -50,6 +58,10 @@ fun VmNavHost(
     navController: NavHostController,
     isOnline: Boolean,
     onOpenMenu: () -> Unit,
+    hasCompletedOnboarding: Boolean = true,
+    hasSignedIn: Boolean = false,
+    onFinishSignIn: () -> Unit = {},
+    onFinishOnboarding: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Resolved once here rather than per screen: it owns a permission launcher,
@@ -58,9 +70,35 @@ fun VmNavHost(
 
     NavHost(
         navController = navController,
-        startDestination = VmDestination.NewChat.route,
+        startDestination = if (!hasSignedIn) VmDestination.Auth.route else if (hasCompletedOnboarding) VmDestination.NewChat.route else VmDestination.Onboarding.route,
         modifier = modifier.fillMaxSize(),
     ) {
+        composable(VmDestination.Auth.route) {
+            digital.vmstudio.code.ui.auth.AuthScreen(
+                onSignedIn = {
+                    onFinishSignIn()
+                    val next = if (hasCompletedOnboarding) VmDestination.NewChat.route else VmDestination.Onboarding.route
+                    navController.navigate(next) { popUpTo(VmDestination.Auth.route) { inclusive = true } }
+                }
+            )
+        }
+        composable(VmDestination.Onboarding.route) {
+            OnboardingScreen(
+                onFinishOnboarding = {
+                    onFinishOnboarding()
+                    navController.navigate(VmDestination.NewChat.route) {
+                        popUpTo(VmDestination.Onboarding.route) { inclusive = true }
+                    }
+                },
+            )
+        }
+
+        composable(VmDestination.ActivityTimeline.route) {
+            ActivityTimelineScreen(
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
+
         composable(VmDestination.NewChat.route) {
             NewChatScreen(
                 onOpenChat = { serverId ->
@@ -77,7 +115,12 @@ fun VmNavHost(
         }
 
         composable(VmDestination.Servers.route) {
-            MenuScaffold(title = "Servers", onOpenMenu = onOpenMenu) {
+            val canPop = navController.previousBackStackEntry != null
+            MenuScaffold(
+                title = "Servers",
+                onOpenMenu = onOpenMenu,
+                onNavigateBack = if (canPop) { { navController.popBackStack() } } else null,
+            ) {
                 ServersScreen(
                     onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
                     onOpenServer = { serverId ->
@@ -125,12 +168,6 @@ fun VmNavHost(
                 },
                 onOpenFiles = { serverId ->
                     navController.navigate(VmDestination.ServerFiles.routeFor(serverId))
-                },
-                onOpenApps = { serverId ->
-                    navController.navigate(VmDestination.ServerApps.routeFor(serverId))
-                },
-                onOpenRecipes = { serverId ->
-                    navController.navigate(VmDestination.ServerRecipes.routeFor(serverId))
                 },
                 onOpenAgent = { serverId ->
                     navController.navigate(VmDestination.ServerAgent.routeFor(serverId))
@@ -186,25 +223,8 @@ fun VmNavHost(
             )
         }
 
-        composable(
-            route = VmDestination.ServerApps.ROUTE_PATTERN,
-            arguments = listOf(
-                navArgument(VmDestination.ServerApps.ARG_SERVER_ID) { type = NavType.StringType },
-            ),
-        ) {
-            ServerAppsScreen(onNavigateBack = { navController.popBackStack() })
-        }
-
-        composable(
-            route = VmDestination.ServerRecipes.ROUTE_PATTERN,
-            arguments = listOf(
-                navArgument(VmDestination.ServerRecipes.ARG_SERVER_ID) { type = NavType.StringType },
-            ),
-        ) {
-            RecipeScreen(onNavigateBack = { navController.popBackStack() })
-        }
-
         composable(VmDestination.Projects.route) {
+            val canPop = navController.previousBackStackEntry != null
             ProjectsScreen(
                 onOpenProject = { project ->
                     navController.navigate(VmDestination.ProjectDetail.routeFor(project.id))
@@ -212,6 +232,7 @@ fun VmNavHost(
                 onCreateProject = { navController.navigate(VmDestination.ProjectAdd.route) },
                 onAddServer = { navController.navigate(VmDestination.ServerAdd.route) },
                 onOpenMenu = onOpenMenu,
+                onNavigateBack = if (canPop) { { navController.popBackStack() } } else null,
             )
         }
 
@@ -235,19 +256,32 @@ fun VmNavHost(
             )
         }
 
-        composable(VmDestination.Connectors.route) {
-            ConnectorsScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onOpenTerminal = {
-                    navController.navigate(VmDestination.Servers.route)
+        composable(
+            route = VmDestination.ProjectAdd.ROUTE_PATTERN,
+            arguments = listOf(
+                navArgument(VmDestination.ProjectAdd.ARG_GITHUB_URL) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 },
-            )
-        }
-
-        composable(VmDestination.ProjectAdd.route) {
+                navArgument(VmDestination.ProjectAdd.ARG_GITHUB_BRANCH) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument(VmDestination.ProjectAdd.ARG_MODE) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) {
             ProjectCreateScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onCreated = { navController.popBackStack() },
+                onCreated = { projectId ->
+                    navController.popBackStack()
+                    navController.navigate(VmDestination.ProjectDetail.routeFor(projectId))
+                },
             )
         }
 
@@ -332,7 +366,83 @@ fun VmNavHost(
 
         composable(VmDestination.Settings.route) {
             MenuScaffold(title = "Settings", onOpenMenu = onOpenMenu) {
-                SettingsScreen()
+                SettingsScreen(
+                    onOpenAi = { navController.navigate(VmDestination.SettingsAi.route) },
+                    onOpenAgent = { navController.navigate(VmDestination.SettingsAgent.route) },
+                    onOpenAppearance = { navController.navigate(VmDestination.SettingsAppearance.route) },
+                    onOpenEditor = { navController.navigate(VmDestination.SettingsEditor.route) },
+                    onOpenSecurity = { navController.navigate(VmDestination.SettingsSecurity.route) },
+                    onOpenServers = { navController.navigate(VmDestination.Servers.route) },
+                    onOpenGitHub = { navController.navigate("settings/github") },
+                    onOpenAbout = { navController.navigate(VmDestination.SettingsAbout.route) },
+                    onSignOut = {
+                        navController.navigate(VmDestination.Auth.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                )
+            }
+        }
+
+        composable(VmDestination.SettingsAi.route) {
+            SettingsDetailScaffold(
+                title = "AI provider",
+                onNavigateBack = { navController.popBackStack() },
+            ) { AiSettingsScreen() }
+        }
+
+        composable(VmDestination.SettingsAgent.route) {
+            SettingsDetailScaffold(
+                title = "Agent & autonomy",
+                onNavigateBack = { navController.popBackStack() },
+            ) { AgentSettingsScreen() }
+        }
+
+        composable(VmDestination.SettingsAppearance.route) {
+            SettingsDetailScaffold(
+                title = "Appearance",
+                onNavigateBack = { navController.popBackStack() },
+            ) { AppearanceSettingsScreen() }
+        }
+
+        composable(VmDestination.SettingsEditor.route) {
+            SettingsDetailScaffold(
+                title = "Editor & terminal",
+                onNavigateBack = { navController.popBackStack() },
+            ) { EditorSettingsScreen() }
+        }
+
+        composable(VmDestination.SettingsSecurity.route) {
+            SettingsDetailScaffold(
+                title = "Security",
+                onNavigateBack = { navController.popBackStack() },
+            ) { SecuritySettingsScreen() }
+        }
+
+        composable("settings/github") {
+            SettingsDetailScaffold(
+                title = "GitHub Projects",
+                onNavigateBack = { navController.popBackStack() },
+            ) { digital.vmstudio.code.feature.settings.GitHubSettingsScreen(
+                onCloneRepo = { url ->
+                    navController.navigate(VmDestination.ProjectAdd.routeFor(githubUrl = url))
+                }
+            ) }
+        }
+
+        composable(VmDestination.Connectors.route) {
+            digital.vmstudio.code.feature.connectors.ConnectorsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenTerminal = { navController.navigate(VmDestination.GeneralChat.route) },
+            )
+        }
+
+        composable(VmDestination.SettingsAbout.route) {
+            SettingsDetailScaffold(
+                title = "About & updates",
+                onNavigateBack = { navController.popBackStack() },
+            ) {
+                AboutSettingsScreen()
             }
         }
     }
@@ -365,12 +475,24 @@ fun navigateToNewChat(navController: NavHostController) {
     }
 }
 
+@Composable
+private fun SettingsDetailScaffold(
+    title: String,
+    onNavigateBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    MenuScaffold(title = title, onOpenMenu = {}, onNavigateBack = onNavigateBack) {
+        content()
+    }
+}
+
 /** Top-level screens that have no bar of their own get one carrying the drawer button. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MenuScaffold(
     title: String,
     onOpenMenu: () -> Unit,
+    onNavigateBack: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Scaffold(
@@ -378,8 +500,14 @@ private fun MenuScaffold(
             TopAppBar(
                 title = { Text(title) },
                 navigationIcon = {
-                    IconButton(onClick = onOpenMenu) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
+                    if (onNavigateBack != null) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    } else {
+                        IconButton(onClick = onOpenMenu) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
                     }
                 },
             )
@@ -388,3 +516,4 @@ private fun MenuScaffold(
         Box(modifier = Modifier.padding(padding)) { content() }
     }
 }
+

@@ -33,6 +33,8 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.io.RandomAccessFile
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
@@ -40,22 +42,29 @@ import kotlin.coroutines.cancellation.CancellationException
 @Singleton
 class SftpRemoteFileSystem @Inject constructor(
     private val connectionManager: SshConnectionManager,
+    @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : RemoteFileSystem {
+
+    private val localFs = LocalFileSystemDelegate(context, ioDispatcher)
 
     override suspend fun list(
         serverId: String,
         path: String,
         options: RemoteListingOptions,
-    ): VmResult<List<RemoteFileEntry>> = withSftp(serverId, path) { sftp ->
-        val normalised = RemotePath.normalise(path)
-        sftp.ls(normalised)
-            .map { it.toEntry() }
-            .sortedFor(options)
+    ): VmResult<List<RemoteFileEntry>> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.list(path, options)
+        return withSftp(serverId, path) { sftp ->
+            val normalised = RemotePath.normalise(path)
+            sftp.ls(normalised)
+                .map { it.toEntry() }
+                .sortedFor(options)
+        }
     }
 
-    override suspend fun stat(serverId: String, path: String): VmResult<RemoteFileEntry> =
-        withSftp(serverId, path) { sftp ->
+    override suspend fun stat(serverId: String, path: String): VmResult<RemoteFileEntry> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.stat(path)
+        return withSftp(serverId, path) { sftp ->
             val normalised = RemotePath.normalise(path)
             val attributes = sftp.stat(normalised)
             RemoteFileEntry(
@@ -69,31 +78,40 @@ class SftpRemoteFileSystem @Inject constructor(
                 gid = attributes.gid,
             )
         }
+    }
 
-    override suspend fun exists(serverId: String, path: String): VmResult<Boolean> =
-        withSftp(serverId, path) { sftp ->
+    override suspend fun exists(serverId: String, path: String): VmResult<Boolean> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return VmResult.Success(File(path).exists())
+        return withSftp(serverId, path) { sftp ->
             sftp.statExistence(RemotePath.normalise(path)) != null
         }
+    }
 
-    override suspend fun canonicalize(serverId: String, path: String): VmResult<String> =
-        withSftp(serverId, path) { sftp -> sftp.canonicalize(path) }
+    override suspend fun canonicalize(serverId: String, path: String): VmResult<String> {
+        if (RemoteFileSystem.isLocalServer(serverId)) {
+            return withContext(ioDispatcher) {
+                VmResult.Success(File(path).canonicalPath)
+            }
+        }
+        return withSftp(serverId, path) { sftp -> sftp.canonicalize(path) }
+    }
 
-    /**
-     * Resolved by canonicalising `.`, which the server evaluates against the SFTP
-     * session's starting directory. That avoids depending on `$HOME` being set,
-     * which it is not for some restricted accounts.
-     */
-    override suspend fun homeDirectory(serverId: String): VmResult<String> =
-        withSftp(serverId, ".") { sftp -> sftp.canonicalize(".") }
+    override suspend fun homeDirectory(serverId: String): VmResult<String> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.homeDirectory()
+        return withSftp(serverId, ".") { sftp -> sftp.canonicalize(".") }
+    }
 
-    override suspend fun createDirectory(serverId: String, path: String): VmResult<Unit> =
-        withSftp(serverId, path) { sftp ->
+    override suspend fun createDirectory(serverId: String, path: String): VmResult<Unit> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.createDirectory(path)
+        return withSftp(serverId, path) { sftp ->
             sftp.mkdirs(RemotePath.normalise(path))
             VmLog.i(LogCategory.SFTP, TAG, "Created directory $path")
         }
+    }
 
-    override suspend fun createFile(serverId: String, path: String): VmResult<Unit> =
-        withSftp(serverId, path) { sftp ->
+    override suspend fun createFile(serverId: String, path: String): VmResult<Unit> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.createFile(path)
+        return withSftp(serverId, path) { sftp ->
             val normalised = RemotePath.normalise(path)
             if (sftp.statExistence(normalised) != null) {
                 error("A file already exists at $normalised")
@@ -103,66 +121,74 @@ class SftpRemoteFileSystem @Inject constructor(
             sftp.open(normalised, setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.EXCL)).close()
             VmLog.i(LogCategory.SFTP, TAG, "Created file $path")
         }
+    }
 
-    override suspend fun rename(serverId: String, from: String, to: String): VmResult<Unit> =
-        withSftp(serverId, from) { sftp ->
+    override suspend fun rename(serverId: String, from: String, to: String): VmResult<Unit> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.rename(from, to)
+        return withSftp(serverId, from) { sftp ->
             sftp.rename(RemotePath.normalise(from), RemotePath.normalise(to))
             VmLog.i(LogCategory.SFTP, TAG, "Renamed $from to $to")
         }
+    }
 
     override suspend fun delete(
         serverId: String,
         path: String,
         recursive: Boolean,
-    ): VmResult<Unit> = withSftp(serverId, path) { sftp ->
-        val normalised = RemotePath.normalise(path)
-        // lstat, not stat: stat follows symlinks, so a symlink pointing at a
-        // directory would be classified as DIRECTORY and deleteRecursively() would
-        // then list and delete the *target* directory's contents through the link,
-        // rather than just unlinking the symlink itself.
-        val attributes = sftp.lstat(normalised)
-        if (attributes.type == FileMode.Type.DIRECTORY) {
-            if (!recursive) {
-                sftp.rmdir(normalised)
+    ): VmResult<Unit> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.delete(path, recursive)
+        return withSftp(serverId, path) { sftp ->
+            val normalised = RemotePath.normalise(path)
+            val attributes = sftp.lstat(normalised)
+            if (attributes.type == FileMode.Type.DIRECTORY) {
+                if (!recursive) {
+                    sftp.rmdir(normalised)
+                } else {
+                    deleteRecursively(sftp, normalised)
+                }
             } else {
-                deleteRecursively(sftp, normalised)
+                sftp.rm(normalised)
             }
-        } else {
-            sftp.rm(normalised)
+            VmLog.i(LogCategory.SFTP, TAG, "Deleted $path (recursive=$recursive)")
         }
-        VmLog.i(LogCategory.SFTP, TAG, "Deleted $path (recursive=$recursive)")
     }
 
     override suspend fun setPermissions(
         serverId: String,
         path: String,
         permissions: RemotePermissions,
-    ): VmResult<Unit> = withSftp(serverId, path) { sftp ->
-        sftp.chmod(RemotePath.normalise(path), permissions.mode)
+    ): VmResult<Unit> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return VmResult.Success(Unit)
+        return withSftp(serverId, path) { sftp ->
+            sftp.chmod(RemotePath.normalise(path), permissions.mode)
+        }
     }
 
     override suspend fun readText(
         serverId: String,
         path: String,
         maxBytes: Long,
-    ): VmResult<String> = withSftp(serverId, path) { sftp ->
-        val normalised = RemotePath.normalise(path)
-        sftp.open(normalised, setOf(OpenMode.READ)).use { remote ->
-            val length = remote.length()
-            if (length > maxBytes) {
-                error(
-                    "This file is ${formatBytes(length)}, above the " +
-                        "${formatBytes(maxBytes)} editor limit.",
-                )
+    ): VmResult<String> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.readText(path, maxBytes)
+        return withSftp(serverId, path) { sftp ->
+            val normalised = RemotePath.normalise(path)
+            sftp.open(normalised, setOf(OpenMode.READ)).use { remote ->
+                val length = remote.length()
+                if (length > maxBytes) {
+                    error(
+                        "This file is ${formatBytes(length)}, above the " +
+                            "${formatBytes(maxBytes)} editor limit.",
+                    )
+                }
+                val buffer = ByteArray(length.toInt().coerceAtLeast(0))
+                var offset = 0
+                while (offset < buffer.size) {
+                    val read = remote.read(offset.toLong(), buffer, offset, buffer.size - offset)
+                    if (read <= 0) break
+                    offset += read
+                }
+                decodeTextStrictly(buffer, offset)
             }
-            val buffer = ByteArray(length.toInt().coerceAtLeast(0))
-            var offset = 0
-            while (offset < buffer.size) {
-                val read = remote.read(offset.toLong(), buffer, offset, buffer.size - offset)
-                if (read <= 0) break
-                offset += read
-            }
-            decodeTextStrictly(buffer, offset)
         }
     }
 
@@ -170,20 +196,23 @@ class SftpRemoteFileSystem @Inject constructor(
         serverId: String,
         path: String,
         content: String,
-    ): VmResult<Unit> = withSftp(serverId, path) { sftp ->
-        val normalised = RemotePath.normalise(path)
-        val bytes = content.toByteArray(Charsets.UTF_8)
-        // TRUNC so a shorter replacement does not leave the tail of the old file.
-        val modes = setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
-        sftp.open(normalised, modes).use { remote ->
-            var offset = 0
-            while (offset < bytes.size) {
-                val chunk = minOf(CHUNK_BYTES, bytes.size - offset)
-                remote.write(offset.toLong(), bytes, offset, chunk)
-                offset += chunk
+    ): VmResult<Unit> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.writeText(path, content)
+        return withSftp(serverId, path) { sftp ->
+            val normalised = RemotePath.normalise(path)
+            val bytes = content.toByteArray(Charsets.UTF_8)
+            // TRUNC so a shorter replacement does not leave the tail of the old file.
+            val modes = setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
+            sftp.open(normalised, modes).use { remote ->
+                var offset = 0
+                while (offset < bytes.size) {
+                    val chunk = minOf(CHUNK_BYTES, bytes.size - offset)
+                    remote.write(offset.toLong(), bytes, offset, chunk)
+                    offset += chunk
+                }
             }
+            VmLog.i(LogCategory.SFTP, TAG, "Wrote ${bytes.size} bytes to $path")
         }
-        VmLog.i(LogCategory.SFTP, TAG, "Wrote ${bytes.size} bytes to $path")
     }
 
     override fun download(
@@ -191,7 +220,9 @@ class SftpRemoteFileSystem @Inject constructor(
         remotePath: String,
         destination: File,
         resume: Boolean,
-    ): Flow<TransferEvent> = flow {
+    ): Flow<TransferEvent> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.download(remotePath, destination)
+        return flow {
         val startedAt = System.currentTimeMillis()
         var transferred = 0L
 
@@ -268,13 +299,16 @@ class SftpRemoteFileSystem @Inject constructor(
             runCatching { sftp.close() }
         }
     }.flowOn(ioDispatcher)
+    }
 
     override fun upload(
         serverId: String,
         source: File,
         remotePath: String,
         resume: Boolean,
-    ): Flow<TransferEvent> = flow {
+    ): Flow<TransferEvent> {
+        if (RemoteFileSystem.isLocalServer(serverId)) return localFs.upload(source, remotePath)
+        return flow {
         val startedAt = System.currentTimeMillis()
         var transferred = 0L
 
@@ -355,6 +389,7 @@ class SftpRemoteFileSystem @Inject constructor(
             runCatching { sftp.close() }
         }
     }.flowOn(ioDispatcher)
+    }
 
     /**
      * The read/write loop exits as soon as a single read returns no bytes, which is

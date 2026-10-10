@@ -48,6 +48,9 @@ interface ProjectDao {
 
     @Query("UPDATE project SET isFavorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: String, favorite: Boolean)
+
+    @Query("UPDATE project SET colorHex = :colorHex, updatedAtMillis = :timestamp WHERE id = :id")
+    suspend fun updateColor(id: String, colorHex: String?, timestamp: Long)
 }
 
 @Dao

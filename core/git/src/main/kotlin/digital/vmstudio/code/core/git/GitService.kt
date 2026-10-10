@@ -79,4 +79,13 @@ interface GitService {
      * or unstaged changes to it.
      */
     suspend fun restoreFile(serverId: String, repoPath: String, filePath: String): GitResult<Unit>
+
+    /**
+     * Discovers existing Git repositories on the remote server without cloning.
+     */
+    suspend fun discoverRepositories(
+        serverId: String,
+        searchRoots: List<String> = listOf("~", "/var/www", "/srv"),
+        maxDepth: Int = 3,
+    ): GitResult<List<DiscoveredGitRepo>>
 }

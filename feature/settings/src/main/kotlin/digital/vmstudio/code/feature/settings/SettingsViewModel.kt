@@ -71,6 +71,23 @@ class SettingsViewModel @Inject constructor(
 
     fun retryInstall() = updateManager.retryInstall()
 
+    fun setGithubSettings(token: String, username: String) {
+        viewModelScope.launch {
+            val credId = if (token.isNotBlank()) {
+                val ref = credentialStore.put(
+                    digital.vmstudio.code.core.security.model.SecretType.GENERIC,
+                    "GitHub Token",
+                    digital.vmstudio.code.core.security.model.Secret.of(token.trim()),
+                )
+                when (ref) {
+                    is digital.vmstudio.code.core.common.result.VmResult.Success -> ref.value.id
+                    else -> null
+                }
+            } else null
+            preferencesRepository.setGithubConnection(credId, username.trim().takeIf { it.isNotBlank() })
+        }
+    }
+
     fun setTheme(preference: ThemePreference) {
         viewModelScope.launch { preferencesRepository.setThemePreference(preference) }
     }
@@ -102,6 +119,12 @@ class SettingsViewModel @Inject constructor(
             val result = credentialStore.eraseAll()
             isErasing.value = false
             onComplete(result.isSuccess)
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            preferencesRepository.signOutUser()
         }
     }
 }

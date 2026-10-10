@@ -135,7 +135,7 @@ class DiagnosticsLogSink @Inject constructor() : LogSink {
         val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
         val snapshot = synchronized(lock) { buffer.toList() }
         return buildString {
-            appendLine("VMStudio Code diagnostics export")
+            appendLine("X-codes diagnostics export")
             appendLine("Generated: ${formatter.format(Date())}")
             appendLine("Entries: ${snapshot.size}")
             appendLine("Secrets are removed at capture time; this file contains no credentials.")
@@ -157,3 +157,4 @@ class DiagnosticsLogSink @Inject constructor() : LogSink {
         const val CAPACITY = 2_000
     }
 }
+

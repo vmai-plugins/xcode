@@ -11,11 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,9 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,8 +48,6 @@ fun ServerDetailScreen(
     onNavigateBack: () -> Unit,
     onOpenTerminal: (String) -> Unit,
     onOpenFiles: (String) -> Unit,
-    onOpenApps: (String) -> Unit,
-    onOpenRecipes: (String) -> Unit,
     onOpenAgent: (String) -> Unit,
     onEdit: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -64,7 +56,6 @@ fun ServerDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
     val server = state.server
-    var showMetrics by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -74,13 +65,6 @@ fun ServerDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Telemetry connects through the shared manager on demand, so
-                    // it works from a cold start as well as mid-session.
-                    IconButton(onClick = { showMetrics = true }) {
-                        Icon(Icons.Default.Analytics, contentDescription = "Server metrics")
                     }
                 },
             )
@@ -159,37 +143,31 @@ fun ServerDetailScreen(
             }
 
             if (state.isConnected) {
-                item { VmSectionHeader(title = "Workspace") }
+                item { VmSectionHeader(title = "Actions") }
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        VmButton(
+                            text = "AI Agent",
+                            icon = Icons.Default.AutoAwesome,
+                            onClick = { server?.let { onOpenAgent(it.id) } },
+                            modifier = Modifier.weight(1f),
+                        )
                         VmButton(
                             text = "Terminal",
                             icon = Icons.Default.Terminal,
+                            style = VmButtonStyle.Secondary,
                             onClick = { server?.let { onOpenTerminal(it.id) } },
+                            modifier = Modifier.weight(1f),
                         )
                         VmButton(
                             text = "Files",
                             icon = Icons.Default.Folder,
                             style = VmButtonStyle.Secondary,
                             onClick = { server?.let { onOpenFiles(it.id) } },
-                        )
-                        VmButton(
-                            text = "Apps",
-                            icon = Icons.Default.Apps,
-                            style = VmButtonStyle.Secondary,
-                            onClick = { server?.let { onOpenApps(it.id) } },
-                        )
-                        VmButton(
-                            text = "Recipes",
-                            icon = Icons.Default.Inventory2,
-                            style = VmButtonStyle.Secondary,
-                            onClick = { server?.let { onOpenRecipes(it.id) } },
-                        )
-                        VmButton(
-                            text = "AI Agent",
-                            icon = Icons.Default.AutoAwesome,
-                            style = VmButtonStyle.Secondary,
-                            onClick = { server?.let { onOpenAgent(it.id) } },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -200,10 +178,6 @@ fun ServerDetailScreen(
                 }
             }
         }
-    }
-
-    if (showMetrics) {
-        ServerMetricsSheet(onDismiss = { showMetrics = false })
     }
 
     state.pendingHostKey?.let { verdict ->

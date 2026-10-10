@@ -9,8 +9,10 @@ import digital.vmstudio.code.core.common.result.VmResult
 import androidx.compose.ui.text.input.TextFieldValue
 import digital.vmstudio.code.core.editor.EditorSnapshot
 import digital.vmstudio.code.core.editor.EditorState
-import digital.vmstudio.code.core.ssh.repository.ServerRepository
+import digital.vmstudio.code.core.database.entity.ActivityCategory
+import digital.vmstudio.code.core.database.repository.ActivityRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
+import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +44,7 @@ data class EditorUiState(
 class EditorViewModel @Inject constructor(
     private val remoteFileSystem: RemoteFileSystem,
     private val serverRepository: ServerRepository,
+    private val activityRepository: ActivityRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -90,7 +93,9 @@ class EditorViewModel @Inject constructor(
             isSaving = saving,
             loadError = loadErr,
             saveError = saveErr,
-            serverName = server?.name.orEmpty(),
+            serverName = server?.name.orEmpty().ifBlank {
+                if (serverId == RemoteFileSystem.LOCAL_SERVER_ID) "This Device" else ""
+            },
             filePath = filePath,
         )
     }.stateIn(
@@ -151,6 +156,57 @@ class EditorViewModel @Inject constructor(
         publishSnapshot()
     }
 
+    fun findNext(query: String, forward: Boolean = true) {
+        val current = editor?.textFieldValue ?: return
+        if (query.isEmpty()) return
+        val text = current.text
+        val currentOffset = if (forward) current.selection.max else current.selection.min
+        val index = if (forward) {
+            val next = text.indexOf(query, currentOffset, ignoreCase = true)
+            if (next >= 0) next else text.indexOf(query, 0, ignoreCase = true)
+        } else {
+            val prev = text.lastIndexOf(query, (currentOffset - 1).coerceAtLeast(0), ignoreCase = true)
+            if (prev >= 0) prev else text.lastIndexOf(query, text.length, ignoreCase = true)
+        }
+        if (index >= 0) {
+            val newSelection = androidx.compose.ui.text.TextRange(index, index + query.length)
+            onTextFieldValueChange(current.copy(selection = newSelection))
+        }
+    }
+
+    fun replace(target: String, replacement: String, all: Boolean = false) {
+        val current = editor?.textFieldValue ?: return
+        if (target.isEmpty()) return
+        val text = current.text
+        val newText = if (all) {
+            text.replace(target, replacement, ignoreCase = true)
+        } else {
+            val range = current.selection
+            if (range.length > 0 && text.substring(range.min, range.max).equals(target, ignoreCase = true)) {
+                text.replaceRange(range.min, range.max, replacement)
+            } else {
+                val index = text.indexOf(target, range.max, ignoreCase = true).takeIf { it >= 0 }
+                    ?: text.indexOf(target, 0, ignoreCase = true)
+                if (index >= 0) text.replaceRange(index, index + target.length, replacement) else text
+            }
+        }
+        if (newText != text) {
+            onTextFieldValueChange(current.copy(text = newText))
+            commitChange()
+        }
+    }
+
+    fun goToLine(lineNumber: Int) {
+        val current = editor?.textFieldValue ?: return
+        val lines = current.text.split("\n")
+        val targetLine = (lineNumber - 1).coerceIn(0, (lines.size - 1).coerceAtLeast(0))
+        var offset = 0
+        for (i in 0 until targetLine) {
+            offset += lines[i].length + 1
+        }
+        onTextFieldValueChange(current.copy(selection = androidx.compose.ui.text.TextRange(offset.coerceIn(0, current.text.length))))
+    }
+
     /** [overwrite] saves even though the file changed on the server since it was loaded. */
     fun save(overwrite: Boolean = false) {
         val state = editor ?: return
@@ -180,6 +236,14 @@ class EditorViewModel @Inject constructor(
                     loadedModifiedAtSeconds = currentModifiedAtSeconds()
                     publishSnapshot()
                     isSaving.value = false
+                    runCatching {
+                        activityRepository.record(
+                            category = ActivityCategory.FILE,
+                            title = "Saved ${filePath.substringAfterLast('/')}",
+                            detail = filePath,
+                            serverId = serverId,
+                        )
+                    }
                 }
                 is VmResult.Failure -> {
                     saveError.value = result.error

@@ -54,6 +54,7 @@ class FilesViewModel @Inject constructor(
     private var refreshJob: Job? = null
     private var previewJob: Job? = null
     private var liveJob: Job? = null
+    private var activeTransferJob: Job? = null
 
     init {
         // A starting folder (a project's or a chat's), when the caller has one.
@@ -63,7 +64,13 @@ class FilesViewModel @Inject constructor(
 
         viewModelScope.launch {
             serverRepository.servers.collect { servers ->
-                val options = servers.map {
+                val localOption = ServerOption(
+                    id = RemoteFileSystem.LOCAL_SERVER_ID,
+                    name = "This Device (Local Storage)",
+                    target = "Local Storage",
+                    lastConnectedAtMillis = System.currentTimeMillis(),
+                )
+                val options = listOf(localOption) + servers.map {
                     ServerOption(
                         id = it.id,
                         name = it.name.ifBlank { it.displayTarget },
@@ -71,16 +78,12 @@ class FilesViewModel @Inject constructor(
                         lastConnectedAtMillis = it.lastConnectedAtMillis,
                     )
                 }
-                _uiState.update { it.copy(servers = options) }
+                _uiState.update { it.copy(servers = options, noServer = false) }
                 // The drawer route has no server argument: pick one as soon as the
                 // list is known, and again if one is added from the empty state.
                 if (serverId.isEmpty()) {
-                    val pick = pickDefaultServerId(options)
-                    if (pick != null) {
-                        openServer(pick, startPath = null)
-                    } else {
-                        _uiState.update { it.copy(noServer = true, isLoading = false) }
-                    }
+                    val pick = pickDefaultServerId(options) ?: RemoteFileSystem.LOCAL_SERVER_ID
+                    openServer(pick, startPath = null)
                 }
             }
         }
@@ -256,11 +259,12 @@ class FilesViewModel @Inject constructor(
         }
         if (state.transfer != null || state.serverId.isEmpty()) return
         val server = state.serverId
-        viewModelScope.launch {
+        activeTransferJob = viewModelScope.launch {
             val label = "Downloading ${entry.name}"
             setTransfer(TransferStatus(label))
             val result = transfers.download(server, entry) { setTransfer(TransferStatus(label, it)) }
             setTransfer(null)
+            activeTransferJob = null
             when (result) {
                 is VmResult.Success -> shareChannel.send(result.value)
                 is VmResult.Failure -> _uiState.update { it.copy(error = result.error) }
@@ -277,14 +281,14 @@ class FilesViewModel @Inject constructor(
         if (state.transfer != null || state.serverId.isEmpty() || state.path.isEmpty()) return
         val server = state.serverId
         val folder = state.path
-        viewModelScope.launch {
+        activeTransferJob = viewModelScope.launch {
             setTransfer(TransferStatus("Preparing upload"))
             val local = when (val copied = transfers.copyToCache(uri)) {
                 is VmResult.Success -> copied.value
                 is VmResult.Failure -> return@launch finishUpload(copied.error)
             }
             try {
-                val error = when (val name = freeName(server, folder, local.name)) {
+                val error = when (val name = findFreeName(remoteFileSystem, server, folder, local.name)) {
                     is VmResult.Failure -> name.error
                     is VmResult.Success -> {
                         val label = "Uploading ${name.value}"
@@ -297,25 +301,20 @@ class FilesViewModel @Inject constructor(
                 finishUpload(error)
             } finally {
                 withContext(NonCancellable) { transfers.discard(local) }
+                activeTransferJob = null
             }
         }
+    }
+
+    fun cancelTransfer() {
+        activeTransferJob?.cancel()
+        activeTransferJob = null
+        setTransfer(null)
     }
 
     private fun finishUpload(error: VmError?) {
         _uiState.update { it.copy(transfer = null, error = error ?: it.error) }
         refresh()
-    }
-
-    private suspend fun freeName(server: String, folder: String, name: String): VmResult<String> {
-        for (candidate in candidateNames(name)) {
-            when (val exists = remoteFileSystem.exists(server, RemotePath.join(folder, candidate))) {
-                is VmResult.Failure -> return exists
-                is VmResult.Success -> if (!exists.value) return VmResult.Success(candidate)
-            }
-        }
-        return VmResult.Failure(
-            VmError.FileSystem(summary = "Could not find a free name for $name", path = folder),
-        )
     }
 
     private fun setTransfer(status: TransferStatus?) {
@@ -398,3 +397,21 @@ class FilesViewModel @Inject constructor(
         const val ARG_PATH = "path"
     }
 }
+
+private suspend fun findFreeName(
+    fs: RemoteFileSystem,
+    server: String,
+    folder: String,
+    name: String,
+): VmResult<String> {
+    for (candidate in candidateNames(name)) {
+        when (val exists = fs.exists(server, RemotePath.join(folder, candidate))) {
+            is VmResult.Failure -> return exists
+            is VmResult.Success -> if (!exists.value) return VmResult.Success(candidate)
+        }
+    }
+    return VmResult.Failure(
+        VmError.FileSystem(summary = "Could not find a free name for $name", path = folder),
+    )
+}
+

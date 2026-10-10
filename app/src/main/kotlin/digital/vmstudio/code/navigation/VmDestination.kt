@@ -10,6 +10,8 @@ package digital.vmstudio.code.navigation
 sealed class VmDestination(val route: String) {
 
     /** Start screen: resolves to a fresh chat on the most recently used server. */
+    data object Auth : VmDestination("auth")
+
     data object NewChat : VmDestination("new")
 
     /** A chat with no project: gateway models, no server or folder needed. */
@@ -28,13 +30,51 @@ sealed class VmDestination(val route: String) {
 
     data object Settings : VmDestination("settings")
 
+    /** Settings sub-pages: a lean list at [Settings] plus one focused screen each. */
+    data object SettingsAi : VmDestination("settings/ai")
+
+    data object SettingsAgent : VmDestination("settings/agent")
+
+    data object SettingsAppearance : VmDestination("settings/appearance")
+
+    data object SettingsEditor : VmDestination("settings/editor")
+
+    data object SettingsSecurity : VmDestination("settings/security")
+
+    data object SettingsAbout : VmDestination("settings/about")
+
     /** Every stored conversation, with delete; the drawer only shows the latest few. */
     data object Chats : VmDestination("chats")
 
     // Secondary destinations, reached from within a section.
     data object ServerAdd : VmDestination("servers/new")
 
-    data object ProjectAdd : VmDestination("projects/new")
+    data object ProjectAdd : VmDestination("projects/new") {
+        const val ARG_GITHUB_URL = "githubUrl"
+        const val ARG_GITHUB_BRANCH = "githubBranch"
+        const val ARG_MODE = "mode"
+        const val MODE_LINK = "link"
+        const val ROUTE_PATTERN = "projects/new?githubUrl={githubUrl}&githubBranch={githubBranch}&mode={mode}"
+        fun routeFor(githubUrl: String? = null, githubBranch: String? = null, mode: String? = null): String {
+            if (githubUrl.isNullOrBlank() && githubBranch.isNullOrBlank() && mode.isNullOrBlank()) {
+                return "projects/new"
+            }
+            val params = mutableListOf<String>()
+            githubUrl?.takeIf { it.isNotBlank() }?.let {
+                params += "githubUrl=${android.net.Uri.encode(it)}"
+            }
+            githubBranch?.takeIf { it.isNotBlank() }?.let {
+                params += "githubBranch=${android.net.Uri.encode(it)}"
+            }
+            mode?.takeIf { it.isNotBlank() }?.let {
+                params += "mode=${android.net.Uri.encode(it)}"
+            }
+            return "projects/new?" + params.joinToString("&")
+        }
+
+        /** Backwards-compatible overload used by existing callers that only know the URL. */
+        fun routeFor(githubUrl: String?): String = routeFor(githubUrl, null, null)
+    }
 
     /** Reopens a stored conversation, transcript and resume id intact. */
     data class AgentConversation(val conversationId: String) :
@@ -88,22 +128,6 @@ sealed class VmDestination(val route: String) {
         }
     }
 
-    data class ServerApps(val serverId: String) : VmDestination(routeFor(serverId)) {
-        companion object {
-            const val ARG_SERVER_ID = "serverId"
-            const val ROUTE_PATTERN = "servers/{$ARG_SERVER_ID}/apps"
-            fun routeFor(serverId: String) = "servers/$serverId/apps"
-        }
-    }
-
-    data class ServerRecipes(val serverId: String) : VmDestination(routeFor(serverId)) {
-        companion object {
-            const val ARG_SERVER_ID = "serverId"
-            const val ROUTE_PATTERN = "servers/{$ARG_SERVER_ID}/recipes"
-            fun routeFor(serverId: String) = "servers/$serverId/recipes"
-        }
-    }
-
     data class ServerAgent(val serverId: String) : VmDestination(routeFor(serverId)) {
         companion object {
             const val ARG_SERVER_ID = "serverId"
@@ -154,7 +178,12 @@ sealed class VmDestination(val route: String) {
         }
     }
 
+    data object Tasks : VmDestination("tasks")
+
     data object Connectors : VmDestination("connectors")
 
-    data object Tasks : VmDestination("tasks")
+    data object Onboarding : VmDestination("onboarding")
+
+    data object ActivityTimeline : VmDestination("activity")
 }
+

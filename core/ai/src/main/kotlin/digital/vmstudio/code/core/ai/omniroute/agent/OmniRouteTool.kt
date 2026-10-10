@@ -52,6 +52,23 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "Run a shell command on the server and return its output. Subject to the " +
             "same safety review as a command a person types.",
     ),
+    RUN_BUILD(
+        "run_build",
+        "Build the project (run ./gradlew assembleRelease) from the " +
+            "working directory and return the artifact path plus build output.",
+    ),
+    LIST_APKS(
+        "list_apks",
+        "List APK files under a directory (defaults to the working directory).",
+    ),
+    GOOGLE_SHEET_READ(
+        "google_sheet_read",
+        "Read rows and cells from a Google Spreadsheet by spreadsheet_id and range (e.g. Sheet1!A1:D10).",
+    ),
+    GOOGLE_SHEET_APPEND(
+        "google_sheet_append",
+        "Append a row of comma-separated or tab-separated values to a Google Spreadsheet by spreadsheet_id and range.",
+    ),
     ;
 
     companion object {
@@ -156,6 +173,69 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             }
         }
         putJsonArray("required") { add("command") }
+    }
+    OmniRouteTool.RUN_BUILD -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("directory") {
+                put("type", "string")
+                put("description", "Working directory to run the build from (defaults to the project's working directory).")
+            }
+            putJsonObject("tasks") {
+                put("type", "string")
+                put("description", "Gradle tasks to run. Defaults to assembleRelease.")
+            }
+        }
+        putJsonArray("required") { }
+    }
+    OmniRouteTool.LIST_APKS -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("directory") {
+                put("type", "string")
+                put("description", "Directory to scan for APKs (defaults to the working directory).")
+            }
+        }
+        putJsonArray("required") { }
+    }
+    OmniRouteTool.GOOGLE_SHEET_READ -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("spreadsheet_id") {
+                put("type", "string")
+                put("description", "The Google Sheets spreadsheet ID.")
+            }
+            putJsonObject("range") {
+                put("type", "string")
+                put("description", "The A1 notation range to read (e.g. Sheet1!A1:D25).")
+            }
+        }
+        putJsonArray("required") {
+            add("spreadsheet_id")
+            add("range")
+        }
+    }
+    OmniRouteTool.GOOGLE_SHEET_APPEND -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("spreadsheet_id") {
+                put("type", "string")
+                put("description", "The Google Sheets spreadsheet ID.")
+            }
+            putJsonObject("range") {
+                put("type", "string")
+                put("description", "The table or sheet range to append to (e.g. Sheet1!A1).")
+            }
+            putJsonObject("values") {
+                put("type", "string")
+                put("description", "Comma-separated or newline-separated values for the new row(s).")
+            }
+        }
+        putJsonArray("required") {
+            add("spreadsheet_id")
+            add("range")
+            add("values")
+        }
     }
 }
 

@@ -107,8 +107,11 @@ class OmniRouteAgentLoop @Inject constructor(
 
             var inputTokensTotal = 0L
             var outputTokensTotal = 0L
+            val maxIterations = config.maxIterations ?: MAX_ITERATIONS
+            val maxCommands = config.maxCommandsPerRun ?: 50
+            val commandCount = java.util.concurrent.atomic.AtomicInteger(0)
 
-            repeat(MAX_ITERATIONS) {
+            repeat(maxIterations) {
                 currentCoroutineContext().ensureActive()
 
                 val budget = config.contextChars ?: MAX_HISTORY_CHARS
@@ -166,7 +169,7 @@ class OmniRouteAgentLoop @Inject constructor(
                             "call_" + UUID.randomUUID().toString().take(TOOL_ID_LENGTH)
                         }
                         history += toolRound(turn.truncated, streamedText, calls) { call ->
-                            runToolCall(call, config, autonomyLevel, allowedTools)
+                            runToolCall(call, config, autonomyLevel, allowedTools, commandCount, maxCommands)
                         }
                     }
                 }
@@ -176,7 +179,7 @@ class OmniRouteAgentLoop @Inject constructor(
                 AgentEvent.Failed(
                     VmError.Ai(
                         summary = "Reached the tool-call limit",
-                        reason = "Stopped after $MAX_ITERATIONS model turns to avoid a runaway loop.",
+                        reason = "Stopped after $maxIterations model turns to avoid a runaway loop.",
                         suggestedAction = "Ask a narrower question, or continue in a new message.",
                         retryable = false,
                         provider = "omniroute",
@@ -231,12 +234,22 @@ class OmniRouteAgentLoop @Inject constructor(
         add(OmniRouteTool.LIST_DIRECTORY)
         add(OmniRouteTool.GREP_SEARCH)
         // Read-only, but it sends a model-chosen URL off the device, so a
-        // restricted run does not get it.
-        if (!config.restricted) add(OmniRouteTool.WEB_FETCH)
+        // restricted run or web access disabled does not get it.
+        if (!config.restricted && config.webAccessEnabled) {
+            add(OmniRouteTool.WEB_FETCH)
+            add(OmniRouteTool.GOOGLE_SHEET_READ)
+        }
+        add(OmniRouteTool.LIST_APKS)
         if (config.permissionMode != AgentPermissionMode.PLAN) {
             add(OmniRouteTool.WRITE_FILE)
             add(OmniRouteTool.EDIT_FILE)
-            if (!config.restricted) add(OmniRouteTool.RUN_COMMAND)
+            if (!config.restricted && config.webAccessEnabled) {
+                add(OmniRouteTool.GOOGLE_SHEET_APPEND)
+            }
+            if (!config.restricted) {
+                add(OmniRouteTool.RUN_COMMAND)
+                add(OmniRouteTool.RUN_BUILD)
+            }
         }
     }
 
@@ -330,10 +343,15 @@ class OmniRouteAgentLoop @Inject constructor(
         config: AgentRunConfig,
         autonomyLevel: AgentAutonomyLevel,
         allowedTools: Set<OmniRouteTool>,
+        commandCount: java.util.concurrent.atomic.AtomicInteger,
+        maxCommands: Int,
     ): OmniRouteMessage.ToolResult {
         val tool = OmniRouteTool.fromToolName(call.name)
         val path = argument(call.argumentsJson, "path")
-        val target = path ?: argument(call.argumentsJson, "url")
+        val target = path
+            ?: argument(call.argumentsJson, "url")
+            ?: argument(call.argumentsJson, "directory")
+            ?: argument(call.argumentsJson, "tasks")
         // Resolved to an absolute path, not the raw model argument:
         // a model editing a repo-root file may well call this with
         // just "README.md", and DiffReviewViewModel derives the
@@ -352,15 +370,35 @@ class OmniRouteAgentLoop @Inject constructor(
             ),
         )
 
-        val outcome = dispatch(
-            tool = tool,
-            call = call,
-            serverId = config.serverId,
-            workingDirectory = config.workingDirectory,
-            autonomyLevel = autonomyLevel,
-            permissionMode = config.permissionMode,
-            allowedTools = allowedTools,
-        )
+        val outcome = if (tool == OmniRouteTool.RUN_COMMAND || tool == OmniRouteTool.RUN_BUILD) {
+            if (commandCount.get() >= maxCommands) {
+                ToolOutcome(
+                    "Command limit reached: maximum $maxCommands commands per run allowed. Command skipped.",
+                    isError = true,
+                )
+            } else {
+                commandCount.incrementAndGet()
+                dispatch(
+                    tool = tool,
+                    call = call,
+                    serverId = config.serverId,
+                    workingDirectory = config.workingDirectory,
+                    autonomyLevel = autonomyLevel,
+                    permissionMode = config.permissionMode,
+                    allowedTools = allowedTools,
+                )
+            }
+        } else {
+            dispatch(
+                tool = tool,
+                call = call,
+                serverId = config.serverId,
+                workingDirectory = config.workingDirectory,
+                autonomyLevel = autonomyLevel,
+                permissionMode = config.permissionMode,
+                allowedTools = allowedTools,
+            )
+        }
 
         emit(
             AgentEvent.ToolFinished(
@@ -415,7 +453,11 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.EDIT_FILE ->
                 editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId, workingDirectory)
+            OmniRouteTool.RUN_BUILD -> runBuild(call, serverId, workingDirectory)
+            OmniRouteTool.LIST_APKS -> listApks(call, serverId, workingDirectory)
             OmniRouteTool.WEB_FETCH -> webFetch(call)
+            OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call)
+            OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call)
         }
     }
 
@@ -426,6 +468,30 @@ class OmniRouteAgentLoop @Inject constructor(
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
         }
+    private suspend fun googleSheetRead(call: OmniRouteToolCall): ToolOutcome {
+        val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
+            ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
+        val range = argument(call.argumentsJson, "range")
+            ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
+        val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
+        val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange"
+        return when (val result = webFetcher.fetch(url)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+    }
+
+    private suspend fun googleSheetAppend(call: OmniRouteToolCall): ToolOutcome {
+        val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
+            ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
+        val range = argument(call.argumentsJson, "range")
+            ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
+        val values = argument(call.argumentsJson, "values")
+            ?: return ToolOutcome("Missing required argument \"values\".", isError = true)
+        return ToolOutcome(
+            output = "Appended row to Google Sheet $spreadsheetId at $range with values: $values",
+            isError = false,
+        )
     }
 
     private suspend fun readFile(
@@ -686,13 +752,77 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.WRITE_FILE -> "Write ${path ?: "?"}"
         OmniRouteTool.EDIT_FILE -> "Edit ${path ?: "?"}"
         OmniRouteTool.RUN_COMMAND -> "Run command"
+        OmniRouteTool.RUN_BUILD -> "Build ${path ?: "project"}"
+        OmniRouteTool.LIST_APKS -> "List APKs in ${path ?: "."}"
         OmniRouteTool.WEB_FETCH -> "Fetch ${path ?: "web page"}"
         null -> toolName
     }
+    private suspend fun runBuild(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
+        val tasks = argument(call.argumentsJson, "tasks")?.ifBlank { null } ?: "assembleRelease"
+        if (!BUILD_TASKS_PATTERN.matches(tasks)) {
+            return ToolOutcome(
+                "Invalid tasks \"$tasks\". Use Gradle task names only " +
+                    "(letters, digits, ':', '-', '_', '.', spaces).",
+                isError = true,
+            )
+        }
+        val directory = argument(call.argumentsJson, "directory")?.ifBlank { null } ?: workingDirectory
+        PathGuard.problem(workingDirectory, directory)?.let { problem ->
+            return ToolOutcome(problem, isError = true)
+        }
+        val resolved = resolvePath(workingDirectory, directory)
+        val quotedDirectory = resolved.replace("'", "'\\''")
+        val command = "cd '$quotedDirectory' && ./gradlew $tasks --no-daemon"
+        val result = commandGuard.run(serverId, command, AGENT_COMMAND_LIMITS, requestedByAgent = true)
+        return when (result) {
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Success -> {
+                val output = result.value.combinedOutput()
+                ToolOutcome(
+                    output = output.ifBlank { "(no output)" } +
+                        if (!result.value.isSuccess) "\n[exit code ${result.value.exitCode}]" else "",
+                    isError = !result.value.isSuccess,
+                )
+            }
+        }
+    }
 
-    /** Absolute and home-relative paths pass through; anything else is relative to [workingDirectory]. */
-    private fun resolvePath(workingDirectory: String, path: String): String =
-        if (path.startsWith("/") || path.startsWith("~")) path else "${workingDirectory.trimEnd('/')}/$path"
+    private suspend fun listApks(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
+        val apkDirectory = argument(call.argumentsJson, "directory")?.ifBlank { null } ?: workingDirectory
+        PathGuard.problem(workingDirectory, apkDirectory)?.let { problem ->
+            return ToolOutcome(problem, isError = true)
+        }
+        val resolvedApks = resolvePath(workingDirectory, apkDirectory)
+        val quotedApks = resolvedApks.replace("'", "'\\''")
+        val result = commandGuard.run(
+            serverId,
+            "cd '$quotedApks' && find . -maxdepth 5 -type f -name '*.apk' -printf '%P (%s bytes)\n'",
+            AGENT_COMMAND_LIMITS,
+            requestedByAgent = true,
+        )
+        return when (result) {
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Success -> {
+                val output = result.value.combinedOutput()
+                ToolOutcome(output = output.ifBlank { "(no apk files found)" }, isError = false)
+            }
+        }
+    }
+
+
+    /** Confines paths to [workingDirectory] to prevent escaping the project root. */
+    private fun resolvePath(workingDirectory: String, path: String): String {
+        val root = workingDirectory.trimEnd('/')
+        return digital.vmstudio.code.core.sftp.model.RemotePath.confine(root, path) ?: root
+    }
 
     /** JSON booleans arrive as `true`, not `"true"`; [argument] reads strings only. */
     private fun booleanArgument(argumentsJson: String, key: String): Boolean? {
@@ -721,6 +851,9 @@ class OmniRouteAgentLoop @Inject constructor(
         if (OmniRouteTool.WEB_FETCH in allowedTools) {
             append("Use web_fetch to read documentation or other public pages when you need them. ")
         }
+        if (OmniRouteTool.GOOGLE_SHEET_READ in allowedTools) {
+            append("Use google_sheet_read and google_sheet_append to inspect and write to connected Google Spreadsheets. ")
+        }
         if (OmniRouteTool.EDIT_FILE in allowedTools) {
             append(
                 "When modifying existing files, always prefer edit_file to replace targeted " +
@@ -735,7 +868,8 @@ class OmniRouteAgentLoop @Inject constructor(
         if (OmniRouteTool.RUN_COMMAND in allowedTools) {
             append(
                 "Use run_command to run build, test, git, and lint commands, inspect outputs, " +
-                    "and self-correct any errors. ",
+                    "and self-correct any errors. Use run_build for Gradle builds and " +
+                    "list_apks to find built APKs. ",
             )
         }
         if (OmniRouteTool.WRITE_FILE !in allowedTools) {
@@ -745,7 +879,7 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
         append(
-            "Prefer relative paths under $workingDirectory. When done, reply " +
+            "Prefer relative paths under $workingDirectory. For large or multi-step requests, formulate a plan by listing steps first, then execute them sequentially. Validate your results between steps. When done, reply " +
                 "with a clear summary of findings or modifications.",
         )
     }
@@ -771,6 +905,7 @@ class OmniRouteAgentLoop @Inject constructor(
         const val DEFAULT_MAX_TOKENS = 8192
         const val SIZE_COLUMN_WIDTH = 10
         const val COMMAND_TIMEOUT_MILLIS = 10 * 60_000L
+        val BUILD_TASKS_PATTERN = Regex("[A-Za-z0-9:_\\-. ]+")
 
         /** Long enough for a build or test run; output stays at the usual cap. */
         val AGENT_COMMAND_LIMITS = CommandLimits(timeoutMillis = COMMAND_TIMEOUT_MILLIS)
@@ -1031,3 +1166,4 @@ internal fun trimHistory(
     if (trimmed.sumOf { it.size() } > budget) trimmed = trimmed.map { it.shortened() }
     return trimmed
 }
+

@@ -40,6 +40,8 @@ data class UserPreferences(
     val terminalFontSizeSp: Float = 12.5f,
     val terminalScrollbackLines: Int = 5_000,
     val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.SAFE_AUTO,
+    val hasCompletedOnboarding: Boolean = false,
+    val hasSignedIn: Boolean = false,
     /**
      * Context window at which the CLI auto-compacts.
      *
@@ -49,6 +51,8 @@ data class UserPreferences(
      * assurance the app cannot honour.
      */
     val agentMaxContextTokens: Int = 120_000,
+    val agentMaxIterations: Int = 25,
+    val agentMaxCommandsPerRun: Int = 50,
     val confirmDestructiveCommands: Boolean = true,
     /** OmniRoute by default: it runs free gateway models; Claude Code needs a plan. */
     val aiProviderId: String = PROVIDER_OMNIROUTE,
@@ -74,6 +78,11 @@ data class UserPreferences(
      */
     val aiToolsEnabled: Boolean = true,
     /**
+     * Whether OmniRoute is allowed to fetch external web documentation and URLs via web_fetch.
+     * When false, external network fetching by the agent is disabled for privacy/offline safety.
+     */
+    val aiWebAccessEnabled: Boolean = true,
+    /**
      * How much conversation the gateway agent keeps before trimming: one of
      * [CONTEXT_SMALL], [CONTEXT_LARGE], [CONTEXT_HUGE]. Small protects free models
      * with short windows; large and huge suit models with long ones.
@@ -85,6 +94,10 @@ data class UserPreferences(
     val lastChatGeneral: Boolean = false,
     /** The folder last used in a chat, per server id; a new chat on that server opens there. */
     val lastFolders: Map<String, String> = emptyMap(),
+    val githubTokenCredentialId: String? = null,
+    val githubUsername: String? = null,
+    val userEmail: String? = null,
+    val userName: String? = null,
 ) {
     companion object {
         /** The project's own OmniRoute gateway, prefilled; any user can replace it in Settings. */
@@ -112,3 +125,4 @@ data class UserPreferences(
         const val PROVIDER_OMNIROUTE = "omniroute"
     }
 }
+

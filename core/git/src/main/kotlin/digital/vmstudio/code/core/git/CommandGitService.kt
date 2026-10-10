@@ -86,6 +86,33 @@ class CommandGitService @Inject constructor(
         return execute(serverId, repoPath, "git checkout HEAD -- ${filePath.shellQuoted()}").map { }
     }
 
+    override suspend fun discoverRepositories(
+        serverId: String,
+        searchRoots: List<String>,
+        maxDepth: Int,
+    ): GitResult<List<DiscoveredGitRepo>> {
+        val roots = searchRoots.joinToString(" ") { it.shellQuoted() }
+        val script = "for r in $roots; do if [ -d \"\$r\" ]; then find \"\$r\" -maxdepth $maxDepth -name .git -type d 2>/dev/null; fi; done"
+        return when (val outcome = connectionManager.withSession(serverId) { session ->
+            session.execute(script)
+        }) {
+            is VmResult.Success -> {
+                val lines = outcome.value.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                val repos = lines.mapNotNull { gitPath ->
+                    val repoPath = gitPath.removeSuffix("/.git").removeSuffix("/.git/")
+                    if (repoPath.isNotBlank()) {
+                        val name = repoPath.substringAfterLast('/').ifBlank { repoPath }
+                        DiscoveredGitRepo(path = repoPath, name = name)
+                    } else null
+                }.distinctBy { it.path }
+                GitResult.Success(repos)
+            }
+            is VmResult.Failure -> GitResult.Failure(
+                GitError.CommandFailed("discoverRepositories", -1, outcome.error.summary),
+            )
+        }
+    }
+
     private suspend fun execute(
         serverId: String,
         repoPath: String,

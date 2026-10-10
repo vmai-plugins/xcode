@@ -63,6 +63,18 @@ object ChatStreamDecoder {
         }
     }
 
+    /** Reasoning delta carried by [payload], or null when none is present. */
+    fun reasoningDelta(dialect: OmniRouteDialect, payload: String): String? {
+        val root = runCatching { json.parseToJsonElement(payload) }.getOrNull() as? JsonObject
+            ?: return null
+
+        return when (dialect) {
+            OmniRouteDialect.ANTHROPIC_MESSAGES -> anthropicReasoning(root)
+            OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN ->
+                openAiReasoning(root) ?: anthropicReasoning(root)
+        }
+    }
+
     /** Token usage from a terminal chunk, as `input to output`, when reported. */
     fun usage(payload: String): Pair<Long, Long>? {
         val root = runCatching { json.parseToJsonElement(payload) }.getOrNull() as? JsonObject
@@ -135,6 +147,11 @@ object ChatStreamDecoder {
         return delta.string("text")
     }
 
+    private fun anthropicReasoning(root: JsonObject): String? {
+        val delta = root["delta"] as? JsonObject ?: return null
+        return if (delta.string("type") == "thinking_delta") delta.string("thinking") else null
+    }
+
     private fun openAiDelta(root: JsonObject): String? {
         val choices = root["choices"] as? JsonArray ?: return null
         val first = choices.firstOrNull() as? JsonObject ?: return null
@@ -143,12 +160,20 @@ object ChatStreamDecoder {
         return holder?.string("content")
     }
 
-    private fun JsonObject.string(key: String): String? =
-        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    private fun openAiReasoning(root: JsonObject): String? {
+        val choices = root["choices"] as? JsonArray ?: return null
+        val first = choices.firstOrNull() as? JsonObject ?: return null
+        val holder = first["delta"] as? JsonObject ?: first["message"] as? JsonObject
+        return holder?.string("reasoning_content") ?: holder?.string("reasoning")
+    }
 
-    private fun JsonObject.long(key: String): Long? =
-        (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 }
+
+private fun JsonObject.string(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+private fun JsonObject.long(key: String): Long? =
+    (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 
 private const val ANTHROPIC_VERSION = "2023-06-01"
 

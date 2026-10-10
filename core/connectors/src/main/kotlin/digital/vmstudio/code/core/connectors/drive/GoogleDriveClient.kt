@@ -12,6 +12,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,6 +58,26 @@ class GoogleDriveClient @Inject constructor(
         content: ByteArray,
         parentFolderId: String? = null,
     ): VmResult<GoogleDriveFile> {
+        return uploadFile(accessToken, filename, mimeType, fileBody, parentFolderId)
+    }
+
+    suspend fun uploadFile(
+        accessToken: String,
+        filename: String,
+        mimeType: String,
+        file: java.io.File,
+        parentFolderId: String? = null,
+    ): VmResult<GoogleDriveFile> {
+        return uploadFile(accessToken, filename, mimeType, file.asRequestBody(mimeType.toMediaType()), parentFolderId)
+    }
+
+    private suspend fun uploadFile(
+        accessToken: String,
+        filename: String,
+        mimeType: String,
+        fileBody: okhttp3.RequestBody,
+        parentFolderId: String? = null,
+    ): VmResult<GoogleDriveFile> {
         val metadataJson = buildJsonObject {
             put("name", filename)
             put("mimeType", mimeType)
@@ -75,7 +96,7 @@ class GoogleDriveClient @Inject constructor(
             .addFormDataPart(
                 "file",
                 filename,
-                content.toRequestBody(mimeType.toMediaType()),
+                fileBody,
             )
             .build()
 
@@ -112,3 +133,6 @@ class GoogleDriveClient @Inject constructor(
         private const val DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3"
     }
 }
+
+
+

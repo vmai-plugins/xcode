@@ -14,6 +14,7 @@ dependencies {
     implementation(projects.core.database)
     implementation(projects.core.security)
     implementation(projects.core.ssh)
+    implementation(projects.core.sftp)
     implementation(projects.core.ai)
     implementation(libs.androidx.core.ktx)
     api(libs.kotlinx.serialization.json)

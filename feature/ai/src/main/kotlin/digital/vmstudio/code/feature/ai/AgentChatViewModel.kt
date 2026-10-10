@@ -1,10 +1,11 @@
-package digital.vmstudio.code.feature.ai
+﻿package digital.vmstudio.code.feature.ai
 
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.vmstudio.code.core.ai.background.AgentWakeLockManager
 import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
 import digital.vmstudio.code.core.ai.background.OmniRouteBackgroundRunner
 import digital.vmstudio.code.core.ai.background.BackgroundRun
@@ -44,6 +45,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 /** One rendered entry in the transcript. */
@@ -121,6 +123,8 @@ data class AgentChatUiState(
     /** The OmniRoute gateway's models, live-synced; shown under Claude Code's in the picker. */
     val omniModels: OmniRouteModels = OmniRouteModels(),
     val isSyncingModels: Boolean = false,
+    val discoveredGitRepos: List<digital.vmstudio.code.core.git.DiscoveredGitRepo> = emptyList(),
+    val isDiscoveringGitRepos: Boolean = false,
 ) {
     /**
      * Claude Code runs on a server, in a folder. A gateway model needs neither: with
@@ -137,6 +141,7 @@ data class AgentChatUiState(
     val isResuming: Boolean get() = providerSessionId != null
 }
 
+@Suppress("LongParameterList")
 @HiltViewModel
 class AgentChatViewModel @Inject constructor(
     private val providers: AiProviderRegistry,
@@ -151,6 +156,7 @@ class AgentChatViewModel @Inject constructor(
     private val modelCatalog: OmniRouteModelCatalog,
     private val attachmentStager: AttachmentStager,
     private val preferenceStore: UserPreferencesRepository,
+    private val wakeLockManager: AgentWakeLockManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -177,7 +183,7 @@ class AgentChatViewModel @Inject constructor(
 
     /** Until then the run list is re-read even though nothing is listed as running yet. */
     private var listRunsUntil = 0L
-    private var itemCounter = 0L
+    private val itemCounter = AtomicLong(0L)
 
     init {
         applyStoredDefaults()
@@ -217,6 +223,7 @@ class AgentChatViewModel @Inject constructor(
             }
         }
         refreshBackgroundRuns()
+        scanServerGitRepos()
         // Live status for detached runs while the chat is open: re-read the list
         // only while something is still running, so an idle chat makes no SSH calls.
         viewModelScope.launch {
@@ -229,6 +236,48 @@ class AgentChatViewModel @Inject constructor(
                 val starting = System.currentTimeMillis() < listRunsUntil
                 val anyRunning = _uiState.value.backgroundRuns.any { it.isRunning }
                 if (visible && (starting || anyRunning)) refreshBackgroundRuns()
+            }
+        }
+    }
+
+    fun scanServerGitRepos() {
+        val srv = _uiState.value.serverId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDiscoveringGitRepos = true) }
+            when (val res = gitService.discoverRepositories(srv)) {
+                is digital.vmstudio.code.core.git.GitResult.Success -> {
+                    _uiState.update { it.copy(discoveredGitRepos = res.value, isDiscoveringGitRepos = false) }
+                }
+                is digital.vmstudio.code.core.git.GitResult.Failure -> {
+                    _uiState.update { it.copy(isDiscoveringGitRepos = false) }
+                }
+            }
+        }
+    }
+
+    fun selectDiscoveredGitRepo(repo: digital.vmstudio.code.core.git.DiscoveredGitRepo) {
+        val srv = _uiState.value.serverId ?: return
+        viewModelScope.launch {
+            val existing = projectRepository.observeAll().first().firstOrNull {
+                it.serverId == srv && it.remotePath == repo.path
+            }
+            if (existing != null) {
+                selectProject(existing)
+            } else {
+                when (val result = projectRepository.create(
+                    name = repo.name,
+                    serverId = srv,
+                    remotePath = repo.path,
+                    branch = repo.branch,
+                )) {
+                    is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                        val created = projectRepository.get(result.value)
+                        selectProject(created)
+                    }
+                    is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                        setWorkingDirectory(repo.path)
+                    }
+                }
             }
         }
     }
@@ -251,7 +300,9 @@ class AgentChatViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     conversationId = conversationId,
-                    providerSessionId = stored.providerSessionId,
+                    providerSessionId = stored.providerSessionId?.takeIf { id ->
+                        fitsBackend(id, _uiState.value.selectedModel)
+                    },
                     workingDirectory = stored.workingDirectory ?: it.workingDirectory,
                     transcript = restored,
                     // The route of a reopened chat carries no server; without this
@@ -422,6 +473,35 @@ class AgentChatViewModel @Inject constructor(
         }
     }
 
+    fun selectGithubRepo(repoFullName: String) {
+        if (_uiState.value.isRunning) return
+        val repoName = repoFullName.substringAfterLast("/").removeSuffix(".git")
+        viewModelScope.launch {
+            val allProjects = projectRepository.observeAll().first()
+            val existing = allProjects.firstOrNull { it.name.equals(repoName, ignoreCase = true) }
+            if (existing != null) {
+                selectProject(existing)
+            } else {
+                val sId = _uiState.value.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+                val remotePath = if (RemoteFileSystem.isLocalServer(sId)) {
+                    "/sdcard/VMStudio/Projects/" + repoName
+                } else {
+                    "/home/vmstudio-apps/workspaces/" + repoName
+                }
+                when (val res = projectRepository.create(name = repoName, serverId = sId, remotePath = remotePath, branch = "main")) {
+                    is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                        projectRepository.updateColor(res.value, "#6366F1")
+                        val newProj = projectRepository.get(res.value)
+                        selectProject(newProj)
+                    }
+                    else -> {
+                        _uiState.update { it.copy(workingDirectory = remotePath) }
+                    }
+                }
+            }
+        }
+    }
+
     fun checkHealth() {
         _uiState.update { it.copy(isCheckingHealth = true) }
         // Only the newest check may report: a slow Claude Code probe over SSH that
@@ -509,6 +589,7 @@ class AgentChatViewModel @Inject constructor(
      * resume the other's) and the new backend is checked.
      */
     fun selectModel(model: String) {
+        if (_uiState.value.isRunning) return
         val before = _uiState.value.selectedModel
         val switchesBackend = ClaudeCodeModels.isClaudeCode(before) != ClaudeCodeModels.isClaudeCode(model)
         _uiState.update {
@@ -550,104 +631,116 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(isRunning = true, error = null) }
 
         runJob = viewModelScope.launch {
-            // Coroutine cancellation is cooperative: stop() flips isRunning to false
-            // and clears runJob immediately, but this coroutine's collect loop can
-            // still process one more buffered event before it reaches a cancellation
-            // checkpoint. Comparing against runJob on every event (rather than
-            // trusting cancellation alone) stops a cancelled run's tail events from
-            // landing in whatever new run replaced it if the user immediately
-            // re-sends. coroutineContext[Job] is this coroutine's own Job, fetched
-            // from inside itself rather than racing the external `runJob = ...`
-            // assignment below, which only completes after this block starts.
-            val selfJob = coroutineContext[Job]
-            val conversationId = state.conversationId ?: createConversation(server, state, prompt)
-            if (conversationId == null) {
-                _uiState.update { it.copy(isRunning = false) }
-                return@launch
-            }
-            val staged = if (attachments.isEmpty()) {
-                StagedAttachments(emptyList(), emptyList())
-            } else {
-                val result = attachmentStager.stage(server, state.workingDirectory.trim(), attachments)
-                when (result) {
-                    is VmResult.Failure -> {
-                        _uiState.update { it.copy(isRunning = false, error = result.error) }
-                        return@launch
-                    }
-                    is VmResult.Success -> result.value.also { files ->
-                        append(
-                            TranscriptItem.Diagnostic(
-                                id = nextId(),
-                                text = "Attached: " +
-                                    files.remotePaths.joinToString { it.substringAfterLast('/') },
-                                isStderr = false,
-                            ),
-                        )
-                    }
-                }
-            }
-            // The agent finds attachments by path, so the prompt names them.
-            val fullPrompt = if (staged.remotePaths.isEmpty()) {
-                prompt
-            } else {
-                prompt + "\n\nAttached files on the server:\n" +
-                    staged.remotePaths.joinToString("\n") { "- $it" }
-            }
-            conversations.appendUserPrompt(conversationId, fullPrompt)
-
-            // The Tasks record (§28): one row per run when the agent works inside a
-            // project. A run opened straight from a server stays conversation-only.
-            val taskId = tasks.start(
-                conversationId = conversationId,
-                title = prompt,
-                projectId = tasks.findProjectId(server, state.workingDirectory.trim()),
-            )
-
-            val config = AgentRunConfig(
-                serverId = server,
-                workingDirectory = state.workingDirectory.trim(),
-                prompt = withCarriedContext(fullPrompt, state),
-                images = staged.images,
-                resumeSessionId = state.providerSessionId?.takeIf { fitsBackend(it, state.selectedModel) },
-                permissionMode = state.permissionMode,
-                model = state.selectedModel,
-                history = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
-                    emptyList()
-                } else {
-                    state.transcript.toConversationTurns()
-                },
-                autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
-                contextChars = preferences.contextChars(),
-            )
-
+            wakeLockManager.acquire()
             try {
-                providers.forModel(state.selectedModel).run(config).collect { event ->
-                    if (runJob !== selfJob) return@collect
-                    conversations.record(conversationId, event)
-                    applyTaskEvent(taskId, event)
-                    applyEvent(event)
+                // Coroutine cancellation is cooperative: stop() flips isRunning to false
+                // and clears runJob immediately, but this coroutine's collect loop can
+                // still process one more buffered event before it reaches a cancellation
+                // checkpoint. Comparing against runJob on every event (rather than
+                // trusting cancellation alone) stops a cancelled run's tail events from
+                // landing in whatever new run replaced it if the user immediately
+                // re-sends. coroutineContext[Job] is this coroutine's own Job, fetched
+                // from inside itself rather than racing the external `runJob = ...`
+                // assignment below, which only completes after this block starts.
+                val selfJob = coroutineContext[Job]
+                val conversationId = state.conversationId ?: createConversation(server, state, prompt)
+                if (conversationId == null) {
+                    _uiState.update { it.copy(isRunning = false) }
+                    return@launch
                 }
-            } catch (cancelled: CancellationException) {
-                // stop() cancels this job; the task row must not outlive it as RUNNING.
-                // NonCancellable, or the write itself is cancelled before it starts.
-                withContext(NonCancellable) { taskId?.let { tasks.cancel(it) } }
-                throw cancelled
-            } catch (failure: Throwable) {
-                // A provider or storage bug ends this run with a visible error
-                // instead of crashing the whole app.
-                taskId?.let { tasks.fail(it, failure.message ?: "The run failed") }
-                append(
-                    TranscriptItem.Failure(
-                        id = nextId(),
-                        error = VmError.Ai(
-                            summary = "The run failed",
-                            reason = failure.message,
-                            cause = failure,
-                        ),
-                    ),
+                val staged = if (attachments.isEmpty()) {
+                    StagedAttachments(emptyList(), emptyList())
+                } else {
+                    val result = attachmentStager.stage(server, state.workingDirectory.trim(), attachments)
+                    when (result) {
+                        is VmResult.Failure -> {
+                            _uiState.update { it.copy(isRunning = false, error = result.error) }
+                            return@launch
+                        }
+                        is VmResult.Success -> result.value.also { files ->
+                            append(
+                                TranscriptItem.Diagnostic(
+                                    id = nextId(),
+                                    text = "Attached: " +
+                                        files.remotePaths.joinToString { it.substringAfterLast('/') },
+                                    isStderr = false,
+                                ),
+                            )
+                        }
+                    }
+                }
+                // The agent finds attachments by path, so the prompt names them.
+                val fullPrompt = if (staged.remotePaths.isEmpty()) {
+                    prompt
+                } else {
+                    prompt + "\n\nAttached files on the server:\n" +
+                        staged.remotePaths.joinToString("\n") { "- $it" }
+                }
+                conversations.appendUserPrompt(conversationId, fullPrompt)
+
+                // The Tasks record (§28): one row per run when the agent works inside a
+                // project. A run opened straight from a server stays conversation-only.
+                val taskId = tasks.start(
+                    conversationId = conversationId,
+                    title = prompt,
+                    projectId = tasks.findProjectId(server, state.workingDirectory.trim()),
                 )
+
+                val config = AgentRunConfig(
+                    serverId = server,
+                    workingDirectory = state.workingDirectory.trim(),
+                    prompt = withCarriedContext(fullPrompt, state),
+                    images = staged.images,
+                    resumeSessionId = state.providerSessionId?.takeIf {
+                        fitsBackend(it, state.selectedModel)
+                    },
+                    permissionMode = state.permissionMode,
+                    model = state.selectedModel,
+                    history = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
+                        emptyList()
+                    } else {
+                        state.transcript.toConversationTurns()
+                    },
+                    autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
+                    contextChars = preferences.contextChars(),
+                    webAccessEnabled = preferences.preferences.first().aiWebAccessEnabled,
+                    maxIterations = preferences.preferences.first().agentMaxIterations,
+                    maxCommandsPerRun = preferences.preferences.first().agentMaxCommandsPerRun,
+                )
+
+                try {
+                    providers.forModel(state.selectedModel).run(config).collect { event ->
+                        if (runJob !== selfJob) return@collect
+                        conversations.record(conversationId, event)
+                        applyTaskEvent(taskId, event)
+                        applyEvent(event)
+                    }
+                } catch (cancelled: CancellationException) {
+                    // stop() cancels this job; the task row must not outlive it as RUNNING.
+                    // NonCancellable, or the write itself is cancelled before it starts.
+                    withContext(NonCancellable) { taskId?.let { tasks.cancel(it) } }
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    deltas.clear()
+                    // A provider or storage bug ends this run with a visible error
+                    // instead of crashing the whole app.
+                    taskId?.let { tasks.fail(it, failure.message ?: "The run failed") }
+                    _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                    append(
+                        TranscriptItem.Failure(
+                            id = nextId(),
+                            error = VmError.Ai(
+                                summary = "The run failed",
+                                reason = failure.message,
+                                cause = failure,
+                            ),
+                        ),
+                    )
+                }
+                if (runJob === selfJob) _uiState.update { it.copy(isRunning = false) }
+            } finally {
+                wakeLockManager.release()
             }
-            if (runJob === selfJob) _uiState.update { it.copy(isRunning = false) }
         }
     }
 
@@ -678,9 +771,15 @@ class AgentChatViewModel @Inject constructor(
 
     /** Stops the run. Cancelling collection terminates the remote process too. */
     fun stop() {
+        deltas.clear()
         runJob?.cancel()
         runJob = null
-        _uiState.update { it.copy(isRunning = false) }
+        _uiState.update { state ->
+            state.copy(
+                isRunning = false,
+                transcript = state.transcript.settleStreamingDraft(::nextId),
+            )
+        }
         append(
             TranscriptItem.Diagnostic(
                 id = nextId(),
@@ -778,18 +877,24 @@ class AgentChatViewModel @Inject constructor(
                 )
             }
 
-            is AgentEvent.Completed -> append(
-                TranscriptItem.RunSummary(
-                    id = nextId(),
-                    durationMillis = event.durationMillis,
-                    costUsd = event.costUsd,
-                    inputTokens = event.inputTokens,
-                    outputTokens = event.outputTokens,
-                    isError = event.isError,
-                ),
-            )
+            is AgentEvent.Completed -> {
+                _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                append(
+                    TranscriptItem.RunSummary(
+                        id = nextId(),
+                        durationMillis = event.durationMillis,
+                        costUsd = event.costUsd,
+                        inputTokens = event.inputTokens,
+                        outputTokens = event.outputTokens,
+                        isError = event.isError,
+                    ),
+                )
+            }
 
-            is AgentEvent.Failed -> append(TranscriptItem.Failure(nextId(), event.error))
+            is AgentEvent.Failed -> {
+                _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                append(TranscriptItem.Failure(nextId(), event.error))
+            }
 
             is AgentEvent.Diagnostic -> {
                 val line = event.line.trim()
@@ -805,6 +910,7 @@ class AgentChatViewModel @Inject constructor(
 
     fun rollbackFile(toolCallId: String, filePath: String) {
         val sId = _uiState.value.serverId ?: return
+        if (filePath.isBlank() || filePath.contains("..")) return
         viewModelScope.launch {
             val repoPath = _uiState.value.workingDirectory.ifBlank {
                 val idx = filePath.lastIndexOf('/')
@@ -852,7 +958,7 @@ class AgentChatViewModel @Inject constructor(
     private fun toolItemId(toolUseId: String): String =
         if (toolUseId.isBlank()) nextId() else "tool-$toolUseId"
 
-    private fun nextId(): String = "item-${itemCounter++}"
+    private fun nextId(): String = "item-${itemCounter.getAndIncrement()}"
 
     companion object {
         const val ARG_SERVER_ID = "serverId"
@@ -925,9 +1031,14 @@ private const val GATEWAY_SESSION_PREFIX = "omniroute-"
 private fun withCarriedContext(prompt: String, state: AgentChatUiState): String {
     val resumable = state.providerSessionId?.let { fitsBackend(it, state.selectedModel) } == true
     if (!ClaudeCodeModels.isClaudeCode(state.selectedModel) || resumable) return prompt
-    val earlier = state.transcript.toConversationTurns()
+    val raw = state.transcript.toConversationTurns()
         .joinToString("\n\n") { (if (it.fromUser) "User: " else "Assistant: ") + it.text }
-        .takeLast(MAX_CARRIED_CONTEXT_CHARS)
+    val earlier = if (raw.length > MAX_CARRIED_CONTEXT_CHARS) {
+        val window = raw.takeLast(MAX_CARRIED_CONTEXT_CHARS)
+        window.substringAfter('\n', window).trimStart()
+    } else {
+        raw
+    }
     if (earlier.isBlank()) return prompt
     return "Earlier in this conversation:\n\n$earlier\n\n---\n\n$prompt"
 }
