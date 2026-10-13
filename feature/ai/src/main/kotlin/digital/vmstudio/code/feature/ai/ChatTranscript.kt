@@ -81,8 +81,35 @@ internal sealed interface TranscriptRowItem {
     ) : TranscriptRowItem
 }
 
-internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem> =
-    items.map { TranscriptRowItem.Single(it) }
+internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem> {
+    if (items.isEmpty()) return emptyList()
+    val result = mutableListOf<TranscriptRowItem>()
+    val toolBuffer = mutableListOf<TranscriptItem.ToolCall>()
+
+    fun flushToolBuffer() {
+        if (toolBuffer.isEmpty()) return
+        if (toolBuffer.size == 1) {
+            result += TranscriptRowItem.Single(toolBuffer.first())
+        } else {
+            result += TranscriptRowItem.ToolBatch(
+                id = "batch-${toolBuffer.first().id}-${toolBuffer.last().id}",
+                tools = toolBuffer.toList(),
+            )
+        }
+        toolBuffer.clear()
+    }
+
+    for (item in items) {
+        if (item is TranscriptItem.ToolCall) {
+            toolBuffer += item
+        } else {
+            flushToolBuffer()
+            result += TranscriptRowItem.Single(item)
+        }
+    }
+    flushToolBuffer()
+    return result
+}
 
 /**
  * Consecutive tool calls collapse into one quiet line ("Ran 5 tools ›") that expands
@@ -236,6 +263,7 @@ internal fun TranscriptRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
+            selectable = false,
         )
 
         is TranscriptItem.Reasoning -> CollapsibleReasoning(item)
@@ -736,12 +764,15 @@ internal fun FollowTail(listState: LazyListState, transcript: List<TranscriptIte
             }
     }
     val tailLength = (transcript.lastOrNull() as? TranscriptItem.StreamingText)?.text?.length ?: 0
-    val tailChunk = tailLength / 50
+    val tailChunk = tailLength / 80
     LaunchedEffect(transcript.size, tailChunk) {
         if (!following) return@LaunchedEffect
         val last = listState.layoutInfo.totalItemsCount - 1
         if (last >= 0) {
-            listState.scrollToItem(last, scrollOffset = 100_000)
+            val visibleLast = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            if (visibleLast < last) {
+                listState.animateScrollToItem(last)
+            }
         }
     }
 }

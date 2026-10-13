@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
@@ -704,8 +705,18 @@ class OmniRouteAgentLoop @Inject constructor(
                 autonomyLevel.allows(AgentAutonomyLevel.DEVELOPER)
         )
 
+    private fun findMatchingTarget(content: String, target: String): String? {
+        if (content.split(target).size - 1 == 1) return target
+        val crlfTarget = target.replace("\r\n", "\n").replace("\n", "\r\n")
+        if (content.split(crlfTarget).size - 1 == 1) return crlfTarget
+        val lfTarget = target.replace("\r\n", "\n")
+        if (content.split(lfTarget).size - 1 == 1) return lfTarget
+        return null
+    }
+
     /** Why [target] cannot be replaced in [content], or null when it occurs exactly once. */
     private fun uniqueMatchProblem(content: String, target: String, resolved: String): String? {
+        if (findMatchingTarget(content, target) != null) return null
         val occurrences = content.split(target).size - 1
         return when {
             occurrences == 0 ->
@@ -749,7 +760,15 @@ class OmniRouteAgentLoop @Inject constructor(
             uniqueMatchProblem(existingContent, target, resolved)?.let { problem ->
                 return ToolOutcome(problem, isError = true)
             }
-            val newContent = existingContent.replace(target, replacement)
+            val matched = findMatchingTarget(existingContent, target) ?: target
+            val effectiveReplacement = if (matched.contains("\r\n") && !replacement.contains("\r\n")) {
+                replacement.replace("\n", "\r\n")
+            } else if (!matched.contains("\r\n") && replacement.contains("\r\n")) {
+                replacement.replace("\r\n", "\n")
+            } else {
+                replacement
+            }
+            val newContent = existingContent.replace(matched, effectiveReplacement)
             val autoApply = canAutoApply(ServerEnvironment.DEVELOPMENT, permissionMode, autonomyLevel)
             if (!autoApply) {
                 val approved = fileEditApprovalGate.request(
@@ -800,7 +819,15 @@ class OmniRouteAgentLoop @Inject constructor(
             return ToolOutcome(problem, isError = true)
         }
 
-        val newContent = existingContent.replace(target, replacement)
+        val matched = findMatchingTarget(existingContent, target) ?: target
+        val effectiveReplacement = if (matched.contains("\r\n") && !replacement.contains("\r\n")) {
+            replacement.replace("\n", "\r\n")
+        } else if (!matched.contains("\r\n") && replacement.contains("\r\n")) {
+            replacement.replace("\r\n", "\n")
+        } else {
+            replacement
+        }
+        val newContent = existingContent.replace(matched, effectiveReplacement)
 
         val autoApply = canAutoApply(
             environment = server?.environment ?: ServerEnvironment.LOCAL,
@@ -1067,17 +1094,43 @@ class OmniRouteAgentLoop @Inject constructor(
         return digital.vmstudio.code.core.sftp.model.RemotePath.confine(root, path) ?: root
     }
 
+    private fun sanitizeJson(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("```")) {
+            val lines = trimmed.lines()
+            val withoutFirst = if (lines.isNotEmpty() && lines.first().startsWith("```")) lines.drop(1) else lines
+            val withoutLast = if (withoutFirst.isNotEmpty() && withoutFirst.last().trim() == "```") withoutFirst.dropLast(1) else withoutFirst
+            return withoutLast.joinToString("\n").trim()
+        }
+        return trimmed
+    }
+
+    private fun parseArgumentsObject(argumentsJson: String): JsonObject? {
+        val sanitized = sanitizeJson(argumentsJson)
+        val element = runCatching { json.parseToJsonElement(sanitized) }.getOrNull()
+        return when (element) {
+            is JsonObject -> element
+            is JsonPrimitive -> if (element.isString) {
+                runCatching { json.parseToJsonElement(sanitizeJson(element.content)) }.getOrNull() as? JsonObject
+            } else null
+            else -> null
+        }
+    }
+
     /** JSON booleans arrive as `true`, not `"true"`; [argument] reads strings only. */
     private fun booleanArgument(argumentsJson: String, key: String): Boolean? {
-        val root = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull()
-            as? JsonObject ?: return null
+        val root = parseArgumentsObject(argumentsJson) ?: return null
         return (root[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
     }
 
     private fun argument(argumentsJson: String, key: String): String? {
-        val root = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull()
-            as? JsonObject ?: return null
-        return (root[key] as? JsonPrimitive)?.content
+        val root = parseArgumentsObject(argumentsJson) ?: return null
+        val el = root[key] ?: return null
+        return when (el) {
+            is JsonPrimitive -> el.content
+            is JsonArray -> el.joinToString("\n") { (it as? JsonPrimitive)?.content ?: it.toString() }
+            is JsonObject -> el.toString()
+        }
     }
 
     private fun filePathArgument(argumentsJson: String): String? =

@@ -54,12 +54,14 @@ fun MarkdownText(
     markdown: String,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.onSurface,
+    selectable: Boolean = true,
 ) {
     val blocks = remember(markdown) { MarkdownParser.parse(markdown) }
     val spacing = VmTheme.spacing
     val quoteBar = MaterialTheme.colorScheme.outlineVariant
 
-    SelectionContainer {
+    @Composable
+    fun Content() {
         Column(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -130,6 +132,14 @@ fun MarkdownText(
                 }
             }
         }
+    }
+
+    if (selectable) {
+        SelectionContainer {
+            Content()
+        }
+    } else {
+        Content()
     }
 }
 

@@ -49,7 +49,15 @@ object GatewayModelPricing {
             lower == "auto/coding:free" ||
             lower.startsWith("groq/") ||
             lower.startsWith("g4f-groq/") ||
-            lower.startsWith("cloudflare-ai/")
+            lower.startsWith("cloudflare-ai/") ||
+            lower.startsWith("gpt-oss-") ||
+            lower.contains("safeguard") ||
+            lower.startsWith("llama-3") ||
+            lower.startsWith("llama3-") ||
+            lower.startsWith("gemma2-") ||
+            lower.startsWith("mixtral-") ||
+            lower.startsWith("qwen-") ||
+            lower.startsWith("qwen3")
     }
 
     private val FREE_PROVIDER_OWNERS = setOf(

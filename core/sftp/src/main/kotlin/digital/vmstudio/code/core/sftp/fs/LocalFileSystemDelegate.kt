@@ -282,7 +282,7 @@ internal class LocalFileSystemDelegate(
                     ?: return@withContext storageFailure("Invalid file path", path)
                 val parent = resolveDocument(parentPath)?.document
                     ?: return@withContext storageFailure("Parent folder does not exist", parentPath)
-                parent.findFile(name) ?: parent.createFile("text/plain", name)
+                parent.findFile(name) ?: parent.createFile("application/octet-stream", name)
                     ?: return@withContext storageFailure("Could not create document", path)
             }
             return@withContext try {

@@ -155,10 +155,4 @@ class SettingsViewModel @Inject constructor(
             preferencesRepository.signOutUser()
         }
     }
-
-    fun signOut() {
-        viewModelScope.launch {
-            preferencesRepository.signOutUser()
-        }
-    }
 }

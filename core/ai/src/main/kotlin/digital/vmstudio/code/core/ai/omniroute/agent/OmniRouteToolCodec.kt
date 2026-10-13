@@ -69,7 +69,8 @@ internal fun gatewayErrorOf(root: JsonObject): OmniRouteTurn.GatewayError? {
 }
 
 private val RETRYABLE_ERROR_TYPES = listOf(
-    "overloaded", "rate_limit", "timeout", "server_error", "unavailable",
+    "overloaded", "rate_limit", "rate limit", "quota", "timeout", "server_error", "unavailable",
+    "tokens per minute", "tpm", "reduce your message", "payload too large",
     "capability_mismatch", "capability", "tool calling",
 )
 
@@ -188,6 +189,7 @@ object OmniRouteToolCodec {
         is OmniRouteMessage.ToolResult -> buildJsonObject {
             put("role", "tool")
             put("tool_call_id", toolCallId)
+            put("name", toolName)
             put("content", content)
         }
     }

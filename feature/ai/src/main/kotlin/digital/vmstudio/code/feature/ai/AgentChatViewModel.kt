@@ -1,4 +1,4 @@
-﻿package digital.vmstudio.code.feature.ai
+package digital.vmstudio.code.feature.ai
 
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
@@ -1278,8 +1278,16 @@ class AgentChatViewModel @Inject constructor(
 
             is AgentEvent.AssistantDelta -> deltas.add(event.text)
 
-            is AgentEvent.Reasoning ->
-                append(TranscriptItem.Reasoning(nextId(), event.text))
+            is AgentEvent.Reasoning -> _uiState.update { state ->
+                val last = state.transcript.lastOrNull()
+                if (last is TranscriptItem.Reasoning) {
+                    val updated = state.transcript.toMutableList()
+                    updated[updated.lastIndex] = last.copy(text = last.text + "\n" + event.text)
+                    state.copy(transcript = updated)
+                } else {
+                    state.copy(transcript = state.transcript + TranscriptItem.Reasoning(nextId(), event.text))
+                }
+            }
 
             is AgentEvent.ToolStarted -> append(
                 TranscriptItem.ToolCall(

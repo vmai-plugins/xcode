@@ -1,23 +1,16 @@
 package digital.vmstudio.code.feature.projects
 
-import android.content.Context
-import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
-import digital.vmstudio.code.core.git.GitHubRepositoryClient
+import digital.vmstudio.code.core.database.dao.GitRepositoryDao
+import digital.vmstudio.code.core.database.entity.GitRepositoryEntity
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
-import digital.vmstudio.code.core.sftp.fs.TransferEvent
-import digital.vmstudio.code.core.sftp.model.RemoteFileType
-import digital.vmstudio.code.core.sftp.model.RemotePath
-import digital.vmstudio.code.core.sftp.model.RemotePermissions
-import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.command.CommandLimits
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
@@ -25,47 +18,41 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.FilterInputStream
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
-import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URI
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 
 enum class ProjectSource {
+    GITHUB,
     LOCAL,
+    GDRIVE,
     VPS,
     LINKED,
     EMPTY,
 }
 
-private const val MAX_ARCHIVE_BYTES = 100L * 1024 * 1024
-private const val MAX_EXPANDED_BYTES = 500L * 1024 * 1024
-private const val MAX_ARCHIVE_ENTRIES = 50_000
-
 data class ProjectCreateUiState(
-    val source: ProjectSource = ProjectSource.LOCAL,
+    val source: ProjectSource = ProjectSource.GITHUB,
     val name: String = "",
     val remotePath: String = "",
-    val isRemotePathManuallySet: Boolean = false,
     val servers: List<ServerOption> = emptyList(),
     val selectedServerId: String? = null,
+    val githubUrl: String = "",
+    val branch: String = "main",
     val environment: ServerEnvironment = ServerEnvironment.DEVELOPMENT,
     val runtime: String = "Node.js",
     val packageManager: String = "npm",
     val colorHex: String = "#6366F1",
+    val runSetup: Boolean = true,
+    val setupCommand: String = "npm install",
     val statusMessage: String? = null,
     val isSaving: Boolean = false,
     val createdProjectId: String? = null,
@@ -77,7 +64,9 @@ data class ProjectCreateUiState(
     val canCreate: Boolean
         get() = name.isNotBlank() &&
             remotePath.isNotBlank() &&
-            selectedServerId != null && !isSaving
+            selectedServerId != null &&
+            (source != ProjectSource.GITHUB || githubUrl.isNotBlank()) &&
+            !isSaving
 }
 
 @HiltViewModel
@@ -85,9 +74,7 @@ class ProjectCreateViewModel @Inject constructor(
     private val projects: ProjectRepository,
     private val servers: ServerRepository,
     private val commandGuard: CommandGuard,
-    private val remoteFileSystem: RemoteFileSystem,
-    private val githubRepositoryClient: GitHubRepositoryClient,
-    @ApplicationContext private val context: Context,
+    private val gitRepositoryDao: GitRepositoryDao,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -95,6 +82,13 @@ class ProjectCreateViewModel @Inject constructor(
     val uiState: StateFlow<ProjectCreateUiState> = _uiState.asStateFlow()
 
     init {
+        savedStateHandle.get<String>(ARG_GITHUB_URL)?.takeIf { it.isNotBlank() }?.let { url ->
+            setGithubUrl(url)
+            setSource(ProjectSource.GITHUB)
+        }
+        savedStateHandle.get<String>(ARG_GITHUB_BRANCH)?.takeIf { it.isNotBlank() }?.let { branch ->
+            setBranch(branch)
+        }
         if (savedStateHandle.get<String>(ARG_MODE) == MODE_LINK) {
             setSource(ProjectSource.LINKED)
         }
@@ -113,65 +107,33 @@ class ProjectCreateViewModel @Inject constructor(
                 state.copy(
                     servers = allServers,
                     selectedServerId = chosenServerId,
-                    remotePath = if (!state.isRemotePathManuallySet) {
-                        defaultPath
-                    } else {
-                        state.remotePath
-                    },
+                    remotePath = state.remotePath.ifBlank { defaultPath },
                 )
             }
         }
     }
 
-    fun selectLocalFolder(treeUri: String, folderName: String) {
-        _uiState.update { state ->
-            state.copy(
-                source = ProjectSource.LINKED,
-                selectedServerId = RemoteFileSystem.LOCAL_SERVER_ID,
-                remotePath = "$treeUri!/",
-                isRemotePathManuallySet = true,
-                name = state.name.ifBlank { folderName },
-                error = null,
-                pathError = null,
-            )
-        }
-    }
-
-    fun reportFolderAccessError(reason: String) {
-        _uiState.update {
-            it.copy(
-                error = VmError.Storage(
-                    summary = "Could not access the selected folder",
-                    reason = reason,
-                    suggestedAction = "Choose the folder again and grant read/write access.",
-                ),
-            )
-        }
-    }
-
     fun setSource(source: ProjectSource) {
         _uiState.update { state ->
-            val targetServerId = when (source) {
-                ProjectSource.LOCAL -> RemoteFileSystem.LOCAL_SERVER_ID
-                ProjectSource.LINKED -> state.selectedServerId ?: RemoteFileSystem.LOCAL_SERVER_ID
-                ProjectSource.VPS -> state.servers.firstOrNull { it.id != RemoteFileSystem.LOCAL_SERVER_ID }?.id
+            val isLocalTarget = source == ProjectSource.LOCAL || source == ProjectSource.GDRIVE
+            val targetServerId = if (isLocalTarget) {
+                RemoteFileSystem.LOCAL_SERVER_ID
+            } else {
+                state.servers.firstOrNull { it.id != RemoteFileSystem.LOCAL_SERVER_ID }?.id
                     ?: state.selectedServerId ?: RemoteFileSystem.LOCAL_SERVER_ID
-                ProjectSource.EMPTY -> state.selectedServerId ?: RemoteFileSystem.LOCAL_SERVER_ID
             }
             val newPath = when (source) {
-                ProjectSource.LOCAL -> defaultProjectPath(true, state.name)
+                ProjectSource.LOCAL -> "/sdcard/VMStudio/Projects/${state.name.ifBlank { "my-app" }}"
+                ProjectSource.GDRIVE -> "/sdcard/VMStudio/GoogleDrive/${state.name.ifBlank { "cloud-app" }}"
                 ProjectSource.VPS -> "~/projects/${state.name.ifBlank { "vps-app" }}"
-                ProjectSource.EMPTY -> defaultProjectPath(RemoteFileSystem.isLocalServer(targetServerId), state.name)
-                ProjectSource.LINKED -> state.remotePath
+                ProjectSource.GITHUB -> defaultProjectPath(RemoteFileSystem.isLocalServer(targetServerId), state.name)
+                else -> state.remotePath
             }
             state.copy(
                 source = source,
                 selectedServerId = targetServerId,
                 remotePath = newPath,
-                isRemotePathManuallySet = when (source) {
-                    ProjectSource.LOCAL, ProjectSource.VPS, ProjectSource.EMPTY -> false
-                    ProjectSource.LINKED -> state.isRemotePathManuallySet
-                },
+                githubUrlError = null,
             )
         }
     }
@@ -183,7 +145,7 @@ class ProjectCreateViewModel @Inject constructor(
     fun setName(name: String) {
         _uiState.update {
             val isLocal = RemoteFileSystem.isLocalServer(it.selectedServerId)
-            val path = if (!it.isRemotePathManuallySet) {
+            val path = if (isDefaultOrBlankPath(it.remotePath)) {
                 defaultProjectPath(isLocal, name)
             } else {
                 it.remotePath
@@ -193,19 +155,13 @@ class ProjectCreateViewModel @Inject constructor(
     }
 
     fun setRemotePath(path: String) {
-        _uiState.update {
-            it.copy(
-                remotePath = path,
-                isRemotePathManuallySet = true,
-                pathError = null,
-            )
-        }
+        _uiState.update { it.copy(remotePath = path, pathError = null) }
     }
 
     fun setServerId(serverId: String) {
         _uiState.update { state ->
             val isLocal = RemoteFileSystem.isLocalServer(serverId)
-            val newPath = if (!state.isRemotePathManuallySet) {
+            val newPath = if (isDefaultOrBlankPath(state.remotePath)) {
                 defaultProjectPath(isLocal, state.name)
             } else {
                 state.remotePath
@@ -216,6 +172,30 @@ class ProjectCreateViewModel @Inject constructor(
 
     fun selectServer(serverId: String) {
         setServerId(serverId)
+    }
+
+    fun setGithubUrl(url: String) {
+        val repoName = deriveRepoName(url)
+        _uiState.update { state ->
+            val isLocal = RemoteFileSystem.isLocalServer(state.selectedServerId)
+            val defaultPath = defaultProjectPath(isLocal, repoName)
+            val updatedName = if (state.name.isBlank() && repoName.isNotBlank()) repoName else state.name
+            val updatedPath = if (isDefaultOrBlankPath(state.remotePath) && repoName.isNotBlank()) {
+                defaultPath
+            } else {
+                state.remotePath
+            }
+            state.copy(
+                githubUrl = url,
+                githubUrlError = null,
+                name = updatedName,
+                remotePath = updatedPath,
+            )
+        }
+    }
+
+    fun setBranch(branch: String) {
+        _uiState.update { it.copy(branch = branch) }
     }
 
     fun setEnvironment(env: ServerEnvironment) {
@@ -236,13 +216,54 @@ class ProjectCreateViewModel @Inject constructor(
                     "Flutter" -> "flutter"
                     else -> it.packageManager
                 },
+                setupCommand = defaultSetup.ifBlank { it.setupCommand },
+                runSetup = defaultSetup.isNotBlank(),
+            )
+        }
+    }
+
+    fun setPackageManager(packageManager: String) {
+        _uiState.update { it.copy(packageManager = packageManager) }
+    }
+
+    fun setRunSetup(runSetup: Boolean) {
+        _uiState.update { it.copy(runSetup = runSetup) }
+    }
+
+    fun setSetupCommand(command: String) {
+        _uiState.update { it.copy(setupCommand = command) }
+    }
+
+    fun selectLocalFolder(uri: String, folderName: String) {
+        _uiState.update { state ->
+            val chosenName = if (state.name.isBlank() && folderName.isNotBlank()) folderName else state.name
+            state.copy(
+                selectedServerId = RemoteFileSystem.LOCAL_SERVER_ID,
+                remotePath = uri,
+                name = chosenName,
+                pathError = null,
+                nameError = null,
+                error = null,
+            )
+        }
+    }
+
+    fun reportFolderAccessError(message: String) {
+        _uiState.update {
+            it.copy(
+                pathError = message,
+                error = VmError.FileSystem(
+                    summary = "Failed to access chosen folder",
+                    path = it.remotePath,
+                    reason = message,
+                    suggestedAction = "Please grant folder permission or choose another folder.",
+                ),
             )
         }
     }
 
     fun create() {
         val state = _uiState.value
-        if (state.isSaving) return
         val serverId = state.selectedServerId ?: return
         if (state.name.isBlank()) {
             _uiState.update { it.copy(nameError = "Name cannot be empty") }
@@ -252,38 +273,33 @@ class ProjectCreateViewModel @Inject constructor(
             _uiState.update { it.copy(pathError = "Remote path cannot be empty") }
             return
         }
-        _uiState.update { it.copy(isSaving = true) }
+        if (state.source == ProjectSource.GITHUB && state.githubUrl.isBlank()) {
+            _uiState.update { it.copy(githubUrlError = "Repository URL cannot be empty") }
+            return
+        }
+
         viewModelScope.launch {
-            try {
-                executeProjectCreation(serverId, state)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (exception: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        statusMessage = null,
-                        error = VmError.FileSystem(
-                            summary = "Could not create workspace",
-                            reason = exception.message,
-                            retryable = true,
-                        ),
-                    )
-                }
-            }
+            executeProjectCreation(serverId)
         }
     }
 
     private fun creationStatusMessage(source: ProjectSource, isLocal: Boolean): String = when (source) {
+        ProjectSource.GITHUB -> if (isLocal) {
+            "Downloading repository from GitHub to phone..."
+        } else {
+            "Cloning repository..."
+        }
         ProjectSource.LOCAL -> "Initializing local workspace on phone..."
+        ProjectSource.GDRIVE -> "Connecting Google Drive workspace..."
         ProjectSource.VPS -> "Creating remote cloud workspace on VPS..."
         ProjectSource.LINKED -> if (isLocal) "Verifying phone folder..." else "Verifying remote directory..."
         ProjectSource.EMPTY -> if (isLocal) "Creating phone directory..." else "Creating directory..."
     }
 
-    private suspend fun executeProjectCreation(serverId: String, state: ProjectCreateUiState) {
+    private suspend fun executeProjectCreation(serverId: String) {
+        val state = _uiState.value
+        val normalizedRepoUrl = normalizeGitHubUrl(state.githubUrl)
         val isLocal = RemoteFileSystem.isLocalServer(serverId)
-        var newWorkspaceCreated = false
 
         _uiState.update {
             it.copy(
@@ -291,86 +307,31 @@ class ProjectCreateViewModel @Inject constructor(
                 statusMessage = creationStatusMessage(state.source, isLocal),
                 nameError = null,
                 pathError = null,
+                githubUrlError = null,
                 error = null,
             )
         }
 
-        if (state.source == ProjectSource.EMPTY ||
-            state.source == ProjectSource.LOCAL ||
-            state.source == ProjectSource.VPS
-        ) {
-            val targetExisted = when (val exists = remoteFileSystem.exists(serverId, state.remotePath)) {
-                is VmResult.Failure -> {
-                    _uiState.update {
-                        it.copy(isSaving = false, statusMessage = null, error = exists.error)
-                    }
-                    return
+        if (state.source == ProjectSource.GITHUB) {
+            val cloneResult = cloneProject(serverId, normalizedRepoUrl, state.branch, state.remotePath)
+            if (cloneResult is VmResult.Failure) {
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        statusMessage = null,
+                        error = cloneResult.error,
+                    )
                 }
-                is VmResult.Success -> exists.value
+                return
             }
+        } else if (state.source == ProjectSource.EMPTY || state.source == ProjectSource.LOCAL || state.source == ProjectSource.VPS || state.source == ProjectSource.GDRIVE) {
             val mkdirResult = createDirectory(serverId, state.remotePath)
-            if (mkdirResult is VmResult.Failure) {
+            if (mkdirResult is VmResult.Failure && !isLocal) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
                         statusMessage = null,
                         error = mkdirResult.error,
-                    )
-                }
-                return
-            }
-            newWorkspaceCreated = !targetExisted
-        } else if (state.source == ProjectSource.LINKED) {
-            when (val statResult = remoteFileSystem.stat(serverId, state.remotePath)) {
-                is VmResult.Failure -> {
-                    _uiState.update {
-                        it.copy(isSaving = false, statusMessage = null, error = statResult.error)
-                    }
-                    return
-                }
-                is VmResult.Success -> if (statResult.value.type != RemoteFileType.DIRECTORY) {
-                    _uiState.update {
-                        it.copy(
-                            isSaving = false,
-                            statusMessage = null,
-                            error = VmError.FileSystem(
-                                summary = "The selected workspace is not a folder",
-                                path = state.remotePath,
-                            ),
-                        )
-                    }
-                    return
-                }
-            }
-        }
-
-        _uiState.update { it.copy(statusMessage = "Saving workspace configuration...") }
-        when (val result = projects.create(
-            name = state.name.trim(),
-            serverId = serverId,
-            remotePath = state.remotePath.trim(),
-            branch = null,
-            environment = state.environment,
-            runtime = state.runtime,
-            packageManager = state.packageManager,
-        )) {
-            is VmResult.Success -> {
-                val createdId = result.value
-                var configurationError: VmError? = null
-                if (state.colorHex.isNotBlank()) {
-                    when (val colorResult = projects.updateColor(createdId, state.colorHex)) {
-                        is VmResult.Failure -> if (configurationError == null) {
-                            configurationError = colorResult.error
-                        }
-                        is VmResult.Success -> Unit
-                    }
-                }
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        statusMessage = null,
-                        createdProjectId = createdId,
-                        error = configurationError,
                     )
                 }
                 return
@@ -536,29 +497,48 @@ class ProjectCreateViewModel @Inject constructor(
                 zis.closeEntry()
                 entry = zis.nextEntry
             }
-            is VmResult.Failure -> {
-                val error = if (newWorkspaceCreated) {
-                    when (val cleanup = remoteFileSystem.delete(serverId, state.remotePath, recursive = true)) {
-                        is VmResult.Success -> result.error
-                        is VmResult.Failure -> VmError.FileSystem(
-                            summary = "Workspace record could not be saved, and its new folder could not be removed",
-                            reason = "${result.error.summary}. Cleanup failed: ${cleanup.error.summary}",
-                            suggestedAction = "Retry cleanup or remove the unlinked folder manually.",
-                            retryable = true,
-                            path = state.remotePath,
-                            cause = cleanup.error.cause,
-                        )
-                    }
-                } else {
-                    result.error
-                }
-                _uiState.update { it.copy(isSaving = false, statusMessage = null, error = error) }
-            }
         }
     }
 
     private suspend fun createDirectory(serverId: String, remotePath: String): VmResult<Unit> {
-        return remoteFileSystem.createDirectory(serverId, remotePath)
+        val isLocal = RemoteFileSystem.isLocalServer(serverId)
+        if (isLocal) {
+            return try {
+                File(remotePath).mkdirs()
+                VmResult.Success(Unit)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                VmResult.Failure(
+                    VmError.Command(
+                        summary = "Failed to create directory",
+                        command = "mkdir -p $remotePath",
+                        suggestedAction = "Check storage permissions: ${e.message}",
+                    )
+                )
+            }
+        }
+        val result = commandGuard.run(
+            serverId = serverId,
+            command = "mkdir -p ${escapePath(remotePath)}",
+            limits = CommandLimits.QUICK,
+        )
+        return when (result) {
+            is VmResult.Success -> {
+                if (result.value.isSuccess) {
+                    VmResult.Success(Unit)
+                } else {
+                    VmResult.Failure(
+                        VmError.Command(
+                            summary = "Failed to create directory",
+                            command = "mkdir -p $remotePath",
+                            exitCode = result.value.exitCode,
+                            stderrExcerpt = result.value.stderr,
+                            suggestedAction = "Check write permissions for the directory path.",
+                        ),
+                    )
+                }
+            }
+            is VmResult.Failure -> result
+        }
     }
     private fun escapePath(path: String): String =
         "'" + path.replace("'", "'\\''") + "'"
@@ -574,17 +554,17 @@ class ProjectCreateViewModel @Inject constructor(
         }
     }
 
+    private fun isDefaultOrBlankPath(path: String): Boolean =
+        path.isBlank() || path.startsWith("~/projects/") || path.startsWith("/sdcard/VMStudio/")
+
     private fun defaultProjectPath(isLocal: Boolean, name: String): String {
-        val safeName = name.ifBlank { "my-project" }.replace(UNSAFE_PROJECT_NAME, "_")
+        val safeName = name.ifBlank { "my-project" }
         return if (isLocal) {
-            File(localProjectsRoot(), safeName).absolutePath
+            "/sdcard/VMStudio/Projects/$safeName"
         } else {
             "~/projects/$safeName"
         }
     }
-
-    private fun localProjectsRoot(): File =
-        context.getExternalFilesDir("projects") ?: File(context.filesDir, "projects")
 
     private fun deriveRepoName(url: String): String {
         val cleaned = url.trim().removeSuffix("/").removeSuffix(".git")
@@ -602,51 +582,10 @@ class ProjectCreateViewModel @Inject constructor(
     }
 
     companion object {
-        private val REPOSITORY_SEGMENT = Regex("[A-Za-z0-9_.-]+")
-        private val UNSAFE_PROJECT_NAME = Regex("[/\\\\:*?\"<>|]")
+        const val ARG_GITHUB_URL = "githubUrl"
+        const val ARG_GITHUB_BRANCH = "githubBranch"
         const val ARG_MODE = "mode"
         const val MODE_LINK = "link"
-    }
-}
-
-internal fun safeZipEntryFile(targetDir: File, entryName: String): File? {
-    if (entryName.isBlank() || entryName.startsWith('/') || '\\' in entryName || ':' in entryName || '\u0000' in entryName) {
-        return null
-    }
-    val segments = entryName.split('/')
-    if (segments.any { it.isEmpty() || it == "." || it == ".." }) return null
-    val root = targetDir.canonicalFile
-    val output = File(root, entryName).canonicalFile
-    return output.takeIf { it.path.startsWith(root.path + File.separator) }
-}
-
-internal fun isTrustedGithubArchiveRedirect(uri: URI): Boolean =
-    uri.scheme.equals("https", ignoreCase = true) &&
-        uri.host.equals("codeload.github.com", ignoreCase = true) &&
-        uri.rawUserInfo == null &&
-        (uri.port == -1 || uri.port == 443)
-
-private class CappedInputStream(
-    input: InputStream,
-    private val maxBytes: Long,
-) : FilterInputStream(input) {
-    private var bytesRead = 0L
-
-    override fun read(): Int {
-        val value = super.read()
-        if (value >= 0) recordBytes(1)
-        return value
-    }
-
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        val bytes = super.read(buffer, offset, length)
-        if (bytes > 0) recordBytes(bytes.toLong())
-        return bytes
-    }
-
-    private fun recordBytes(bytes: Long) {
-        bytesRead += bytes
-        if (bytesRead > maxBytes) throw IOException("The repository archive exceeds the ${maxBytes / (1024 * 1024)} MB import limit.")
     }
 }
 
