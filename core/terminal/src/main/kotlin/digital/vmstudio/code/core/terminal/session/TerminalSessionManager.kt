@@ -112,6 +112,11 @@ class TerminalSessionManager @Inject constructor(
     }
 
     /** Closes every session for a server, used when its connection is dropped. */
+    fun closeAllForServer(serverId: String) {
+        val targets = _sessions.value.filter { it.serverId == serverId }
+        targets.forEach { close(it.id) }
+    }
+
     private fun defaultTitle(serverName: String): String {
         val existing = _sessions.value.count { it.title.startsWith(serverName) }
         return if (existing == 0) serverName else "$serverName ${existing + 1}"

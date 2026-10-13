@@ -75,7 +75,10 @@ private val RETRYABLE_ERROR_TYPES = listOf(
 )
 
 /** OpenAI's `finish_reason` and Anthropic's `stop_reason` for an output-limit stop. */
-internal fun isLengthStop(reason: String?): Boolean = reason == "length" || reason == "max_tokens"
+internal fun isLengthStop(reason: String?): Boolean {
+    val r = reason?.lowercase() ?: return false
+    return r == "length" || r == "max_tokens" || r == "max_output_tokens" || r == "model_length" || r == "token_limit"
+}
 
 /**
  * Builds a tool-capable chat request and parses its (non-streamed) response, for

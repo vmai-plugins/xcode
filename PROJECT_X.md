@@ -242,6 +242,30 @@ During our deep audit, the following critical bugs across AI, UI, Wire Protocol,
 - **Root Cause**: `GREP_SEARCH` tool was omitted for local workspaces because `commandGuard.run` requires an SSH connection.
 - **Fix**: Implemented `localGrep()` using recursive filesystem exploration via `RemoteFileSystem`, enabling `GREP_SEARCH` unconditionally across VPS, GitHub, and local workspaces.
 
+### Bug 14: OmniRoute Token Limit Case-Sensitivity & Multimodel Truncation Miss
+- **Severity**: HIGH (Silent tool call corruption when output is truncated)
+- **File**: [`OmniRouteToolCodec.kt:78`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteToolCodec.kt)
+- **Root Cause**: `isLengthStop()` used strict exact string comparisons `== "length" || == "max_tokens"`. Gemini returns uppercase `"MAX_TOKENS"`, Vertex returns `"max_output_tokens"`, Mistral returns `"model_length"`, Groq returns `"token_limit"`. All returned `false`, causing the agent loop to mistake cut-off JSON for complete output and error or corrupt code.
+- **Fix**: Normalized reason via `lowercase()` and recognized all major gateway stop reason dialects (`length`, `max_tokens`, `max_output_tokens`, `model_length`, `token_limit`).
+
+### Bug 15: GitHub REST Zero-Clone Space/Special Character URL Failure
+- **Severity**: MEDIUM (OkHttp IllegalArgumentException when reading or saving files with spaces)
+- **File**: [`GitHubRepositoryClient.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitHubRepositoryClient.kt)
+- **Root Cause**: `contents/$cleanPath` and `trees/$ref` concatenated raw file paths without URL encoding. Any file path with spaces (e.g. `docs/Release Notes.md`) or branch names with `#` or `/` crashed OkHttp's URL builder.
+- **Fix**: Added `encodePath()` and `encodeParam()` using `URLEncoder.encode` with `%20` replacement across `getFileContent()`, `getRepositoryTree()`, and `putFileContent()`.
+
+### Bug 16: Terminal Session Manager Server Disconnect Tab Leak & Ghost Sessions
+- **Severity**: MEDIUM (Ghost terminal tabs remaining active after SSH drops)
+- **File**: [`TerminalSessionManager.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/session/TerminalSessionManager.kt)
+- **Root Cause**: An orphaned doc comment documented closing all sessions on disconnect, but `closeAllForServer(serverId)` was completely omitted from the class implementation.
+- **Fix**: Implemented `closeAllForServer(serverId)` to cleanly iterate and terminate all active sessions tied to the dropped server.
+
+### Bug 17: SSH KeepAlive Heartbeat Initialization Race
+- **Severity**: MEDIUM (SSH connections silently dying on idle mobile connections)
+- **File**: [`DefaultSshConnectionManager.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/connection/DefaultSshConnectionManager.kt)
+- **Root Cause**: Keepalive interval was set prior to socket connection, but SSHJ heartbeat runner thread can fail to spawn if socket handshake occurs after configuration.
+- **Fix**: Reaffirmed `configureKeepAlive(created, server)` post-authentication to ensure the heartbeat daemon is actively running.
+
 ---
 
 ## 6. Developer Runbook & Operations

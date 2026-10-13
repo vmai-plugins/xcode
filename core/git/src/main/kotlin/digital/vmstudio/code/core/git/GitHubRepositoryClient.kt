@@ -204,6 +204,14 @@ class GitHubRepositoryClient @Inject constructor(
         )
     }
 
+    private fun encodePath(path: String): String =
+        path.trimStart('/').split('/').joinToString("/") { segment ->
+            URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+        }
+
+    private fun encodeParam(value: String): String =
+        URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
     suspend fun getFileContent(repoFullName: String, path: String, ref: String? = null): VmResult<String> {
         val secret = when (val result = readToken()) {
             is VmResult.Success -> result.value
@@ -211,10 +219,10 @@ class GitHubRepositoryClient @Inject constructor(
         }
         return try {
             val token = secret.useAsString { it }
-            val cleanPath = path.trimStart('/')
-            val refParam = if (!ref.isNullOrBlank()) "?ref=$ref" else ""
+            val encodedPath = encodePath(path)
+            val refParam = if (!ref.isNullOrBlank()) "?ref=${encodeParam(ref)}" else ""
             val request = Request.Builder()
-                .url("https://api.github.com/repos/$repoFullName/contents/$cleanPath$refParam")
+                .url("https://api.github.com/repos/$repoFullName/contents/$encodedPath$refParam")
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/vnd.github.raw+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
@@ -248,9 +256,10 @@ class GitHubRepositoryClient @Inject constructor(
         }
         return try {
             val token = secret.useAsString { it }
+            val encodedRef = encodeParam(ref)
             val recursiveParam = if (recursive) "?recursive=1" else ""
             val request = Request.Builder()
-                .url("https://api.github.com/repos/$repoFullName/git/trees/$ref$recursiveParam")
+                .url("https://api.github.com/repos/$repoFullName/git/trees/$encodedRef$recursiveParam")
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
@@ -301,10 +310,10 @@ class GitHubRepositoryClient @Inject constructor(
         }
         return try {
             val token = secret.useAsString { it }
-            val cleanPath = path.trimStart('/')
-            val refQuery = if (!branch.isNullOrBlank()) "?ref=$branch" else ""
+            val encodedPath = encodePath(path)
+            val refQuery = if (!branch.isNullOrBlank()) "?ref=${encodeParam(branch)}" else ""
             val metaRequest = Request.Builder()
-                .url("https://api.github.com/repos/$repoFullName/contents/$cleanPath$refQuery")
+                .url("https://api.github.com/repos/$repoFullName/contents/$encodedPath$refQuery")
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
@@ -328,7 +337,7 @@ class GitHubRepositoryClient @Inject constructor(
             }.toString()
 
             val putRequest = Request.Builder()
-                .url("https://api.github.com/repos/$repoFullName/contents/$cleanPath")
+                .url("https://api.github.com/repos/$repoFullName/contents/$encodedPath")
                 .put(bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/vnd.github+json")

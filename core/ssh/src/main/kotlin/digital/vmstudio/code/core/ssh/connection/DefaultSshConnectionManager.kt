@@ -172,6 +172,7 @@ class DefaultSshConnectionManager @Inject constructor(
 
                 runInterruptible { created.connect(server.host, server.port) }
                 authenticate(created, server)
+                configureKeepAlive(created, server)
 
                 val info = ServerProbe.probe(created, server, ioDispatcher)
                 SshSession(
