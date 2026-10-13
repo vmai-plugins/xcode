@@ -1148,6 +1148,10 @@ class OmniRouteAgentLoop @Inject constructor(
     private fun resolvePath(workingDirectory: String, path: String): String {
         PathGuard.resolve(workingDirectory, path)?.let { return it }
         val root = workingDirectory.trimEnd('/')
+        if (root.startsWith("~") && (path.startsWith(root) || !path.startsWith("/"))) {
+            val combined = if (path.startsWith(root)) path else "$root/$path"
+            return PathGuard.normalize(combined)
+        }
         return digital.vmstudio.code.core.sftp.model.RemotePath.confine(root, path) ?: root
     }
 

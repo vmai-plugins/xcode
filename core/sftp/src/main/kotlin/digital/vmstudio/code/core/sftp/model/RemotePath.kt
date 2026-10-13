@@ -129,9 +129,13 @@ object RemotePath {
      */
     fun looksSensitive(path: String): Boolean {
         val fileName = name(path).lowercase()
+        val normalized = normalise(path).lowercase()
         return SENSITIVE_NAMES.any { fileName == it || fileName.startsWith("$it.") } ||
             SENSITIVE_SUFFIXES.any { fileName.endsWith(it) } ||
-            fileName.startsWith(".env")
+            fileName.startsWith(".env") ||
+            fileName == "local.properties" ||
+            fileName == "google-services.json" ||
+            normalized.endsWith("/.git/config")
     }
 
     private val SENSITIVE_NAMES = setOf(

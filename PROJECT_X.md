@@ -266,6 +266,24 @@ During our deep audit, the following critical bugs across AI, UI, Wire Protocol,
 - **Root Cause**: Keepalive interval was set prior to socket connection, but SSHJ heartbeat runner thread can fail to spawn if socket handshake occurs after configuration.
 - **Fix**: Reaffirmed `configureKeepAlive(created, server)` post-authentication to ensure the heartbeat daemon is actively running.
 
+### Bug 18: PathGuard Tilde Path Invalidation & Normalization Traversal Block
+- **Severity**: HIGH (Agent unable to read or write files on default VPS project paths)
+- **Files**: [`PathGuard.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/PathGuard.kt), [`OmniRouteAgentLoop.kt:1148`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Root Cause**: `PathGuard.problem()` unconditionally rejected any path beginning with `~`, even when the project's working directory itself was `"~/projects/..."`. Furthermore, `normalize()` prepended `/` to tildes (converting `"~/projects/app"` to `"/~/projects/app"`). When `PathGuard.resolve()` failed, `resolvePath()` fell back to the root folder, causing the agent to attempt reading the project directory as a file.
+- **Fix**: Allowed paths matching or nested inside tilde working directories, preserved tildes in `normalize()`, and updated `resolvePath()` in `OmniRouteAgentLoop`.
+
+### Bug 19: Anthropic SSE Stream Socket Hang on `message_stop`
+- **Severity**: MEDIUM (SSE stream hanging on Anthropic models until timeout)
+- **File**: [`StreamDecoding.kt:67`](file:///d:/Dev/x-codes/core/network/src/main/kotlin/digital/vmstudio/code/core/network/http/StreamDecoding.kt)
+- **Root Cause**: `SseDecoder` only evaluated `isDone` against OpenAI's `[DONE]` terminator. Anthropic and OpenRouter Anthropic bridges finish via `event: message_stop`. Proxies using HTTP keep-alive kept the SSE connection waiting for further lines until read timeout.
+- **Fix**: Added `name == "message_stop"` and payload JSON type checking to terminate the stream as soon as Anthropic finishes.
+
+### Bug 20: Confidential Android & Git Credentials Leak in Context Scanners
+- **Severity**: HIGH (Security & secret leakage to LLM context)
+- **Files**: [`RemotePath.kt:130`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/model/RemotePath.kt), [`PathGuard.kt:127`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/PathGuard.kt)
+- **Root Cause**: `looksSensitive()` and `PathGuard.isSecret()` withheld SSH keys and `.env`, but omitted `local.properties` (Android signing keys and keystore passwords), `google-services.json` (OAuth and Firebase client tokens), and `.git/config` (containing embedded GitHub PATs).
+- **Fix**: Expanded sensitivity filters across both `RemotePath` and `PathGuard` to block access to these files.
+
 ---
 
 ## 6. Developer Runbook & Operations

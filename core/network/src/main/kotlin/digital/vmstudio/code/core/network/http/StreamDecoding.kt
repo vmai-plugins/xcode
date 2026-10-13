@@ -62,9 +62,10 @@ class SseDecoder {
         }
         val payload = data.toString()
         val name = eventName
-        data.setLength(0)
-        eventName = null
-        return SseEvent(name = name, data = payload, isDone = payload.trim() == DONE_SENTINEL)
+        val isDone = payload.trim() == DONE_SENTINEL ||
+            name == "message_stop" ||
+            payload.contains("\"type\":\"message_stop\"")
+        return SseEvent(name = name, data = payload, isDone = isDone)
     }
 
     private companion object {

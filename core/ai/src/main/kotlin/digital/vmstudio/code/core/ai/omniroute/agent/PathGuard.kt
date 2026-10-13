@@ -20,11 +20,14 @@ internal object PathGuard {
 
     /** Null when [path] may be used; otherwise a message to hand back to the model. */
     fun problem(workingDirectory: String, path: String): String? {
-        if (path.startsWith("~")) {
-            return "Home-relative paths are not available. Use a path inside $workingDirectory."
+        val root = normalize(workingDirectory)
+        val cleanPath = when {
+            workingDirectory.startsWith("~") && (path == workingDirectory || path.startsWith("$workingDirectory/")) -> path
+            path.startsWith("~") -> return "Home-relative paths are not available. Use a path inside $workingDirectory."
+            else -> path
         }
         if (isTreeUri(workingDirectory)) {
-            val target = resolveTreeUriPath(workingDirectory, path)
+            val target = resolveTreeUriPath(workingDirectory, cleanPath)
                 ?: return "That path is outside the selected phone folder. File tools only work inside it."
             return if (isSecret(treeUriRelativePath(target))) {
                 "That path holds credentials, so the agent may not read or change it."
@@ -32,8 +35,11 @@ internal object PathGuard {
                 null
             }
         }
-        val root = normalize(workingDirectory)
-        val target = normalize(if (path.startsWith("/")) path else "$workingDirectory/$path")
+        val full = when {
+            cleanPath.startsWith("/") || (workingDirectory.startsWith("~") && cleanPath.startsWith("~")) -> cleanPath
+            else -> "$workingDirectory/$cleanPath"
+        }
+        val target = normalize(full)
         val inside = root == "/" || target == root || target.startsWith("$root/")
         return when {
             !inside -> "That path is outside the project folder ($root). File tools only work inside it."
@@ -44,11 +50,15 @@ internal object PathGuard {
 
     fun resolve(workingDirectory: String, path: String): String? {
         if (isTreeUri(workingDirectory)) return resolveTreeUriPath(workingDirectory, path)
-        return normalize(if (path.startsWith("/")) path else "$workingDirectory/$path")
-            .takeIf { target ->
-                val root = normalize(workingDirectory)
-                root == "/" || target == root || target.startsWith("$root/")
-            }
+        val full = when {
+            path.startsWith("/") || (workingDirectory.startsWith("~") && path.startsWith("~")) -> path
+            else -> "$workingDirectory/$path"
+        }
+        val target = normalize(full)
+        val root = normalize(workingDirectory)
+        return target.takeIf {
+            root == "/" || target == root || target.startsWith("$root/")
+        }
     }
 
     private fun isTreeUri(path: String): Boolean =
@@ -103,6 +113,7 @@ internal object PathGuard {
             .replace("%7E", "~")
 
     internal fun normalize(path: String): String {
+        val startsWithTilde = path.startsWith("~")
         val parts = ArrayDeque<String>()
         path.split('/').forEach { part ->
             when (part) {
@@ -111,7 +122,8 @@ internal object PathGuard {
                 else -> parts.addLast(part)
             }
         }
-        return "/" + parts.joinToString("/")
+        val prefix = if (startsWithTilde) "" else "/"
+        return prefix + parts.joinToString("/")
     }
 
     private fun isSecret(path: String): Boolean {
@@ -120,6 +132,8 @@ internal object PathGuard {
         return segments.any { it.lowercase() in secretDirectories } ||
             (name.startsWith(".env") && templateSuffixes.none(name::endsWith)) ||
             name.startsWith("id_rsa") || name.startsWith("id_ed25519") || name.startsWith("id_ecdsa") ||
+            name == "local.properties" || name == "google-services.json" ||
+            (segments.contains(".git") && name == "config") ||
             secretSuffixes.any(name::endsWith)
     }
 }
