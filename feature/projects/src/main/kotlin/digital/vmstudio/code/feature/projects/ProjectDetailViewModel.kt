@@ -609,6 +609,189 @@ class ProjectDetailViewModel @Inject constructor(
             } finally {
                 isSyncing.value = false
             }
+
+            apkArtifacts.value = artifacts
+        }
+    }
+
+    fun buildAndroidApk() {
+        val proj = project.value ?: return
+        val srvId = proj.serverId
+        if (srvId == null || proj.isLocal) {
+            notificationMessage.value = "Local build: Scanning for project APK artifacts..."
+            scanApkArtifacts()
+            return
+        }
+        viewModelScope.launch {
+            isBuildingApk.value = true
+            buildStatusMessage.value = "Running Gradle assembleDebug on server..."
+            val cmd = "cd '${sh(proj.remotePath)}' && chmod +x ./gradlew && ./gradlew assembleDebug"
+            when (val res = commandGuard.run(srvId, cmd, CommandLimits(timeoutMillis = 300_000L))) {
+                is VmResult.Success -> {
+                    buildStatusMessage.value = "Build successful!"
+                    activityRepository.record(
+                        category = ActivityCategory.PROJECT,
+                        title = "Built Android APK",
+                        detail = proj.name,
+                        serverId = srvId,
+                        projectId = projectId,
+                    )
+                    scanApkArtifacts()
+                }
+                is VmResult.Failure -> {
+                    val summary = "Android build failed: ${res.error.summary}"
+                    error.value = VmError.Command(summary = summary, exitCode = 1)
+                }
+            }
+            isBuildingApk.value = false
+        }
+    }
+
+    fun downloadAndInstallApk(artifact: ApkArtifact) {
+        val proj = project.value ?: return
+        val srvId = proj.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+        viewModelScope.launch {
+            isDownloadingApk.value = true
+            notificationMessage.value = "Preparing ${artifact.name}..."
+            val downloadsDir = File(context.cacheDir, "downloads").apply { mkdirs() }
+            val localApkFile = File(downloadsDir, artifact.name)
+
+            if (proj.isRemote) {
+                notificationMessage.value = "Downloading APK from server..."
+                var downloadSuccess = false
+                remoteFileSystem.download(srvId, artifact.path, localApkFile, resume = false)
+                    .collect { event ->
+                        when (event) {
+                            is TransferEvent.Completed -> downloadSuccess = true
+                            is TransferEvent.Failed -> error.value = event.error
+                            else -> Unit
+                        }
+                    }
+                if (downloadSuccess && localApkFile.exists()) {
+                    notificationMessage.value = "Installing ${artifact.name}..."
+                    apkInstaller.install(localApkFile)
+                }
+            } else {
+                val file = File(artifact.path)
+                if (file.exists()) {
+                    apkInstaller.install(file)
+                } else {
+                    val msg = "APK file not found on phone"
+                    error.value = VmError.Storage(summary = msg, reason = artifact.path)
+                }
+            }
+            isDownloadingApk.value = false
+        }
+    }
+
+    fun downloadApkToPhoneDownloads(artifact: ApkArtifact) {
+        val proj = project.value ?: return
+        val srvId = proj.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+        viewModelScope.launch {
+            isDownloadingApk.value = true
+            val publicDownloads = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS,
+            )
+            val destDir = if (publicDownloads != null && publicDownloads.exists() && publicDownloads.canWrite()) {
+                publicDownloads
+            } else {
+                File(context.cacheDir, "downloads").apply { mkdirs() }
+            }
+            val destFile = File(destDir, artifact.name)
+
+            if (proj.isRemote) {
+                remoteFileSystem.download(srvId, artifact.path, destFile, resume = false).collect { }
+            } else {
+                File(artifact.path).copyTo(destFile, overwrite = true)
+            }
+            notificationMessage.value = "Saved ${artifact.name} to Downloads"
+            isDownloadingApk.value = false
+        }
+    }
+
+    fun loadGitStatus(srvIdOverride: String? = null, pathOverride: String? = null) {
+        val proj = project.value ?: return
+        val srvId = srvIdOverride ?: proj.serverId ?: return
+        val path = pathOverride ?: proj.remotePath
+        if (path.isBlank() || proj.isLocal) return
+        viewModelScope.launch {
+            isGitLoading.value = true
+            when (val result = gitService.status(srvId, path)) {
+                is GitResult.Success -> gitStatus.value = result.value
+                is GitResult.Failure -> gitStatus.value = null
+            }
+            isGitLoading.value = false
+        }
+    }
+
+    fun syncGit() {
+        val proj = project.value ?: return
+        val srvId = proj.serverId ?: return
+        if (proj.isLocal) return
+        viewModelScope.launch {
+            isSyncing.value = true
+            when (val pullResult = gitService.pull(srvId, proj.remotePath)) {
+                is GitResult.Success -> {
+                    activityRepository.record(
+                        category = ActivityCategory.GIT,
+                        title = "Git pulled ${proj.name}",
+                        detail = proj.remotePath,
+                        serverId = srvId,
+                        projectId = projectId,
+                    )
+                    loadProject()
+                }
+                is GitResult.Failure -> {
+                    val msg = "Git pull failed: ${pullResult.error}"
+                    error.value = VmError.Command(summary = msg, exitCode = 1)
+                }
+            }
+            isSyncing.value = false
+        }
+    }
+
+    fun commitAndPush(message: String) {
+        if (message.isBlank()) return
+        val proj = project.value ?: return
+        val srvId = proj.serverId ?: return
+        if (proj.isLocal) return
+        viewModelScope.launch {
+            isSyncing.value = true
+            when (val addRes = gitService.add(srvId, proj.remotePath)) {
+                is GitResult.Failure -> {
+                    val msg = "Git add failed: ${addRes.error}"
+                    error.value = VmError.Command(summary = msg, exitCode = 1)
+                    isSyncing.value = false
+                    return@launch
+                }
+                is GitResult.Success -> Unit
+            }
+            when (val commitRes = gitService.commit(srvId, proj.remotePath, message)) {
+                is GitResult.Failure -> {
+                    val msg = "Git commit failed: ${commitRes.error}"
+                    error.value = VmError.Command(summary = msg, exitCode = 1)
+                    isSyncing.value = false
+                    return@launch
+                }
+                is GitResult.Success -> Unit
+            }
+            when (val pushRes = gitService.push(srvId, proj.remotePath)) {
+                is GitResult.Failure -> {
+                    val msg = "Git push failed: ${pushRes.error}"
+                    error.value = VmError.Command(summary = msg, exitCode = 1)
+                }
+                is GitResult.Success -> {
+                    activityRepository.record(
+                        category = ActivityCategory.GIT,
+                        title = "Git committed & pushed",
+                        detail = "$message (${proj.name})",
+                        serverId = srvId,
+                        projectId = projectId,
+                    )
+                    loadProject()
+                }
+            }
+            isSyncing.value = false
         }
     }
 

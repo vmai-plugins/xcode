@@ -824,3 +824,4 @@ data class GatewayModelList(val ids: List<String>, val freeIds: Set<String>)
 
 /** Gateway connection details handed to a server-side run. */
 class GatewayAccess(val baseUrl: String, val dialect: OmniRouteDialect, val key: Secret)
+

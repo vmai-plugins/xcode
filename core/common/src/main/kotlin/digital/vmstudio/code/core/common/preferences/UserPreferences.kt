@@ -150,3 +150,4 @@ data class UserPreferences(
         const val PROVIDER_OMNIROUTE = "omniroute"
     }
 }
+

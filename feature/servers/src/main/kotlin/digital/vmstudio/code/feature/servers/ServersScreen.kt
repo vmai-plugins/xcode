@@ -203,7 +203,7 @@ private fun ServerCard(
                 )
                 Text(
                     text = if (server.isProduction) {
-                        "${server.displayTarget} Â· Production"
+                        "${server.displayTarget} · Production"
                     } else {
                         server.displayTarget
                     },

@@ -171,3 +171,4 @@ sealed class VmDestination(val route: String) {
 
     data object ActivityTimeline : VmDestination("activity")
 }
+

@@ -519,3 +519,4 @@ private fun MenuScaffold(
         Box(modifier = Modifier.padding(padding)) { content() }
     }
 }
+

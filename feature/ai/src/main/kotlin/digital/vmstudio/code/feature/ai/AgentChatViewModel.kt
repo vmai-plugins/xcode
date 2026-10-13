@@ -1,4 +1,4 @@
-package digital.vmstudio.code.feature.ai
+﻿package digital.vmstudio.code.feature.ai
 
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle

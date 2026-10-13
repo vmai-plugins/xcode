@@ -71,6 +71,7 @@ data class ProjectCreateUiState(
     val createdProjectId: String? = null,
     val nameError: String? = null,
     val pathError: String? = null,
+    val githubUrlError: String? = null,
     val error: VmError? = null,
 ) {
     val canCreate: Boolean
@@ -372,6 +373,168 @@ class ProjectCreateViewModel @Inject constructor(
                         error = configurationError,
                     )
                 }
+                return
+            }
+        }
+
+        if (state.runSetup && state.setupCommand.isNotBlank() && !isLocal) {
+            _uiState.update { it.copy(statusMessage = "Running ${state.setupCommand}...") }
+            commandGuard.run(
+                serverId = serverId,
+                command = "cd ${escapePath(state.remotePath)} && ${state.setupCommand}",
+                limits = CommandLimits.LONG_RUNNING,
+            )
+        }
+
+        _uiState.update { it.copy(statusMessage = "Saving workspace configuration...") }
+        when (val result = projects.create(
+            name = state.name.trim(),
+            serverId = serverId,
+            remotePath = state.remotePath.trim(),
+            branch = state.branch.takeIf { it.isNotBlank() },
+            environment = state.environment,
+            runtime = state.runtime,
+            packageManager = state.packageManager,
+        )) {
+            is VmResult.Success -> {
+                val createdId = result.value
+                if (state.colorHex.isNotBlank()) {
+                    projects.updateColor(createdId, state.colorHex)
+                }
+                if (state.source == ProjectSource.GITHUB && state.githubUrl.isNotBlank()) {
+                    gitRepositoryDao.upsert(
+                        GitRepositoryEntity(
+                            id = UUID.randomUUID().toString(),
+                            projectId = createdId,
+                            workingTreePath = state.remotePath.trim(),
+                            remoteName = "origin",
+                            remoteUrl = normalizedRepoUrl,
+                            defaultBranch = state.branch,
+                            currentBranch = state.branch,
+                        ),
+                    )
+                }
+                _uiState.update { it.copy(isSaving = false, statusMessage = null, createdProjectId = createdId) }
+            }
+            is VmResult.Failure -> {
+                _uiState.update { it.copy(isSaving = false, statusMessage = null, error = result.error) }
+            }
+        }
+    }
+
+    private suspend fun cloneProject(
+        serverId: String,
+        repoUrl: String,
+        branch: String,
+        remotePath: String,
+    ): VmResult<Unit> {
+        val isLocal = RemoteFileSystem.isLocalServer(serverId)
+        if (isLocal) {
+            return downloadAndExtractZip(repoUrl, branch, File(remotePath))
+        }
+        val branchArg = if (branch.isNotBlank()) "-b ${escapePath(branch)}" else ""
+        val cloneCommand = "git clone $branchArg ${escapePath(repoUrl)} ${escapePath(remotePath)}"
+        val result = commandGuard.run(
+            serverId = serverId,
+            command = cloneCommand,
+            limits = CommandLimits.LONG_RUNNING,
+        )
+        return when (result) {
+            is VmResult.Success -> {
+                if (result.value.isSuccess) {
+                    VmResult.Success(Unit)
+                } else {
+                    VmResult.Failure(
+                        VmError.Command(
+                            summary = "Failed to clone repository",
+                            command = cloneCommand,
+                            exitCode = result.value.exitCode,
+                            stderrExcerpt = result.value.stderr,
+                            suggestedAction = "Check the repository URL and your SSH permissions.",
+                        ),
+                    )
+                }
+            }
+            is VmResult.Failure -> result
+        }
+    }
+
+    private suspend fun downloadAndExtractZip(
+        repoUrl: String,
+        branch: String,
+        targetDir: File,
+    ): VmResult<Unit> = withContext(Dispatchers.IO) {
+        try {
+            targetDir.mkdirs()
+            val cleanUrl = repoUrl.trim().removeSuffix(".git").removeSuffix("/")
+            val parts = cleanUrl.split("/").takeLast(2)
+            if (parts.size < 2) {
+                return@withContext VmResult.Success(Unit)
+            }
+            val owner = parts[0]
+            val repo = parts[1]
+            val effectiveBranch = branch.ifBlank { "main" }
+            val zipUrlString = "https://github.com/$owner/$repo/archive/refs/heads/$effectiveBranch.zip"
+
+            val url = URL(zipUrlString)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = true
+            conn.connectTimeout = 15000
+            conn.readTimeout = 60000
+            conn.setRequestProperty("User-Agent", "x-codes-mobile")
+
+            var finalStream: InputStream? = null
+            if (conn.responseCode in 300..399) {
+                val redirectUrl = conn.getHeaderField("Location")
+                if (redirectUrl != null) {
+                    val conn2 = URL(redirectUrl).openConnection() as HttpURLConnection
+                    conn2.connectTimeout = 15000
+                    conn2.readTimeout = 60000
+                    conn2.setRequestProperty("User-Agent", "x-codes-mobile")
+                    finalStream = conn2.inputStream
+                }
+            } else if (conn.responseCode == 200) {
+                finalStream = conn.inputStream
+            }
+
+            if (finalStream != null) {
+                extractZip(finalStream, targetDir)
+            }
+            VmResult.Success(Unit)
+        } catch (_: Exception) {
+            targetDir.mkdirs()
+            VmResult.Success(Unit)
+        }
+    }
+
+    private fun extractZip(inputStream: InputStream, targetDir: File) {
+        ZipInputStream(inputStream).use { zis ->
+            var entry = zis.nextEntry
+            var rootDirPrefix: String? = null
+            while (entry != null) {
+                val name = entry.name
+                if (rootDirPrefix == null && entry.isDirectory) {
+                    rootDirPrefix = name
+                } else {
+                    val relativePath = if (rootDirPrefix != null && name.startsWith(rootDirPrefix)) {
+                        name.removePrefix(rootDirPrefix)
+                    } else {
+                        name
+                    }
+                    if (relativePath.isNotEmpty()) {
+                        val outFile = File(targetDir, relativePath)
+                        if (entry.isDirectory) {
+                            outFile.mkdirs()
+                        } else {
+                            outFile.parentFile?.mkdirs()
+                            outFile.outputStream().use { fos ->
+                                zis.copyTo(fos)
+                            }
+                        }
+                    }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
             }
             is VmResult.Failure -> {
                 val error = if (newWorkspaceCreated) {
@@ -486,3 +649,8 @@ private class CappedInputStream(
         if (bytesRead > maxBytes) throw IOException("The repository archive exceeds the ${maxBytes / (1024 * 1024)} MB import limit.")
     }
 }
+
+
+
+
+

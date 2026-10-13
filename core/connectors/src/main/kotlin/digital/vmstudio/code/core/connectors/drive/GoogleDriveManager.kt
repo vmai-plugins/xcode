@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
+import java.io.File
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -164,6 +165,14 @@ class GoogleDriveManager @Inject constructor(
                     cause = cleanupError.cause,
                 ),
             )
+        } catch (e: Exception) {
+            VmResult.Failure(VmError.IO("Google Drive Backup Failed", e.message, e))
+        } finally {
+            // Always clean up Local and Remote Temp files to prevent unbounded storage leaks
+            if (localFile.exists()) {
+                localFile.delete()
+            }
+            runOnServer(serverId, "rm -f '$tempRemoteArchive'")
         }
         operationResult
     }

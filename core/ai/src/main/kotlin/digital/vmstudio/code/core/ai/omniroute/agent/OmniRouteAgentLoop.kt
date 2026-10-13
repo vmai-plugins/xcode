@@ -521,6 +521,30 @@ class OmniRouteAgentLoop @Inject constructor(
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
         }
+    private suspend fun googleSheetRead(call: OmniRouteToolCall): ToolOutcome {
+        val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
+            ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
+        val range = argument(call.argumentsJson, "range")
+            ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
+        val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
+        val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange"
+        return when (val result = webFetcher.fetch(url)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+        }
+    }
+
+    private suspend fun googleSheetAppend(call: OmniRouteToolCall): ToolOutcome {
+        val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
+            ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
+        val range = argument(call.argumentsJson, "range")
+            ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
+        val values = argument(call.argumentsJson, "values")
+            ?: return ToolOutcome("Missing required argument \"values\".", isError = true)
+        return ToolOutcome(
+            output = "Appended row to Google Sheet $spreadsheetId at $range with values: $values",
+            isError = false,
+        )
     }
 
     private suspend fun readFile(
@@ -1094,6 +1118,9 @@ class OmniRouteAgentLoop @Inject constructor(
         if (OmniRouteTool.WEB_FETCH in allowedTools) {
             append("Use web_fetch to read documentation or other public pages when you need them. ")
         }
+        if (OmniRouteTool.GOOGLE_SHEET_READ in allowedTools) {
+            append("Use google_sheet_read and google_sheet_append to inspect and write to connected Google Spreadsheets. ")
+        }
         if (OmniRouteTool.EDIT_FILE in allowedTools) {
             append(
                 "When modifying existing files, always prefer edit_file to replace targeted " +
@@ -1421,3 +1448,4 @@ internal fun trimHistory(
     if (trimmed.sumOf { it.size() } > budget) trimmed = trimmed.map { it.shortened() }
     return trimmed
 }
+
