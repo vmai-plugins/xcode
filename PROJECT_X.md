@@ -218,6 +218,30 @@ During our deep audit, the following critical bugs across AI, UI, Wire Protocol,
 - **Root Cause**: Free tier detection didn't recognize bare model IDs (`gpt-oss-safeguard-20b`, `llama-3*`, `mixtral-*`, `qwen*`); error parser missed `"tokens per minute"` and `"tpm"` rate limits.
 - **Fix**: Expanded `isFreeModelId` and updated `RETRYABLE_ERROR_TYPES`.
 
+### Bug 10: SFTP Remote File System Tilde (`~`) Path Resolution Failure
+- **Severity**: HIGH (SFTP runtime failure for default VPS projects)
+- **File**: [`SftpRemoteFileSystem.kt`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/SftpRemoteFileSystem.kt)
+- **Root Cause**: SFTP RFC 9116 does not expand shell tildes (`~`). Project paths created as `"~/projects/..."` failed with `SSH_FX_NO_SUCH_FILE` on all SFTP file operations.
+- **Fix**: Implemented `expandPath(sftp, path)` resolving `~` via `sftp.canonicalize(".")` across all SFTP operations (`stat`, `exists`, `canonicalize`, `createDirectory`, `createFile`, `rename`, `delete`, `setPermissions`, `readText`, `writeText`, `download`, `upload`).
+
+### Bug 11: Editor Zero-Clone GitHub Virtual Path Storage Exception
+- **Severity**: HIGH (Editor crash / read error when opening GitHub files)
+- **Files**: [`feature/editor/build.gradle.kts`](file:///d:/Dev/x-codes/feature/editor/build.gradle.kts), [`EditorViewModel.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: `/github/owner/repo/...` virtual zero-clone paths were routed directly to `RemoteFileSystem`, which threw a local storage failure.
+- **Fix**: Injected `GitHubRepositoryClient` into `EditorViewModel` and intercepted `/github/` paths in both `loadFile()` and `save()`.
+
+### Bug 12: Terminal Multiline Paste CommandGuard Bypass
+- **Severity**: HIGH (Security bypass on pasted terminal commands)
+- **File**: [`TerminalViewModel.kt`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalViewModel.kt)
+- **Root Cause**: Pasted text containing newlines bypassed `submitLine()`, evading `CommandGuard.authorize()` and executing unvetted commands.
+- **Fix**: Refactored `send(text)` to split on line breaks and channel every command through `submitLine()`.
+
+### Bug 13: Local Workspace Grep Tool Omission & Traversal
+- **Severity**: MEDIUM (Agent incapable of code search on phone/local projects)
+- **File**: [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Root Cause**: `GREP_SEARCH` tool was omitted for local workspaces because `commandGuard.run` requires an SSH connection.
+- **Fix**: Implemented `localGrep()` using recursive filesystem exploration via `RemoteFileSystem`, enabling `GREP_SEARCH` unconditionally across VPS, GitHub, and local workspaces.
+
 ---
 
 ## 6. Developer Runbook & Operations

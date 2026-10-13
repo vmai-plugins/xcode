@@ -51,6 +51,18 @@ class SftpRemoteFileSystem @Inject constructor(
     private fun isLocalOrVirtual(serverId: String?, path: String): Boolean =
         RemoteFileSystem.isLocalServer(serverId) || path.startsWith("/vmhub/")
 
+    private fun expandPath(sftp: SFTPClient, path: String): String {
+        val trimmed = path.trim()
+        if (trimmed == "~" || trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+            val home = runCatching { sftp.canonicalize(".") }.getOrNull()?.trimEnd('/') ?: ""
+            if (home.isNotBlank()) {
+                val remainder = if (trimmed == "~") "" else trimmed.removePrefix("~")
+                return RemotePath.normalise(home + remainder)
+            }
+        }
+        return RemotePath.normalise(trimmed)
+    }
+
     override suspend fun list(
         serverId: String,
         path: String,
@@ -58,7 +70,7 @@ class SftpRemoteFileSystem @Inject constructor(
     ): VmResult<List<RemoteFileEntry>> {
         if (isLocalOrVirtual(serverId, path)) return localFs.list(path, options)
         return withSftp(serverId, path) { sftp ->
-            val normalised = RemotePath.normalise(path)
+            val normalised = expandPath(sftp, path)
             sftp.ls(normalised)
                 .map { it.toEntry() }
                 .sortedFor(options)
@@ -68,7 +80,7 @@ class SftpRemoteFileSystem @Inject constructor(
     override suspend fun stat(serverId: String, path: String): VmResult<RemoteFileEntry> {
         if (isLocalOrVirtual(serverId, path)) return localFs.stat(path)
         return withSftp(serverId, path) { sftp ->
-            val normalised = RemotePath.normalise(path)
+            val normalised = expandPath(sftp, path)
             val attributes = sftp.stat(normalised)
             RemoteFileEntry(
                 name = RemotePath.name(normalised),
@@ -88,7 +100,7 @@ class SftpRemoteFileSystem @Inject constructor(
             return VmResult.Success(localFs.exists(path))
         }
         return withSftp(serverId, path) { sftp ->
-            sftp.statExistence(RemotePath.normalise(path)) != null
+            sftp.statExistence(expandPath(sftp, path)) != null
         }
     }
 
@@ -96,7 +108,7 @@ class SftpRemoteFileSystem @Inject constructor(
         if (isLocalOrVirtual(serverId, path)) {
             return localFs.canonicalize(path)
         }
-        return withSftp(serverId, path) { sftp -> sftp.canonicalize(path) }
+        return withSftp(serverId, path) { sftp -> sftp.canonicalize(expandPath(sftp, path)) }
     }
 
     override suspend fun homeDirectory(serverId: String): VmResult<String> {
@@ -107,7 +119,7 @@ class SftpRemoteFileSystem @Inject constructor(
     override suspend fun createDirectory(serverId: String, path: String): VmResult<Unit> {
         if (isLocalOrVirtual(serverId, path)) return localFs.createDirectory(path)
         return withSftp(serverId, path) { sftp ->
-            sftp.mkdirs(RemotePath.normalise(path))
+            sftp.mkdirs(expandPath(sftp, path))
             VmLog.i(LogCategory.SFTP, TAG, "Created directory $path")
         }
     }
@@ -115,7 +127,7 @@ class SftpRemoteFileSystem @Inject constructor(
     override suspend fun createFile(serverId: String, path: String): VmResult<Unit> {
         if (isLocalOrVirtual(serverId, path)) return localFs.createFile(path)
         return withSftp(serverId, path) { sftp ->
-            val normalised = RemotePath.normalise(path)
+            val normalised = expandPath(sftp, path)
             if (sftp.statExistence(normalised) != null) {
                 error("A file already exists at $normalised")
             }
@@ -129,7 +141,7 @@ class SftpRemoteFileSystem @Inject constructor(
     override suspend fun rename(serverId: String, from: String, to: String): VmResult<Unit> {
         if (isLocalOrVirtual(serverId, from) || to.startsWith("/vmhub/")) return localFs.rename(from, to)
         return withSftp(serverId, from) { sftp ->
-            sftp.rename(RemotePath.normalise(from), RemotePath.normalise(to))
+            sftp.rename(expandPath(sftp, from), expandPath(sftp, to))
             VmLog.i(LogCategory.SFTP, TAG, "Renamed $from to $to")
         }
     }
@@ -141,7 +153,7 @@ class SftpRemoteFileSystem @Inject constructor(
     ): VmResult<Unit> {
         if (isLocalOrVirtual(serverId, path)) return localFs.delete(path, recursive)
         return withSftp(serverId, path) { sftp ->
-            val normalised = RemotePath.normalise(path)
+            val normalised = expandPath(sftp, path)
             val attributes = sftp.lstat(normalised)
             if (attributes.type == FileMode.Type.DIRECTORY) {
                 if (!recursive) {
@@ -163,7 +175,7 @@ class SftpRemoteFileSystem @Inject constructor(
     ): VmResult<Unit> {
         if (RemoteFileSystem.isLocalServer(serverId)) return VmResult.Success(Unit)
         return withSftp(serverId, path) { sftp ->
-            sftp.chmod(RemotePath.normalise(path), permissions.mode)
+            sftp.chmod(expandPath(sftp, path), permissions.mode)
         }
     }
 
@@ -174,7 +186,7 @@ class SftpRemoteFileSystem @Inject constructor(
     ): VmResult<String> {
         if (isLocalOrVirtual(serverId, path)) return localFs.readText(path, maxBytes)
         return withSftp(serverId, path) { sftp ->
-            val normalised = RemotePath.normalise(path)
+            val normalised = expandPath(sftp, path)
             sftp.open(normalised, setOf(OpenMode.READ)).use { remote ->
                 val length = remote.length()
                 if (length > maxBytes) {
@@ -202,7 +214,7 @@ class SftpRemoteFileSystem @Inject constructor(
     ): VmResult<Unit> {
         if (isLocalOrVirtual(serverId, path)) return localFs.writeText(path, content)
         return withSftp(serverId, path) { sftp ->
-            val normalised = RemotePath.normalise(path)
+            val normalised = expandPath(sftp, path)
             val bytes = content.toByteArray(Charsets.UTF_8)
             // TRUNC so a shorter replacement does not leave the tail of the old file.
             val modes = setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
@@ -246,7 +258,7 @@ class SftpRemoteFileSystem @Inject constructor(
         }
 
         try {
-            val normalised = RemotePath.normalise(remotePath)
+            val normalised = expandPath(sftp, remotePath)
             sftp.open(normalised, setOf(OpenMode.READ)).use { remote ->
                 val total = remote.length()
                 destination.parentFile?.mkdirs()
@@ -332,7 +344,7 @@ class SftpRemoteFileSystem @Inject constructor(
         }
 
         try {
-            val normalised = RemotePath.normalise(remotePath)
+            val normalised = expandPath(sftp, remotePath)
             val total = source.length()
 
             val alreadyThere = sftp.statExistence(normalised)?.size ?: 0L

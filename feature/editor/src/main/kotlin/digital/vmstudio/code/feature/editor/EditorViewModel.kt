@@ -9,6 +9,7 @@ import digital.vmstudio.code.core.common.result.VmResult
 import androidx.compose.ui.text.input.TextFieldValue
 import digital.vmstudio.code.core.editor.EditorSnapshot
 import digital.vmstudio.code.core.editor.EditorState
+import digital.vmstudio.code.core.git.GitHubRepositoryClient
 import digital.vmstudio.code.core.database.entity.ActivityCategory
 import digital.vmstudio.code.core.database.repository.ActivityRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
@@ -43,6 +44,7 @@ data class EditorUiState(
 @HiltViewModel
 class EditorViewModel @Inject constructor(
     private val remoteFileSystem: RemoteFileSystem,
+    private val gitHubRepositoryClient: GitHubRepositoryClient,
     private val serverRepository: ServerRepository,
     private val activityRepository: ActivityRepository,
     savedStateHandle: SavedStateHandle,
@@ -121,6 +123,30 @@ class EditorViewModel @Inject constructor(
         viewModelScope.launch {
             isLoading.value = true
             loadError.value = null
+            if (filePath.startsWith("/github/")) {
+                val parts = filePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
+                if (parts.size >= 2) {
+                    val repoFullName = "${parts[0]}/${parts[1]}"
+                    val relativePath = parts.drop(2).joinToString("/")
+                    when (val result = gitHubRepositoryClient.getFileContent(repoFullName, relativePath)) {
+                        is VmResult.Success -> {
+                            editor = EditorState(
+                                initialContent = result.value,
+                                fileName = filePath.substringAfterLast('/'),
+                            )
+                            loadedModifiedAtSeconds = null
+                            publishSnapshot()
+                            isLoading.value = false
+                            return@launch
+                        }
+                        is VmResult.Failure -> {
+                            loadError.value = result.error
+                            isLoading.value = false
+                            return@launch
+                        }
+                    }
+                }
+            }
             // The editor keeps whole copies of the text for undo and redraws every
             // line, so it opens files up to 1 MiB rather than the 8 MiB read limit.
             when (val result = remoteFileSystem.readText(serverId, filePath, maxBytes = MAX_EDIT_BYTES)) {
@@ -247,6 +273,39 @@ class EditorViewModel @Inject constructor(
             }
 
             val text = state.snapshot().textFieldValue.text
+            if (filePath.startsWith("/github/")) {
+                val parts = filePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
+                if (parts.size >= 2) {
+                    val repoFullName = "${parts[0]}/${parts[1]}"
+                    val relativePath = parts.drop(2).joinToString("/")
+                    when (val result = gitHubRepositoryClient.putFileContent(
+                        repoFullName = repoFullName,
+                        path = relativePath,
+                        content = text,
+                        commitMessage = "Update ${filePath.substringAfterLast('/')} via X-Codes Editor",
+                    )) {
+                        is VmResult.Success -> {
+                            state.markSaved(text)
+                            publishSnapshot()
+                            isSaving.value = false
+                            runCatching {
+                                activityRepository.record(
+                                    category = ActivityCategory.FILE,
+                                    title = "Saved ${filePath.substringAfterLast('/')}",
+                                    detail = filePath,
+                                    serverId = serverId,
+                                )
+                            }
+                            return@launch
+                        }
+                        is VmResult.Failure -> {
+                            saveError.value = result.error
+                            isSaving.value = false
+                            return@launch
+                        }
+                    }
+                }
+            }
             when (val result = remoteFileSystem.writeText(serverId, filePath, text)) {
                 is VmResult.Success -> {
                     state.markSaved(text)

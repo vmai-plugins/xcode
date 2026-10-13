@@ -10,6 +10,7 @@ dependencies {
     implementation(projects.core.editor)
     implementation(projects.core.ssh)
     implementation(projects.core.sftp)
+    implementation(projects.core.git)
     implementation(projects.core.database)
     implementation(libs.androidx.activity.compose)
 }

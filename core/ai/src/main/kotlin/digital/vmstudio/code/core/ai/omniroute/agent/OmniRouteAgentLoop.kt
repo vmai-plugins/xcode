@@ -272,7 +272,7 @@ class OmniRouteAgentLoop @Inject constructor(
         add(OmniRouteTool.LIST_DIRECTORY)
         val isLocalWorkspace = digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(config.serverId)
         val isGitHubWorkspace = config.workingDirectory.startsWith("/github/")
-        if (!isLocalWorkspace || isGitHubWorkspace) add(OmniRouteTool.GREP_SEARCH)
+        add(OmniRouteTool.GREP_SEARCH)
         // Read-only, but it sends a model-chosen URL off the device, so a
         // restricted run or web access disabled does not get it.
         if (!config.restricted && config.webAccessEnabled) {
@@ -671,6 +671,10 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
+        if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId) || resolved.startsWith("/vmhub/")) {
+            return localGrep(serverId, resolved, query, caseSensitive)
+        }
+
         val command = grepCommand(
             query = query,
             path = resolved,
@@ -687,6 +691,59 @@ class OmniRouteAgentLoop @Inject constructor(
                 )
             }
         }
+    }
+
+    private suspend fun localGrep(
+        serverId: String,
+        rootPath: String,
+        query: String,
+        caseSensitive: Boolean,
+    ): ToolOutcome {
+        val regex = runCatching {
+            if (caseSensitive) Regex(query) else Regex(query, RegexOption.IGNORE_CASE)
+        }.getOrElse {
+            Regex(Regex.escape(query), if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE))
+        }
+        val lineMatches = mutableListOf<String>()
+        val queue = ArrayDeque<String>()
+        queue.add(rootPath)
+        var filesInspected = 0
+        while (queue.isNotEmpty() && lineMatches.size < GREP_MAX_LINES && filesInspected < 300) {
+            val current = queue.removeFirst()
+            when (val listResult = remoteFileSystem.list(serverId, current)) {
+                is VmResult.Success -> {
+                    for (entry in listResult.value) {
+                        val name = entry.name
+                        if (name.startsWith(".") || name == "build" || name == "node_modules" || name == ".git") continue
+                        if (entry.isDirectory) {
+                            queue.add(entry.path)
+                        } else {
+                            filesInspected++
+                            if (regex.containsMatchIn(name)) {
+                                lineMatches += "[file path match] ${entry.path}"
+                            }
+                            if (entry.sizeBytes in 1..65_536 && lineMatches.size < GREP_MAX_LINES) {
+                                when (val textResult = remoteFileSystem.readText(serverId, entry.path, 65_536)) {
+                                    is VmResult.Success -> {
+                                        textResult.value.lineSequence().forEachIndexed { idx, line ->
+                                            if (lineMatches.size < GREP_MAX_LINES && regex.containsMatchIn(line)) {
+                                                lineMatches += "${entry.path}:${idx + 1}: ${line.trim()}"
+                                            }
+                                        }
+                                    }
+                                    is VmResult.Failure -> Unit
+                                }
+                            }
+                        }
+                    }
+                }
+                is VmResult.Failure -> break
+            }
+        }
+        return ToolOutcome(
+            output = lineMatches.joinToString("\n").ifBlank { "(no matches found for '$query')" },
+            isError = false,
+        )
     }
 
     /**

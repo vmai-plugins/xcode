@@ -151,6 +151,19 @@ class TerminalViewModel @Inject constructor(
      * keystroke stream. Tracking the line locally reconstructs one.
      */
     fun send(text: String) {
+        if ('\n' in text || '\r' in text) {
+            val segments = text.split(Regex("\r\n|\n|\r"))
+            segments.forEachIndexed { index, part ->
+                if (part.isNotEmpty()) {
+                    activeSession()?.send(part)
+                    pendingLine.append(part)
+                }
+                if (index < segments.size - 1) {
+                    submitLine()
+                }
+            }
+            return
+        }
         activeSession()?.send(text)
         pendingLine.append(text)
     }
