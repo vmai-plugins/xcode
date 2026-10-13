@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -295,17 +296,23 @@ private fun TerminalInputBar(
         ) {
             KeyChip("Esc") { onSendKey(TerminalKey.ESCAPE) }
             KeyChip("Tab") { onSendKey(TerminalKey.TAB) }
-            KeyChip("Bksp") { onSendKey(TerminalKey.BACKSPACE) }
-            KeyChip(if (controlArmed) "CTRL on" else "Ctrl") { controlArmed = !controlArmed }
+            KeyChip("Ctrl", isActive = controlArmed) { controlArmed = !controlArmed }
             KeyChip("^C") { onInterrupt() }
             KeyChip("^D") { onSendControl('D') }
             KeyChip("^Z") { onSendControl('Z') }
-            KeyChip("Up") { onSendKey(TerminalKey.ARROW_UP) }
-            KeyChip("Down") { onSendKey(TerminalKey.ARROW_DOWN) }
-            KeyChip("Left") { onSendKey(TerminalKey.ARROW_LEFT) }
-            KeyChip("Right") { onSendKey(TerminalKey.ARROW_RIGHT) }
+            KeyChip("↑") { onSendKey(TerminalKey.ARROW_UP) }
+            KeyChip("↓") { onSendKey(TerminalKey.ARROW_DOWN) }
+            KeyChip("←") { onSendKey(TerminalKey.ARROW_LEFT) }
+            KeyChip("→") { onSendKey(TerminalKey.ARROW_RIGHT) }
+            KeyChip("|") { onSendText("|") }
+            KeyChip("/") { onSendText("/") }
+            KeyChip("-") { onSendText("-") }
+            KeyChip("~") { onSendText("~") }
+            KeyChip("&") { onSendText("&") }
+            KeyChip("$") { onSendText("$") }
             KeyChip("Home") { onSendKey(TerminalKey.HOME) }
             KeyChip("End") { onSendKey(TerminalKey.END) }
+            KeyChip("Bksp") { onSendKey(TerminalKey.BACKSPACE) }
             KeyChip("Clear") { onClear() }
         }
 
@@ -393,12 +400,39 @@ private fun TerminalInputBar(
 }
 
 @Composable
-private fun KeyChip(label: String, onClick: () -> Unit) {
-    VmButton(
-        text = label,
+private fun KeyChip(
+    label: String,
+    isActive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    androidx.compose.material3.Surface(
         onClick = onClick,
-        style = digital.vmstudio.code.core.ui.component.VmButtonStyle.Secondary,
-    )
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+        color = if (isActive) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        tonalElevation = 2.dp,
+        modifier = Modifier.height(32.dp),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 10.dp),
+        ) {
+            Text(
+                text = label,
+                style = VmTheme.code.mono.copy(
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    color = if (isActive) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                ),
+            )
+        }
+    }
 }
 
 private const val DEFAULT_COLUMNS = 80
