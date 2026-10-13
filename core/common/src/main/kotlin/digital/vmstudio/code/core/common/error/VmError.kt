@@ -84,7 +84,7 @@ sealed class VmError {
     ) : VmError() {
         override val summary: String = "Host key verification failed"
         override val reason: String =
-            "The key presented by $host does not match the key VMStudio Code trusted previously. " +
+            "The key presented by $host does not match the key X-codes trusted previously. " +
                 "This happens after a legitimate server rebuild, but it can also indicate interception."
         override val suggestedAction: String =
             "Verify the new fingerprint out-of-band before trusting it."
@@ -105,7 +105,7 @@ sealed class VmError {
         val keyType: String,
     ) : VmError() {
         override val summary: String = "Unrecognised host"
-        override val reason: String = "VMStudio Code has not connected to $host before."
+        override val reason: String = "X-codes has not connected to $host before."
         override val suggestedAction: String =
             "Confirm the fingerprint matches your server before trusting it."
         override val retryable: Boolean = false
@@ -264,3 +264,4 @@ fun VmError.displayText(): String = buildString {
     append(summary)
     reason?.let { append(" - ").append(it) }
 }
+

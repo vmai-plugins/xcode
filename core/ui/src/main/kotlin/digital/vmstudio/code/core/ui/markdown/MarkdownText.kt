@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -58,70 +59,74 @@ fun MarkdownText(
     val spacing = VmTheme.spacing
     val quoteBar = MaterialTheme.colorScheme.outlineVariant
 
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-    ) {
-        blocks.forEach { block ->
-            when (block) {
-                // Code sits outside the selection container: it has its own copy
-                // button, and a horizontal scroller inside a text selector fights
-                // the drag gesture.
-                is MarkdownBlock.CodeBlock -> CodeBlockView(block)
+    SelectionContainer {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            blocks.forEach { block ->
+                when (block) {
+                    // Code sits outside the selection container: it has its own copy
+                    // button, and a horizontal scroller inside a text selector fights
+                    // the drag gesture.
+                    is MarkdownBlock.CodeBlock -> DisableSelection {
+                        CodeBlockView(block)
+                    }
 
-                is MarkdownBlock.Heading -> SelectionContainer {
-                    Text(
-                        text = block.spans.toAnnotated(),
-                        style = when (block.level) {
-                            1 -> MaterialTheme.typography.titleMedium
-                            2 -> MaterialTheme.typography.titleSmall
-                            else -> MaterialTheme.typography.labelLarge
-                        },
-                        color = color,
-                    )
-                }
-
-                is MarkdownBlock.BulletItem -> SelectionContainer {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                        modifier = Modifier.padding(start = (block.depth * NEST_INDENT_DP).dp),
-                    ) {
+                    is MarkdownBlock.Heading -> {
                         Text(
-                            text = block.ordinal ?: "•",
+                            text = block.spans.toAnnotated(),
+                            style = when (block.level) {
+                                1 -> MaterialTheme.typography.titleMedium
+                                2 -> MaterialTheme.typography.titleSmall
+                                else -> MaterialTheme.typography.labelLarge
+                            },
+                            color = color,
+                        )
+                    }
+
+                    is MarkdownBlock.BulletItem -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            modifier = Modifier.padding(start = (block.depth * NEST_INDENT_DP).dp),
+                        ) {
+                            Text(
+                                text = block.ordinal ?: "•",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = block.spans.toAnnotated(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = color,
+                            )
+                        }
+                    }
+
+                    is MarkdownBlock.Rule -> HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
+
+                    is MarkdownBlock.Quote -> {
+                        Text(
+                            text = block.spans.toAnnotated(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .drawBehind {
+                                    drawRect(color = quoteBar, size = size.copy(width = QUOTE_BAR_DP.dp.toPx()))
+                                }
+                                .padding(start = spacing.sm),
                         )
+                    }
+
+                    is MarkdownBlock.Table -> TableView(block, color)
+
+                    is MarkdownBlock.Paragraph -> {
                         Text(
                             text = block.spans.toAnnotated(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = color,
                         )
                     }
-                }
-
-                is MarkdownBlock.Rule -> HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
-
-                is MarkdownBlock.Quote -> SelectionContainer {
-                    Text(
-                        text = block.spans.toAnnotated(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .drawBehind {
-                                drawRect(color = quoteBar, size = size.copy(width = QUOTE_BAR_DP.dp.toPx()))
-                            }
-                            .padding(start = spacing.sm),
-                    )
-                }
-
-                is MarkdownBlock.Table -> TableView(block, color)
-
-                is MarkdownBlock.Paragraph -> SelectionContainer {
-                    Text(
-                        text = block.spans.toAnnotated(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = color,
-                    )
                 }
             }
         }
@@ -138,39 +143,37 @@ private fun TableView(table: MarkdownBlock.Table, color: Color) {
     val spacing = VmTheme.spacing
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
         table.rows.forEach { row ->
-            SelectionContainer {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.small)
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .padding(spacing.sm),
-                    verticalArrangement = Arrangement.spacedBy(spacing.xxs),
-                ) {
-                    row.forEachIndexed { column, cell ->
-                        if (cell.isEmpty()) return@forEachIndexed
-                        val label = table.header.getOrNull(column).orEmpty()
-                        if (column == 0) {
-                            Text(
-                                text = cell.toAnnotated(),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = color,
-                            )
-                        } else {
-                            Text(
-                                text = buildAnnotatedString {
-                                    if (label.isNotEmpty()) {
-                                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                                            append(label.joinToString("") { it.text })
-                                            append(": ")
-                                        }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
+                row.forEachIndexed { column, cell ->
+                    if (cell.isEmpty()) return@forEachIndexed
+                    val label = table.header.getOrNull(column).orEmpty()
+                    if (column == 0) {
+                        Text(
+                            text = cell.toAnnotated(),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = color,
+                        )
+                    } else {
+                        Text(
+                            text = buildAnnotatedString {
+                                if (label.isNotEmpty()) {
+                                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                                        append(label.joinToString("") { it.text })
+                                        append(": ")
                                     }
-                                    append(cell.toAnnotated())
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = color,
-                            )
-                        }
+                                }
+                                append(cell.toAnnotated())
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = color,
+                        )
                     }
                 }
             }
@@ -182,6 +185,7 @@ private fun TableView(table: MarkdownBlock.Table, color: Color) {
 private fun CodeBlockView(block: MarkdownBlock.CodeBlock) {
     val clipboard = LocalClipboardManager.current
     val spacing = VmTheme.spacing
+    val highlighted = remember(block.code) { highlightCodeSyntax(block.code) }
 
     Column(
         modifier = Modifier
@@ -192,44 +196,80 @@ private fun CodeBlockView(block: MarkdownBlock.CodeBlock) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = spacing.sm, end = spacing.xs),
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.65f))
+                .padding(start = spacing.sm, end = spacing.xxs),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = block.language.orEmpty(),
+                text = block.language?.uppercase()?.ifBlank { "CODE" } ?: "CODE",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
             )
-            IconButton(onClick = { clipboard.setText(AnnotatedString(block.code)) }) {
+            IconButton(
+                onClick = { clipboard.setText(AnnotatedString(block.code)) },
+                modifier = Modifier.size(30.dp),
+            ) {
                 Icon(
                     imageVector = Icons.Default.ContentCopy,
                     contentDescription = "Copy code",
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(14.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
-        SelectionContainer {
-            Text(
-                text = block.code,
-                style = VmTheme.code.mono,
-                color = MaterialTheme.colorScheme.onSurface,
-                // Code must not reflow: a wrapped command line changes what it says.
-                softWrap = false,
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = spacing.sm)
-                    .padding(bottom = spacing.sm),
-            )
-        }
+        Text(
+            text = highlighted,
+            style = VmTheme.code.mono,
+            color = MaterialTheme.colorScheme.onSurface,
+            // Code must not reflow: a wrapped command line changes what it says.
+            softWrap = false,
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = spacing.sm, vertical = spacing.xs),
+        )
+    }
+}
+
+private val CODE_KEYWORDS = Regex(
+    "\\b(fun|val|var|class|object|interface|return|if|else|when|for|while|in|is|as|null|true|false|" +
+        "suspend|private|public|internal|protected|override|data|sealed|enum|companion|import|package|" +
+        "def|async|await|from|try|catch|finally|throw|raise|const|let|export|default|function|type)\\b",
+)
+private val CODE_STRINGS = Regex("\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'")
+private val CODE_COMMENTS = Regex("(//.*$|#.*$)", RegexOption.MULTILINE)
+private val CODE_NUMBERS = Regex("\\b\\d+(\\.\\d+)?\\b")
+
+private fun highlightCodeSyntax(code: String): AnnotatedString = buildAnnotatedString {
+    append(code)
+    CODE_KEYWORDS.findAll(code).forEach { match ->
+        addStyle(
+            SpanStyle(color = Color(0xFFC792EA), fontWeight = FontWeight.SemiBold),
+            match.range.first,
+            match.range.last + 1,
+        )
+    }
+    CODE_NUMBERS.findAll(code).forEach { match ->
+        addStyle(SpanStyle(color = Color(0xFFF78C6C)), match.range.first, match.range.last + 1)
+    }
+    CODE_STRINGS.findAll(code).forEach { match ->
+        addStyle(SpanStyle(color = Color(0xFFC3E88D)), match.range.first, match.range.last + 1)
+    }
+    CODE_COMMENTS.findAll(code).forEach { match ->
+        addStyle(
+            SpanStyle(color = Color(0xFF697098), fontStyle = FontStyle.Italic),
+            match.range.first,
+            match.range.last + 1,
+        )
     }
 }
 
 @Composable
 private fun List<MarkdownSpan>.toAnnotated(): AnnotatedString {
     val codeBackground = VmTheme.colors.codeSurface
+    val codeColor = MaterialTheme.colorScheme.secondary
     val linkColor = MaterialTheme.colorScheme.primary
     return buildAnnotatedString {
         this@toAnnotated.forEach { span ->
@@ -238,14 +278,22 @@ private fun List<MarkdownSpan>.toAnnotated(): AnnotatedString {
                 fontStyle = if (span.italic) FontStyle.Italic else null,
                 fontFamily = if (span.code) FontFamily.Monospace else null,
                 fontSize = if (span.code) INLINE_CODE_SIZE_SP.sp else TextUnit.Unspecified,
+                color = if (span.code) codeColor else Color.Unspecified,
                 background = if (span.code) codeBackground else Color.Unspecified,
             )
             val url = span.url
             if (url == null) {
                 withStyle(style) { append(span.text) }
             } else {
-                val linkStyle = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
-                withLink(LinkAnnotation.Url(url, TextLinkStyles(linkStyle))) { append(span.text) }
+                val isSafe = url.startsWith("http://", ignoreCase = true) ||
+                    url.startsWith("https://", ignoreCase = true) ||
+                    url.startsWith("mailto:", ignoreCase = true)
+                if (isSafe) {
+                    val linkStyle = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+                    withLink(LinkAnnotation.Url(url, TextLinkStyles(linkStyle))) { append(span.text) }
+                } else {
+                    withStyle(style.copy(color = linkColor)) { append(span.text) }
+                }
             }
         }
     }

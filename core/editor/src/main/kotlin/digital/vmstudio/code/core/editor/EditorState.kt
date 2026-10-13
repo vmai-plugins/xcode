@@ -124,7 +124,8 @@ class EditorState(
     )
 
     private fun applyText(text: String) {
-        textFieldValue = textFieldValue.copy(text = text, selection = TextRange(text.length))
+        val safeCursor = textFieldValue.selection.start.coerceIn(0, text.length)
+        textFieldValue = textFieldValue.copy(text = text, selection = TextRange(safeCursor))
         isDirty = text != savedText
     }
 

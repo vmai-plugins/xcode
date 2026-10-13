@@ -8,9 +8,13 @@ android {
 
 dependencies {
     implementation(projects.core.ai)
+    implementation(projects.core.database)
+    implementation(projects.core.git)
+    implementation(projects.core.network)
+    implementation(projects.core.security)
     implementation(projects.core.ssh)
     implementation(projects.core.sftp)
-    implementation(projects.core.git)
     implementation(projects.core.project)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.documentfile)
 }

@@ -10,15 +10,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -97,54 +108,86 @@ internal fun EmptyChatHero(
         workingDirectory.trimEnd('/').substringAfterLast('/', "")
             .ifBlank { "General chat · pick a project above to work on code" }
     }
+    val greeting = remember {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        when (hour) {
+            in 5..11 -> "Good morning"
+            in 12..17 -> "Good afternoon"
+            else -> "Good evening"
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
+            .padding(horizontal = 20.dp, vertical = spacing.md),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = Icons.Default.AutoAwesome,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(36.dp),
-        )
+        // --- Kimi Glowing Orb Avatar ---
+        Surface(
+            shape = RoundedCornerShape(32.dp),
+            color = Color(0xFF1E88E5).copy(alpha = 0.15f),
+            modifier = Modifier.size(72.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFF29B6F6),
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(modifier = Modifier.size(4.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                            Box(modifier = Modifier.size(4.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                        }
+                    }
+                }
+            }
+        }
+
         Text(
-            text = if (isGeneral) "How can I help?" else "What should we work on?",
-            style = MaterialTheme.typography.headlineSmall,
+            text = "$greeting! What would you like to build today?",
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = spacing.md),
-        )
-        Text(
-            text = dirName,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp, bottom = spacing.lg),
+            modifier = Modifier.padding(top = 20.dp),
         )
 
-        val suggestions = if (isGeneral) GENERAL_SUGGESTIONS else listOf(
-            "Explain this project" to
-                "Explain the structure of this project, its dependencies and key entry points.",
-            "Find bugs" to "Review recent changes for bugs and runtime issues.",
-            "Write tests" to "Write tests for the core flows of this project.",
-            "Git status" to "Summarize the uncommitted changes in this repository.",
+        Text(
+            text = if (isGeneral) "General workspace · No project pinned" else "Active folder: $dirName",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp, bottom = 28.dp),
         )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            suggestions.forEach { (label, prompt) ->
+
+        // --- Kimi Horizontal Quick Action Pills ---
+        val actions = listOf(
+            "Project Audit" to "Audit the current workspace, check architecture, dependencies, and potential bugs.",
+            "Explain Code" to "Explain the structure of this project, its dependencies, and entry points.",
+            "Write Tests" to "Write tests for the critical components and business logic in this repo.",
+            "Git Status" to "Check git status, show uncommitted diffs, and review changes.",
+            "Fix Errors" to "Review recent runtime errors and propose complete, robust fixes.",
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            actions.forEach { (label, prompt) ->
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(1.dp, VmTheme.colors.divider),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .clickable { onSuggestionClick(prompt) },
                 ) {
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     )
@@ -153,14 +196,6 @@ internal fun EmptyChatHero(
         }
     }
 }
-
-/** For a chat with no project: nothing here can touch a server. */
-private val GENERAL_SUGGESTIONS = listOf(
-    "Explain a concept" to "Explain how HTTPS works, step by step, with a simple example.",
-    "Write code" to "Write a small, well-commented function that ",
-    "Debug an error" to "Here is an error message, what causes it and how do I fix it?\n\n",
-    "Plan a feature" to "Help me plan a feature: ",
-)
 
 /**
  * Shown only when the chosen backend cannot run, naming that backend and the fix.
@@ -266,72 +301,250 @@ internal fun BackgroundRunsSection(
     if (runs.isEmpty()) return
     val spacing = VmTheme.spacing
 
-    VmCard(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Running in the background", style = MaterialTheme.typography.titleSmall)
-            IconButton(onClick = onRefresh) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh background runs",
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
+    var expanded by remember { mutableStateOf(true) }
 
-        runs.forEach { run ->
-            val id = run.id ?: return@forEach
-            Column(
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF1E1F22),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.md, vertical = 4.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = spacing.sm),
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = run.name ?: id,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = spacing.xs),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFF4CAF50),
+                    )
+                    Text(
+                        text = "${runs.size} task${if (runs.size > 1) "s" else ""} running",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFE2E2E5),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF2B2D31))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = "LIVE",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4CAF50),
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh tasks",
+                            tint = Color(0xFF8E919A),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = Color(0xFF8E919A),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+
+            if (expanded) {
+                Spacer(modifier = Modifier.size(8.dp))
+                runs.forEach { run ->
+                    val id = run.id ?: return@forEach
                     Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        VmChip(text = id, monospace = true)
-                        if (run.isBlocked) {
-                            VmChip(text = "Needs attention")
-                        } else {
-                            run.status?.let { VmChip(text = it) }
-                        }
-                    }
-
-                    VmButton(
-                        text = "Output",
-                        onClick = { onOpenLogs(id) },
-                        style = VmButtonStyle.Tertiary,
-                    )
-                    IconButton(onClick = { onStop(id) }) {
-                        Icon(
-                            imageVector = Icons.Default.Stop,
-                            contentDescription = "Stop this run",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(18.dp),
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
                         )
+                        Text(
+                            text = run.name ?: id,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = Color(0xFFC4C6D0),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        VmButton(
+                            text = "Logs",
+                            onClick = { onOpenLogs(id) },
+                            style = VmButtonStyle.Tertiary,
+                        )
+                        IconButton(
+                            onClick = { onStop(id) },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "Stop this run",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/**
+ * Antigravity-style Queued Tasks Shelf:
+ * Sits right above the composer when tasks are queued while an agent is running.
+ * Allows mid-flight steering ("Steer Now") or discarding.
+ */
+/**
+ * Antigravity-style Queued Tasks Shelf:
+ * Clean, dark rounded pill card matching Google Antigravity mobile UI:
+ * "Queued Messages (count) | Sends after agent finishes working ⌄"
+ * Individual items with prompt preview, arrow forward (steer now), edit, and trash icon.
+ */
+@Composable
+internal fun QueuedTasksShelf(
+    queued: List<QueuedMessage>,
+    onSteerNow: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (queued.isEmpty()) return
+    val spacing = VmTheme.spacing
+    var expanded by remember { mutableStateOf(true) }
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF1E1F22),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.md, vertical = 4.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "Queued Messages",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFE2E2E5),
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF333539))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = queued.size.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFC4C6D0),
+                    )
+                }
+                Text(
+                    text = "Sends after agent finishes working",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF8E919A),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = Color(0xFF8E919A),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+
+            if (expanded) {
+                Spacer(modifier = Modifier.size(8.dp))
+                queued.forEachIndexed { index, item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF2B2D31))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = "#${index + 1}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Text(
+                            text = item.prompt,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFE2E2E5),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = { onSteerNow(item.id) },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Steer Now",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = { onRemove(item.id) },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Remove",
+                                tint = Color(0xFF8E919A),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+

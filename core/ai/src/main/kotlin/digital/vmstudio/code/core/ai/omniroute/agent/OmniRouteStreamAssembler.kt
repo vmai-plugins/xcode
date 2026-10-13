@@ -17,7 +17,11 @@ import kotlinx.serialization.json.put
  */
 class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
 
-    private class ToolDraft(var id: String? = null, var name: String? = null) {
+    private class ToolDraft(
+        var id: String? = null,
+        var name: String? = null,
+        var initialInput: String? = null,
+    ) {
         val arguments = StringBuilder()
     }
 
@@ -55,7 +59,7 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
             OmniRouteToolCall(
                 id = draft.id.orEmpty(),
                 name = name,
-                argumentsJson = draft.arguments.toString().ifBlank { "{}" },
+                argumentsJson = draft.arguments.toString().ifBlank { draft.initialInput ?: "{}" },
             )
         }
         gatewayError?.let { return it }
@@ -74,16 +78,34 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
         }
         val choice = (root["choices"] as? JsonArray)?.firstOrNull() as? JsonObject
         if (isLengthStop(choice?.string("finish_reason"))) lengthStop = true
-        val delta = choice?.get("delta") as? JsonObject ?: return null
+        val delta = (choice?.get("delta") as? JsonObject)
+            ?: (choice?.get("message") as? JsonObject)
+            ?: return null
 
         (delta["tool_calls"] as? JsonArray)?.forEach { element ->
             val call = element as? JsonObject ?: return@forEach
-            val index = call.long("index")?.toInt() ?: tools.size
+            val callId = call.string("id")
+            val function = call["function"] as? JsonObject
+            val funcName = function?.string("name")
+            val index = call.long("index")?.toInt() ?: when {
+                callId != null -> tools.entries.firstOrNull { it.value.id == callId }?.key
+                    ?: if (tools.values.lastOrNull()?.name == null && tools.isNotEmpty()) {
+                        tools.keys.last()
+                    } else {
+                        tools.size
+                    }
+                funcName != null && tools.values.lastOrNull()?.name != null -> tools.size
+                else -> tools.keys.lastOrNull() ?: 0
+            }
             val draft = tools.getOrPut(index) { ToolDraft() }
-            call.string("id")?.let { draft.id = it }
-            (call["function"] as? JsonObject)?.let { function ->
-                function.string("name")?.let { draft.name = it }
-                function.string("arguments")?.let(draft.arguments::append)
+            callId?.let { draft.id = it }
+            function?.let { fn ->
+                funcName?.let { draft.name = it }
+                when (val rawArgs = fn["arguments"]) {
+                    is JsonPrimitive -> if (rawArgs.isString) draft.arguments.append(rawArgs.content)
+                    is JsonObject -> if (draft.arguments.isEmpty()) draft.arguments.append(rawArgs.toString())
+                    else -> Unit
+                }
             }
         }
         // Reasoning models (and gateways in front of them) stream their thinking
@@ -107,10 +129,26 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
             }
             "content_block_start" -> {
                 val block = root["content_block"] as? JsonObject
-                if (index != null && block?.string("type") == "tool_use") {
-                    tools[index] = ToolDraft(id = block.string("id"), name = block.string("name"))
+                when (block?.string("type")) {
+                    "tool_use" -> {
+                        val slot = index ?: tools.size
+                        val initial = (block["input"] as? JsonObject)
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.toString()
+                        tools[slot] = ToolDraft(
+                            id = block.string("id"),
+                            name = block.string("name"),
+                            initialInput = initial,
+                        )
+                        null
+                    }
+                    "text" -> block.string("text")?.takeIf { it.isNotEmpty() }?.also(text::append)
+                    "thinking" -> {
+                        block.string("thinking")?.takeIf { it.isNotEmpty() }?.let(pendingReasoning::append)
+                        null
+                    }
+                    else -> null
                 }
-                null
             }
             "content_block_delta" -> anthropicDelta(index, root["delta"] as? JsonObject)
             "message_delta" -> {
@@ -129,7 +167,7 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
             null
         }
         "input_json_delta" -> {
-            val draft = index?.let(tools::get)
+            val draft = (index ?: tools.keys.lastOrNull())?.let(tools::get)
             delta.string("partial_json")?.let { draft?.arguments?.append(it) }
             null
         }

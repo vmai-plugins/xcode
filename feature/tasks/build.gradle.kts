@@ -8,5 +8,6 @@ android {
 
 dependencies {
     implementation(projects.core.ai)
+    implementation(projects.core.project)
 }
 

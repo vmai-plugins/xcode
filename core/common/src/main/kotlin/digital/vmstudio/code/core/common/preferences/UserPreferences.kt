@@ -40,6 +40,8 @@ data class UserPreferences(
     val terminalFontSizeSp: Float = 12.5f,
     val terminalScrollbackLines: Int = 5_000,
     val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.SAFE_AUTO,
+    val hasCompletedOnboarding: Boolean = true,
+    val hasSignedIn: Boolean = true,
     /**
      * Context window at which the CLI auto-compacts.
      *
@@ -49,21 +51,23 @@ data class UserPreferences(
      * assurance the app cannot honour.
      */
     val agentMaxContextTokens: Int = 120_000,
+    val agentMaxIterations: Int = 25,
+    val agentMaxCommandsPerRun: Int = 50,
     val confirmDestructiveCommands: Boolean = true,
-    /** OmniRoute by default: it runs free gateway models; Claude Code needs a plan. */
+    /** Retained for preference compatibility; OmniRoute is the only supported provider. */
     val aiProviderId: String = PROVIDER_OMNIROUTE,
     val aiBaseUrl: String = DEFAULT_AI_BASE_URL,
-    /** Credential reference id for the AI API key, or null when not configured. */
+    /** Credential reference id for the AI API key, or null when using the built-in online gateway key. */
     val aiApiKeyCredentialId: String? = null,
-    val aiSelectedModelId: String? = null,
+    val aiSelectedModelId: String? = DEFAULT_AI_MODEL_ID,
     /**
      * Model ids the gateway last reported via `/models`, persisted so the picker
-     * survives process death. Empty until the first connection test syncs them;
-     * never fabricated — the list is only ever what the gateway itself answered.
+     * survives process death. Defaults to the core online OmniRoute combo models
+     * until the first live sync populates the full catalog.
      */
-    val aiAvailableModelIds: List<String> = emptyList(),
+    val aiAvailableModelIds: List<String> = DEFAULT_AI_MODELS,
     /** The subset of [aiAvailableModelIds] the gateway marked as free (no charge). */
-    val aiFreeModelIds: Set<String> = emptySet(),
+    val aiFreeModelIds: Set<String> = DEFAULT_FREE_AI_MODELS,
     /** When [aiAvailableModelIds] was last refreshed from the gateway; 0 if never. */
     val aiModelsSyncedAtMillis: Long = 0L,
     val aiModelPreset: String = "balanced",
@@ -73,6 +77,11 @@ data class UserPreferences(
      * coding agent, and every write and risky command still goes through approval.
      */
     val aiToolsEnabled: Boolean = true,
+    /**
+     * Whether OmniRoute is allowed to fetch external web documentation and URLs via web_fetch.
+     * When false, external network fetching by the agent is disabled for privacy/offline safety.
+     */
+    val aiWebAccessEnabled: Boolean = true,
     /**
      * How much conversation the gateway agent keeps before trimming: one of
      * [CONTEXT_SMALL], [CONTEXT_LARGE], [CONTEXT_HUGE]. Small protects free models
@@ -85,10 +94,42 @@ data class UserPreferences(
     val lastChatGeneral: Boolean = false,
     /** The folder last used in a chat, per server id; a new chat on that server opens there. */
     val lastFolders: Map<String, String> = emptyMap(),
+    val githubTokenCredentialId: String? = null,
+    val githubUsername: String? = null,
+    val userEmail: String? = null,
+    val userName: String? = null,
 ) {
     companion object {
-        /** The project's own OmniRoute gateway, prefilled; any user can replace it in Settings. */
+        /** The only supported AI gateway. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
+        const val DEFAULT_AI_MODEL_ID = "auto/best-coding"
+        val DEFAULT_FREE_AI_MODELS = setOf(
+            "auto/coding:free",
+            "auto/best-free",
+            "groq/openai/gpt-oss-120b",
+            "groq/qwen/qwen3.8-27b",
+            "groq/moonshotai/kimi-k2-instruct-0905",
+            "groq/llama-3.3-70b-versatile",
+        )
+        val DEFAULT_AI_MODELS = listOf(
+            "auto/best-coding",
+            "auto/coding:free",
+            "auto/best-free",
+            "auto/best-reasoning",
+            "auto/best-fast",
+            "auto/best-vision",
+            "auto/best-chat",
+            "auto/best-coding-fast",
+            "auto/pro-coding",
+            "auto/pro-reasoning",
+            "opus",
+            "opus-nvidia",
+            "Kimi Coding",
+            "groq/openai/gpt-oss-120b",
+            "groq/qwen/qwen3.8-27b",
+            "groq/moonshotai/kimi-k2-instruct-0905",
+            "groq/llama-3.3-70b-versatile",
+        )
 
         const val CONTEXT_SMALL = "small"
         const val CONTEXT_LARGE = "large"
@@ -105,10 +146,7 @@ data class UserPreferences(
         private const val LARGE_CONTEXT_CHARS = 400_000
         private const val HUGE_CONTEXT_CHARS = 1_200_000
 
-        /** Agentic backend: Claude Code driven over SSH. The default. */
-        const val PROVIDER_CLAUDE_CODE = "claude-code"
-
-        /** Chat-only backend: an HTTP gateway called directly from the device. */
+        /** The app's sole AI provider. */
         const val PROVIDER_OMNIROUTE = "omniroute"
     }
 }

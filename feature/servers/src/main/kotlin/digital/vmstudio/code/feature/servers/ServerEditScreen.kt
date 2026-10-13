@@ -1,5 +1,7 @@
 package digital.vmstudio.code.feature.servers
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +34,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -42,6 +47,7 @@ import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.database.entity.SshAuthMethod
 import digital.vmstudio.code.core.ssh.model.ServerField
 import digital.vmstudio.code.core.ui.component.VmButton
+import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmCard
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.component.VmSectionHeader
@@ -57,6 +63,22 @@ fun ServerEditScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
+    val context = LocalContext.current
+
+    val keyPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let {
+            runCatching {
+                context.contentResolver.openInputStream(it)?.use { stream ->
+                    val text = stream.bufferedReader().readText()
+                    if (text.isNotBlank()) {
+                        viewModel.setPrivateKey(text)
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(state.savedServerId) {
         state.savedServerId?.let { id ->
@@ -173,6 +195,17 @@ fun ServerEditScreen(
                         minLines = 4,
                         monospace = true,
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        VmButton(
+                            text = "Import Key File",
+                            onClick = { keyPickerLauncher.launch(arrayOf("*/*")) },
+                            style = VmButtonStyle.Tertiary,
+                            icon = Icons.Default.FileOpen,
+                        )
+                    }
                     if (state.draft.authMethod == SshAuthMethod.PRIVATE_KEY_WITH_PASSPHRASE) {
                         SecretField(
                             value = state.draft.passphrase,
@@ -255,12 +288,37 @@ fun ServerEditScreen(
                 minLines = 2,
             )
 
-            VmButton(
-                text = if (state.isEditing) "Save changes" else "Add server",
-                onClick = viewModel::save,
-                loading = state.isSaving,
+            if (state.testSuccessMessage != null) {
+                VmCard {
+                    Text(
+                        text = "✓ " + state.testSuccessMessage!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-            )
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                VmButton(
+                    text = "Test Connection",
+                    onClick = viewModel::testConnection,
+                    loading = state.isTesting,
+                    enabled = !state.isSaving && !state.isTesting,
+                    style = VmButtonStyle.Secondary,
+                    modifier = Modifier.weight(1f),
+                )
+                VmButton(
+                    text = if (state.isEditing) "Save" else "Add server",
+                    onClick = viewModel::save,
+                    loading = state.isSaving,
+                    enabled = !state.isSaving && !state.isTesting,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }

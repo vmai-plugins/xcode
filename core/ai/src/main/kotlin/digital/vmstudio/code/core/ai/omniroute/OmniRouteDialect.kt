@@ -63,11 +63,25 @@ object ChatStreamDecoder {
         }
     }
 
-    /** Token usage from a terminal chunk, as `input to output`, when reported. */
+    /** Reasoning delta carried by [payload], or null when none is present. */
+    fun reasoningDelta(dialect: OmniRouteDialect, payload: String): String? {
+        val root = runCatching { json.parseToJsonElement(payload) }.getOrNull() as? JsonObject
+            ?: return null
+
+        return when (dialect) {
+            OmniRouteDialect.ANTHROPIC_MESSAGES -> anthropicReasoning(root)
+            OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN ->
+                openAiReasoning(root) ?: anthropicReasoning(root)
+        }
+    }
+
+    /** Token usage from a terminal or start chunk, as `input to output`, when reported. */
     fun usage(payload: String): Pair<Long, Long>? {
         val root = runCatching { json.parseToJsonElement(payload) }.getOrNull() as? JsonObject
             ?: return null
-        val usage = root["usage"] as? JsonObject ?: return null
+        val usage = (root["usage"] as? JsonObject)
+            ?: ((root["message"] as? JsonObject)?.get("usage") as? JsonObject)
+            ?: return null
 
         // Anthropic names them input/output; OpenAI names them prompt/completion.
         val input = usage.long("input_tokens") ?: usage.long("prompt_tokens")
@@ -125,7 +139,9 @@ object ChatStreamDecoder {
     private val NON_CHAT_ID = Regex(
         listOf(
             "embed", "(^|[-/_])tts([-_]|$)", "whisper", "dall-e", "stable-diffusion", "imagen",
-            "flux", "rerank", "moderation", "text-search",
+            "flux", "rerank", "moderation", "text-search", "safeguard", "prompt-guard", "orpheus",
+            "kokoro", "melotts", "chatterbox", "cosyvoice", "vibevoice", "realesrgan", "rmbg",
+            "demucs", "triposr", "bge-m3", ":batch$",
         ).joinToString("|"),
     )
 
@@ -133,6 +149,11 @@ object ChatStreamDecoder {
         // content_block_delta carries {"delta":{"type":"text_delta","text":"..."}}
         val delta = root["delta"] as? JsonObject ?: return null
         return delta.string("text")
+    }
+
+    private fun anthropicReasoning(root: JsonObject): String? {
+        val delta = root["delta"] as? JsonObject ?: return null
+        return if (delta.string("type") == "thinking_delta") delta.string("thinking") else null
     }
 
     private fun openAiDelta(root: JsonObject): String? {
@@ -143,12 +164,20 @@ object ChatStreamDecoder {
         return holder?.string("content")
     }
 
-    private fun JsonObject.string(key: String): String? =
-        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    private fun openAiReasoning(root: JsonObject): String? {
+        val choices = root["choices"] as? JsonArray ?: return null
+        val first = choices.firstOrNull() as? JsonObject ?: return null
+        val holder = first["delta"] as? JsonObject ?: first["message"] as? JsonObject
+        return holder?.string("reasoning_content") ?: holder?.string("reasoning")
+    }
 
-    private fun JsonObject.long(key: String): Long? =
-        (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 }
+
+private fun JsonObject.string(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+private fun JsonObject.long(key: String): Long? =
+    (this[key] as? JsonPrimitive)?.content?.toLongOrNull()
 
 private const val ANTHROPIC_VERSION = "2023-06-01"
 

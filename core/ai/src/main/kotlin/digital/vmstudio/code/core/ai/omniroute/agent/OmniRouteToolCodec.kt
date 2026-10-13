@@ -63,12 +63,14 @@ internal fun gatewayErrorOf(root: JsonObject): OmniRouteTurn.GatewayError? {
         ?: (error as? JsonPrimitive)?.content
         ?: error.toString()
     val type = ((obj?.get("type") ?: obj?.get("code")) as? JsonPrimitive)?.content.orEmpty()
-    val retryable = RETRYABLE_ERROR_TYPES.any { type.contains(it, ignoreCase = true) }
+    val combined = "$type $message"
+    val retryable = RETRYABLE_ERROR_TYPES.any { combined.contains(it, ignoreCase = true) }
     return OmniRouteTurn.GatewayError(message.ifBlank { type.ifBlank { "Unknown error" } }, retryable)
 }
 
 private val RETRYABLE_ERROR_TYPES = listOf(
     "overloaded", "rate_limit", "timeout", "server_error", "unavailable",
+    "capability_mismatch", "capability", "tool calling",
 )
 
 /** OpenAI's `finish_reason` and Anthropic's `stop_reason` for an output-limit stop. */
@@ -124,8 +126,10 @@ object OmniRouteToolCodec {
         put("model", model)
         put("stream", false)
         put("max_tokens", maxTokens)
-        putJsonArray("tools") {
-            tools.forEach { add(it.toOpenAiToolJson()) }
+        if (tools.isNotEmpty()) {
+            putJsonArray("tools") {
+                tools.forEach { add(it.toOpenAiToolJson()) }
+            }
         }
         putJsonArray("messages") {
             add(
@@ -162,7 +166,7 @@ object OmniRouteToolCodec {
 
         is OmniRouteMessage.Assistant -> buildJsonObject {
             put("role", "assistant")
-            put("content", text)
+            put("content", text ?: "")
             if (toolCalls.isNotEmpty()) {
                 putJsonArray("tool_calls") {
                     toolCalls.forEach { call ->
@@ -200,7 +204,11 @@ object OmniRouteToolCodec {
             val function = call["function"] as? JsonObject ?: return@mapNotNull null
             val id = call.stringOrNull("id").orEmpty()
             val name = function.stringOrNull("name") ?: return@mapNotNull null
-            val arguments = function.stringOrNull("arguments") ?: "{}"
+            val arguments = when (val raw = function["arguments"]) {
+                is JsonPrimitive -> raw.takeIf { it.isString }?.content ?: "{}"
+                is JsonObject -> raw.toString()
+                else -> "{}"
+            }
             OmniRouteToolCall(id, name, arguments)
         }.orEmpty()
 
@@ -224,37 +232,56 @@ object OmniRouteToolCodec {
         put("stream", false)
         put("max_tokens", maxTokens)
         put("system", systemPrompt)
-        putJsonArray("tools") {
-            tools.forEach { add(it.toAnthropicToolJson()) }
+        if (tools.isNotEmpty()) {
+            putJsonArray("tools") {
+                tools.forEach { add(it.toAnthropicToolJson()) }
+            }
         }
         putJsonArray("messages") {
             // Anthropic has no "tool" role: a tool result is a user-turn content
-            // block. Consecutive tool results for the same round of parallel calls
-            // must land in one user message, not one each - the API rejects two
-            // consecutive messages with the same role.
+            // block. Consecutive tool results for the same round of parallel calls,
+            // or any adjacent turns with the same role, must be merged into one
+            // message because the API strictly rejects consecutive identical roles.
+            val mergedMessages = mutableListOf<Pair<String, MutableList<JsonElement>>>()
+            fun appendRoleBlocks(role: String, blocks: List<JsonElement>) {
+                val last = mergedMessages.lastOrNull()
+                if (last != null && last.first == role) {
+                    last.second.addAll(blocks)
+                } else {
+                    mergedMessages += role to blocks.toMutableList()
+                }
+            }
+
             var index = 0
             while (index < history.size) {
                 val message = history[index]
                 if (message is OmniRouteMessage.ToolResult) {
-                    val batch = mutableListOf<OmniRouteMessage.ToolResult>()
+                    val batch = mutableListOf<JsonElement>()
                     while (index < history.size) {
                         val next = history[index] as? OmniRouteMessage.ToolResult ?: break
-                        batch += next
+                        batch += next.toAnthropicToolResultJson()
                         index++
                     }
-                    add(
-                        buildJsonObject {
-                            put("role", "user")
-                            putJsonArray("content") {
-                                batch.forEach { result -> add(result.toAnthropicToolResultJson()) }
-                            }
-                        },
-                    )
+                    appendRoleBlocks("user", batch)
                 } else {
-                    add(message.toAnthropicJson())
+                    val rendered = message.toAnthropicJson()
+                    val role = rendered.stringOrNull("role") ?: "user"
+                    val blocks = (rendered["content"] as? JsonArray)?.toList().orEmpty()
+                    appendRoleBlocks(role, blocks)
                     index++
                 }
             }
+
+            mergedMessages
+                .dropWhile { it.first != "user" }
+                .forEach { (role, blocks) ->
+                    add(
+                        buildJsonObject {
+                            put("role", role)
+                            put("content", JsonArray(blocks))
+                        },
+                    )
+                }
         }
     }.toString()
 
@@ -293,6 +320,9 @@ object OmniRouteToolCodec {
                             put("input", parseArgumentsOrEmpty(call.argumentsJson))
                         },
                     )
+                }
+                if (text.isNullOrBlank() && toolCalls.isEmpty()) {
+                    add(buildJsonObject { put("type", "text"); put("text", "(no reply)") })
                 }
             }
         }

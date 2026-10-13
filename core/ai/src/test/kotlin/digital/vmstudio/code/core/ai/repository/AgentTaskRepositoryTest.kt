@@ -139,6 +139,8 @@ class AgentTaskRepositoryTest {
         override suspend fun updateBranch(id: String, branch: String?, timestamp: Long) = Unit
 
         override suspend fun setFavorite(id: String, favorite: Boolean) = Unit
+
+        override suspend fun updateColor(id: String, colorHex: String?, timestamp: Long) = Unit
     }
 
     @Test

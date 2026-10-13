@@ -27,6 +27,7 @@ enum class ServerEnvironment {
     STAGING,
     DEVELOPMENT,
     LOCAL,
+    BUSINESS,
     UNSPECIFIED,
 }
 

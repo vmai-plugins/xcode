@@ -2,6 +2,7 @@ package digital.vmstudio.code.feature.files
 
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.sftp.fs.TransferEvent
 import digital.vmstudio.code.core.sftp.model.RemoteFileEntry
 import digital.vmstudio.code.core.sftp.model.RemoteFileType
 import digital.vmstudio.code.core.sftp.model.RemotePermissions
@@ -167,5 +168,38 @@ class FilesLogicTest {
         assertTrue(after.entries.isEmpty())
         assertEquals(error, after.error)
         assertFalse(after.isLoading)
+    }
+
+    @Test
+    fun `successful listing does not clear a separate fallback warning`() {
+        val warning = VmError.FileSystem(summary = "Could not open the home folder")
+        val state = FilesUiState(
+            serverId = "s",
+            path = "/",
+            warning = warning,
+        )
+
+        val after = applyListing(state, state, VmResult.Success(listOf(entry("a"))), quiet = false)
+
+        assertEquals(warning, after.warning)
+    }
+
+    @Test
+    fun `only completed transfers are successful`() {
+        val failure = VmError.FileSystem(summary = "Transfer did not finish")
+        val failed: (String?) -> VmError = { failure }
+
+        assertNull(transferFailure(TransferEvent.Completed(10, 1), failed))
+        assertEquals(failure, transferFailure(null, failed))
+        assertEquals(failure, transferFailure(TransferEvent.Started(10, 0), failed))
+        assertEquals(
+            failure,
+            transferFailure(
+                TransferEvent.Progress(
+                    digital.vmstudio.code.core.sftp.fs.TransferProgress(5, 10, 1),
+                ),
+                failed,
+            ),
+        )
     }
 }

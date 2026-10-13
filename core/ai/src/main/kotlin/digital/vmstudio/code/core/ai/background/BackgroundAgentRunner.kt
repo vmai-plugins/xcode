@@ -96,7 +96,7 @@ class BackgroundAgentRunner @Inject constructor(
         when {
             claude is VmResult.Success && gateway is VmResult.Success ->
                 VmResult.Success((claude.value + gateway.value).sortedByDescending { it.startedAtMillis })
-            gateway is VmResult.Success && gateway.value.isNotEmpty() -> gateway
+            gateway is VmResult.Success -> gateway
             else -> claude
         }
     }

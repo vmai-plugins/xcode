@@ -1,4 +1,4 @@
-# VMStudio Code
+# X-codes
 
 A professional AI-powered mobile development environment for Android. Connect to
 remote development machines over SSH, browse and edit projects, run commands, use
@@ -60,7 +60,7 @@ alongside a release build (`applicationId` suffix `.debug`).
 
 ### Working
 
-- **Build system** — 29 Gradle modules driven by seven convention plugins, with a
+- **Build system** — 24 Gradle modules driven by seven convention plugins, with a
   resolution-verified version catalog.
 - **Structured errors** — every failure carries what happened, the likely reason, a
   suggested action and whether retrying can help. `VmErrorPanel` renders them; there
@@ -149,6 +149,14 @@ alongside a release build (`applicationId` suffix `.debug`).
   plan-only. See [AI-AGENT.md](AI-AGENT.md) for why the agent is delegated rather than
   reimplemented, and what that costs.
 
+The chat workspace picker can open saved projects, browse an existing folder on any
+configured VPS, or import a GitHub repository onto a selected VPS. GitHub imports
+create a working checkout under that VPS user's `projects/` directory; they are not
+mirrored into phone storage. The picker can also open a phone folder through Android's
+system folder grant, in place without copying it into app storage. Gateway file tools
+can read and edit that local folder, but shell commands and builds run over SSH and
+cannot build a SAF-backed phone folder; use a VPS workspace for those operations.
+
 ### Not yet implemented
 
 Connectors, the centralised transfer manager, tasks and notifications.
@@ -185,3 +193,4 @@ Anthropic Messages API; see [AI-AGENT.md](AI-AGENT.md#setting-up-the-server).
 ## Licence
 
 Not yet determined.
+

@@ -71,8 +71,10 @@ android {
         }
         getByName("release") {
             buildConfigField("boolean", "VERBOSE_DIAGNOSTICS", "false")
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
         }
         // The release build exactly (R8 shrinking and all), signed with the debug
@@ -99,8 +101,8 @@ dependencies {
     implementation(projects.core.sftp)
     implementation(projects.core.terminal)
     implementation(projects.core.ai)
-    implementation(projects.core.connectors)
     implementation(projects.core.update)
+    implementation(projects.core.connectors)
 
     implementation(projects.feature.servers)
     implementation(projects.feature.settings)
@@ -112,6 +114,9 @@ dependencies {
     implementation(projects.feature.tasks)
     implementation(projects.feature.connectors)
 
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.process)
@@ -121,3 +126,4 @@ dependencies {
     implementation(libs.compose.material3.window.size)
     implementation(libs.compose.material.icons.extended)
 }
+

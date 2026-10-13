@@ -17,46 +17,61 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import javax.inject.Inject
 
 data class ProjectsUiState(
     val projects: List<Project> = emptyList(),
     val servers: List<ServerOption> = emptyList(),
     val isLoading: Boolean = true,
+    val isSyncingHub: Boolean = false,
+    val hubStatusMessage: String? = null,
     val error: VmError? = null,
 ) {
     /**
      * Server lookup keyed once per state update rather than scanned per row.
-     *
-     * `serverFor` used to do `servers.firstOrNull { it.id == ... }` inside the list
-     * composable — an O(servers) scan on every row on every recomposition. Building
-     * the map here means the list only pays for the index once per state change.
      */
     private val serversById: Map<String, ServerOption> by lazy { servers.associateBy { it.id } }
 
-    fun serverFor(project: Project): ServerOption? = project.serverId?.let(serversById::get)
+    fun serverFor(project: Project): ServerOption? {
+        val id = project.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+        return serversById[id]
+    }
 
-    val canCreate: Boolean get() = servers.isNotEmpty()
+    val canCreate: Boolean get() = true
 }
 
 @HiltViewModel
 class ProjectsViewModel @Inject constructor(
     private val projects: ProjectRepository,
     private val conversations: AgentConversationRepository,
+    private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     servers: ServerRepository,
 ) : ViewModel() {
 
     private val error = MutableStateFlow<VmError?>(null)
+    private val isSyncingHub = MutableStateFlow(false)
+    private val hubStatusMessage = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<ProjectsUiState> = combine(
         projects.observeAll(),
         servers.servers,
         error,
-    ) { projectList, serverList, currentError ->
+        isSyncingHub,
+        hubStatusMessage,
+    ) { projectList, serverList, currentError, syncing, statusMsg ->
+        val localOption = ServerOption(
+            id = RemoteFileSystem.LOCAL_SERVER_ID,
+            name = "This Device (Local)",
+            target = "Local Phone Storage",
+        )
+        val allOptions = listOf(localOption) + serverList.toServerOptions()
         ProjectsUiState(
             projects = projectList,
-            servers = serverList.toServerOptions(),
+            servers = allOptions,
             isLoading = false,
+            isSyncingHub = syncing,
+            hubStatusMessage = statusMsg,
             error = currentError,
         )
     }.stateIn(
@@ -64,6 +79,35 @@ class ProjectsViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = ProjectsUiState(),
     )
+
+    init {
+        viewModelScope.launch {
+            val current = projects.observeAll().first()
+            if (current.none { it.description.contains("VM Hub #") }) {
+                syncFromHub()
+            }
+        }
+    }
+
+    fun syncFromHub() {
+        if (isSyncingHub.value) return
+        isSyncingHub.value = true
+        hubStatusMessage.value = null
+        viewModelScope.launch {
+            try {
+                when (val res = projectHubClient.syncUniversalProjects()) {
+                    is VmResult.Success -> {
+                        hubStatusMessage.value = "Synced ${res.value} universal workspaces from VM Project Hub"
+                    }
+                    is VmResult.Failure -> {
+                        error.value = res.error
+                    }
+                }
+            } finally {
+                isSyncingHub.value = false
+            }
+        }
+    }
 
     /** Records the open so the list orders by recency, then hands back the project. */
     private var opening = false
@@ -84,6 +128,10 @@ class ProjectsViewModel @Inject constructor(
 
     fun toggleFavorite(project: Project) {
         viewModelScope.launch { projects.setFavorite(project.id, !project.isFavorite) }
+    }
+
+    fun updateColor(project: Project, colorHex: String?) {
+        viewModelScope.launch { projects.updateColor(project.id, colorHex) }
     }
 
     fun delete(project: Project) {

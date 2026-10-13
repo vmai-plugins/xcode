@@ -22,6 +22,7 @@ data class ServersUiState(
     val servers: List<Server> = emptyList(),
     val groups: List<ServerGroup> = emptyList(),
     val error: VmError? = null,
+    val connectedServerId: String? = null,
 ) {
     val isEmpty: Boolean get() = !isLoading && servers.isEmpty()
 
@@ -39,17 +40,20 @@ class ServersViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val transientError = MutableStateFlow<VmError?>(null)
+    private val connectedServerId = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<ServersUiState> = combine(
         serverRepository.servers,
         serverRepository.groups,
         transientError,
-    ) { servers, groups, error ->
+        connectedServerId,
+    ) { servers, groups, error, connectedId ->
         ServersUiState(
             isLoading = false,
             servers = servers,
             groups = groups,
             error = error,
+            connectedServerId = connectedId,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -58,6 +62,10 @@ class ServersViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = ServersUiState(),
     )
+
+    fun consumeConnectedServerId() {
+        connectedServerId.value = null
+    }
 
     fun deleteServer(serverId: String) {
         viewModelScope.launch {
@@ -75,3 +83,4 @@ class ServersViewModel @Inject constructor(
         transientError.value = null
     }
 }
+

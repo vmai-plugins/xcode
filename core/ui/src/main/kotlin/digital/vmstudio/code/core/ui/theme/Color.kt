@@ -16,71 +16,69 @@ import androidx.compose.ui.graphics.Color
  */
 internal object Palette {
 
-    // Accent ramp.
-    // Clay: the warm accent used for primary actions.
-    val Clay20 = Color(0xFF3A1D12)
-    val Clay30 = Color(0xFF5C2F1D)
-    val Clay40 = Color(0xFFB4532F)
-    val Clay70 = Color(0xFFD97757)
-    val Clay90 = Color(0xFFF6DDD3)
+    // Primary accent ramp: vibrant electric indigo-blue for primary actions & interactive elements.
+    val Clay20 = Color(0xFF13204A)
+    val Clay30 = Color(0xFF1E326E)
+    val Clay40 = Color(0xFF3B63E6)
+    val Clay70 = Color(0xFF688BFF)
+    val Clay90 = Color(0xFFDCE5FF)
 
-    val Blue20 = Color(0xFF03293F)
-    val Blue30 = Color(0xFF06405F)
-    val Blue40 = Color(0xFF0A5A83)
-    val Blue60 = Color(0xFF1793C7)
-    val Blue70 = Color(0xFF3FB0DE)
-    val Blue80 = Color(0xFF7FCCEC)
-    val Blue90 = Color(0xFFC5E7F7)
+    val Blue20 = Color(0xFF072A47)
+    val Blue30 = Color(0xFF0C416D)
+    val Blue40 = Color(0xFF0E6EB8)
+    val Blue60 = Color(0xFF2196F3)
+    val Blue70 = Color(0xFF47B2FF)
+    val Blue80 = Color(0xFF88CEFF)
+    val Blue90 = Color(0xFFD0ECFF)
 
-    // Secondary: a muted teal used for supporting emphasis.
-    val Teal20 = Color(0xFF04302C)
-    val Teal40 = Color(0xFF0B6157)
-    val Teal70 = Color(0xFF3FBFAC)
-    val Teal80 = Color(0xFF7FD8CB)
-    val Teal90 = Color(0xFFC8EDE7)
+    // Secondary: vibrant cyan-teal for supporting badges & tool highlights.
+    val Teal20 = Color(0xFF053330)
+    val Teal40 = Color(0xFF0D746B)
+    val Teal70 = Color(0xFF2EE5D0)
+    val Teal80 = Color(0xFF7CF2E3)
+    val Teal90 = Color(0xFFCBFBF4)
 
-    // Tertiary: violet, reserved for AI/agent surfaces so agent activity is
-    // instantly distinguishable from ordinary tool output.
-    val Violet20 = Color(0xFF231A45)
-    val Violet40 = Color(0xFF473485)
-    val Violet70 = Color(0xFF9B87E8)
-    val Violet80 = Color(0xFFBFB1F1)
-    val Violet90 = Color(0xFFE2DBF9)
+    // Tertiary: luminous violet for AI/agent surfaces.
+    val Violet20 = Color(0xFF26184E)
+    val Violet40 = Color(0xFF5D3FD3)
+    val Violet70 = Color(0xFFA88BFF)
+    val Violet80 = Color(0xFFC9B6FF)
+    val Violet90 = Color(0xFFECE5FF)
 
-    // Neutrals (blue-shifted slate).
-    val Neutral04 = Color(0xFF1F1E1D)
-    val Neutral06 = Color(0xFF262624)
-    val Neutral10 = Color(0xFF2B2A28)
-    val Neutral14 = Color(0xFF30302E)
-    val Neutral20 = Color(0xFF3D3D3A)
-    val Neutral30 = Color(0xFF54534F)
-    val Neutral50 = Color(0xFF73726C)
-    val Neutral70 = Color(0xFFA3A29B)
-    val Neutral85 = Color(0xFFD8D5CB)
-    val Neutral94 = Color(0xFFEFEDE6)
-    val Neutral97 = Color(0xFFF5F4EE)
+    // Neutrals (crisp midnight blue-slate IDE surfaces).
+    val Neutral04 = Color(0xFF0B0E14)
+    val Neutral06 = Color(0xFF10151F)
+    val Neutral10 = Color(0xFF161C28)
+    val Neutral14 = Color(0xFF1E2636)
+    val Neutral20 = Color(0xFF293347)
+    val Neutral30 = Color(0xFF3D4B66)
+    val Neutral50 = Color(0xFF6B7A99)
+    val Neutral70 = Color(0xFFA0AEC7)
+    val Neutral85 = Color(0xFFD5DFEE)
+    val Neutral94 = Color(0xFFF0F4FA)
+    val Neutral97 = Color(0xFFF7F9FC)
     val Neutral100 = Color(0xFFFFFFFF)
 
     // Status ramp. Chosen for >= 4.5:1 against their paired containers.
-    val Green40 = Color(0xFF1B6B3A)
-    val Green70 = Color(0xFF48C97C)
-    val Green90 = Color(0xFFC9EFD8)
-    val GreenContainerDark = Color(0xFF0C2F1A)
+    val Green40 = Color(0xFF167945)
+    val Green70 = Color(0xFF34D399)
+    val Green90 = Color(0xFFD1FAE5)
+    val GreenContainerDark = Color(0xFF093121)
 
-    val Amber40 = Color(0xFF8A5A00)
-    val Amber70 = Color(0xFFE0A429)
-    val Amber90 = Color(0xFFF7E2B4)
-    val AmberContainerDark = Color(0xFF3A2703)
+    val Amber40 = Color(0xFF946200)
+    val Amber70 = Color(0xFFFBBF24)
+    val Amber90 = Color(0xFFFEF3C7)
+    val AmberContainerDark = Color(0xFF3D2804)
 
-    val Red40 = Color(0xFF9B1C24)
-    val Red70 = Color(0xFFEF6B72)
-    val Red90 = Color(0xFFF9D4D6)
-    val RedContainerDark = Color(0xFF3E0E12)
+    val Red40 = Color(0xFFB91C1C)
+    val Red70 = Color(0xFFF87171)
+    val Red90 = Color(0xFFFEE2E2)
+    val RedContainerDark = Color(0xFF421014)
     val RedContainerLight = Color(0xFF3B080C)
 
     // Diff colours, tuned so added/removed lines stay readable behind text.
-    val DiffAddedDark = Color(0xFF0E2E1B)
-    val DiffRemovedDark = Color(0xFF34131A)
-    val DiffAddedLight = Color(0xFFDCF6E5)
-    val DiffRemovedLight = Color(0xFFFBE0E3)
+    val DiffAddedDark = Color(0xFF0B3020)
+    val DiffRemovedDark = Color(0xFF3A1219)
+    val DiffAddedLight = Color(0xFFDCFCE7)
+    val DiffRemovedLight = Color(0xFFFEE2E2)
 }

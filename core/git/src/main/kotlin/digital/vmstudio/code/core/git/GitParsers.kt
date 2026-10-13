@@ -23,15 +23,19 @@ internal object GitParsers {
                 val behindMatch = Regex("behind (\\d+)").find(branchInfo)
                 aheadCount = aheadMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 behindCount = behindMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                upstream = branchInfo.substringAfter("...").substringBefore(" [").ifBlank { null }
+                upstream = if (branchInfo.contains("...")) {
+                    branchInfo.substringAfter("...").substringBefore(" [").ifBlank { null }
+                } else {
+                    null
+                }
                 continue
             }
 
             // Parse porcelain status: XY PATH or XY ORIG -> RENAME
-            if (line.length < 4) continue
+            if (line.length < 3) continue
             val indexStatus = line[0]
             val workTreeStatus = line[1]
-            val pathPart = line.substring(3)
+            val pathPart = line.substring(2).trimStart()
 
             val path = if (pathPart.contains(" -> ")) {
                 pathPart.substringAfter(" -> ")
@@ -39,33 +43,24 @@ internal object GitParsers {
                 pathPart
             }
 
-            when {
-                workTreeStatus == '?' -> {
-                    untracked += GitFileStatusEntry(path, GitFileStatus.UNTRACKED)
-                }
-                indexStatus == 'A' || workTreeStatus == 'A' -> {
-                    staged += GitFileStatusEntry(path, GitFileStatus.ADDED)
-                }
-                indexStatus == 'D' || workTreeStatus == 'D' -> {
-                    staged += GitFileStatusEntry(path, GitFileStatus.DELETED)
-                }
-                indexStatus == 'M' || workTreeStatus == 'M' -> {
-                    if (indexStatus != ' ' && indexStatus != '?') {
-                        staged += GitFileStatusEntry(path, GitFileStatus.MODIFIED)
-                    }
-                    if (workTreeStatus != ' ') {
-                        unstaged += GitFileStatusEntry(path, GitFileStatus.MODIFIED)
-                    }
-                }
-                indexStatus == 'R' -> {
-                    staged += GitFileStatusEntry(path, GitFileStatus.RENAMED)
-                }
-                indexStatus == 'C' -> {
-                    staged += GitFileStatusEntry(path, GitFileStatus.COPIED)
-                }
-                indexStatus == 'U' || workTreeStatus == 'U' -> {
-                    staged += GitFileStatusEntry(path, GitFileStatus.CONFLICTED)
-                }
+            // Staged changes (index)
+            when (indexStatus) {
+                'A' -> staged += GitFileStatusEntry(path, GitFileStatus.ADDED)
+                'M' -> staged += GitFileStatusEntry(path, GitFileStatus.MODIFIED)
+                'D' -> staged += GitFileStatusEntry(path, GitFileStatus.DELETED)
+                'R' -> staged += GitFileStatusEntry(path, GitFileStatus.RENAMED)
+                'C' -> staged += GitFileStatusEntry(path, GitFileStatus.COPIED)
+                'U' -> staged += GitFileStatusEntry(path, GitFileStatus.CONFLICTED)
+            }
+
+            // Unstaged changes (working tree)
+            when (workTreeStatus) {
+                '?' -> untracked += GitFileStatusEntry(path, GitFileStatus.UNTRACKED)
+                '!' -> untracked += GitFileStatusEntry(path, GitFileStatus.IGNORED)
+                'M' -> unstaged += GitFileStatusEntry(path, GitFileStatus.MODIFIED)
+                'D' -> unstaged += GitFileStatusEntry(path, GitFileStatus.DELETED)
+                'A' -> unstaged += GitFileStatusEntry(path, GitFileStatus.ADDED)
+                'U' -> if (indexStatus != 'U') unstaged += GitFileStatusEntry(path, GitFileStatus.CONFLICTED)
             }
         }
 

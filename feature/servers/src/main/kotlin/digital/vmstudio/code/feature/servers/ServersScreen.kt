@@ -22,16 +22,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ssh.model.Server
+import digital.vmstudio.code.core.ui.component.VmButton
+import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmCard
 import digital.vmstudio.code.core.ui.component.VmDialog
 import digital.vmstudio.code.core.ui.component.VmEmptyState
@@ -86,19 +90,28 @@ internal fun ServersContent(
         },
     ) { padding ->
         when {
-            state.isEmpty -> VmEmptyState(
-                icon = Icons.Default.Dns,
-                title = "No servers yet",
-                description =
-                "Add an SSH server to browse its files, open a terminal, and let the " +
-                    "AI agent work inside your projects.",
-                actionLabel = "Add server",
-                onAction = onAddServer,
-                modifier = Modifier.padding(padding),
-            )
+            state.isEmpty -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = spacing.screenHorizontal, vertical = spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
+                VmEmptyState(
+                    icon = Icons.Default.Dns,
+                    title = "No servers yet",
+                    description =
+                    "Add an SSH server to browse its files, open a terminal, and let the " +
+                        "AI agent work inside your projects.",
+                    actionLabel = "Add server",
+                    onAction = onAddServer,
+                )
+            }
 
             else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
                 contentPadding = PaddingValues(
                     start = spacing.screenHorizontal,
                     end = spacing.screenHorizontal,
@@ -112,7 +125,6 @@ internal fun ServersContent(
                     item(key = "error") {
                         VmErrorPanel(
                             error = error,
-                            modifier = Modifier.padding(top = padding.calculateTopPadding()),
                             actions = listOf(
                                 digital.vmstudio.code.core.ui.component.VmErrorAction(
                                     label = "Dismiss",
@@ -232,3 +244,6 @@ private fun ServerCard(
         }
     }
 }
+
+
+

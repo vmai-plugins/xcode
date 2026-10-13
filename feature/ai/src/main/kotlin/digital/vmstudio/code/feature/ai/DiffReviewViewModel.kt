@@ -9,6 +9,7 @@ import digital.vmstudio.code.core.git.GitDiff
 import digital.vmstudio.code.core.git.GitError
 import digital.vmstudio.code.core.git.GitResult
 import digital.vmstudio.code.core.git.GitService
+import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +55,19 @@ class DiffReviewViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
+            if (RemoteFileSystem.isLocalServer(serverId) || filePath.startsWith("/github/") || filePath.startsWith("/vmhub/")) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    diff = GitDiff(),
+                    error = VmError.Unexpected(
+                        summary = "Diff review is not supported for local or virtual files",
+                        reason = "Diff review inspects Git working tree changes on a remote SSH server.",
+                        suggestedAction = "Review or revert file edits directly in the Code Editor or AI Agent.",
+                    ),
+                )
+                return@launch
+            }
+
             val repoPath = directoryOf(filePath)
             if (repoPath == null) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = pathWithoutDirectoryError())
@@ -95,6 +109,18 @@ class DiffReviewViewModel @Inject constructor(
 
     fun reject() {
         viewModelScope.launch {
+            if (RemoteFileSystem.isLocalServer(serverId) || filePath.startsWith("/github/") || filePath.startsWith("/vmhub/")) {
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    error = VmError.Unexpected(
+                        summary = "Cannot revert virtual file",
+                        reason = "Virtual projects and local phone files do not maintain a remote git index.",
+                        suggestedAction = "Use Code Editor or AI Agent to edit or revert changes.",
+                    ),
+                )
+                return@launch
+            }
+
             val repoPath = directoryOf(filePath)
             if (repoPath == null) {
                 _uiState.value = _uiState.value.copy(error = pathWithoutDirectoryError())

@@ -36,7 +36,7 @@ shell · **AI agent** (Claude Code over SSH, plus an OmniRoute chat provider)
 
 ### Not built at all
 
-Verified absent, not merely incomplete — 13 of 29 modules contain zero code:
+Verified absent, not merely incomplete — 6 stray directories contain no code; the 24 real modules are all populated:
 
 | Missing | Spec | Consequence |
 |---|---|---|
@@ -185,3 +185,4 @@ returns `VmError.Validation`; covered by
 suites silently ran nothing while the build reported success. A green pipeline that
 executes no tests is worse than a red one; the CI job asserts on results, not exit
 status.
+

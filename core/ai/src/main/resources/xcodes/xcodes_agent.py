@@ -29,7 +29,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-VERSION = "4"
+VERSION = "5"
 HOME = os.path.expanduser("~/.xcodes")
 RUNS = os.path.join(HOME, "runs")
 
@@ -40,7 +40,7 @@ MAX_HISTORY_CHARS = 100_000
 TRIMMED_TOOL_OUTPUT = 1_500
 COMMAND_TIMEOUT = 600
 REQUEST_TIMEOUT = 600
-MAX_TOKENS = 4096
+MAX_TOKENS = 8192
 FETCH_MAX_BYTES = 1024 * 1024
 FETCH_MAX_CHARS = 20_000
 
@@ -160,27 +160,43 @@ def trim_history(history, budget=MAX_HISTORY_CHARS):
     return trimmed
 
 
+def parse_args_dict(raw):
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
 def build_request(task, history, tools):
     """History uses a neutral shape: {role: user|assistant|tool, content, tool_calls?, tool_call_id?}."""
     if task["dialect"] == "anthropic":
         messages = []
         for m in history:
             if m["role"] == "user":
-                messages.append({"role": "user", "content": [{"type": "text", "text": m["content"]}]})
+                block = {"type": "text", "text": m["content"]}
+                if messages and messages[-1]["role"] == "user":
+                    messages[-1]["content"].append(block)
+                else:
+                    messages.append({"role": "user", "content": [block]})
             elif m["role"] == "assistant":
                 blocks = [{"type": "text", "text": m["content"]}] if m.get("content") else []
                 for call in m.get("tool_calls", []):
                     blocks.append({"type": "tool_use", "id": call["id"], "name": call["name"],
-                                   "input": json.loads(call["arguments"] or "{}")})
-                messages.append({"role": "assistant", "content": blocks or [{"type": "text", "text": "(no reply)"}]})
+                                   "input": parse_args_dict(call.get("arguments"))})
+                blocks = blocks or [{"type": "text", "text": "(no reply)"}]
+                if messages and messages[-1]["role"] == "assistant":
+                    messages[-1]["content"].extend(blocks)
+                else:
+                    messages.append({"role": "assistant", "content": blocks})
             else:
                 block = {"type": "tool_result", "tool_use_id": m["tool_call_id"], "content": m["content"]}
-                if messages and messages[-1]["role"] == "user" and messages[-1].get("_results"):
+                if messages and messages[-1]["role"] == "user":
                     messages[-1]["content"].append(block)
                 else:
-                    messages.append({"role": "user", "content": [block], "_results": True})
-        for m in messages:
-            m.pop("_results", None)
+                    messages.append({"role": "user", "content": [block]})
         body = {"model": task["model"], "max_tokens": MAX_TOKENS, "system": task["system_prompt"],
                 "messages": messages,
                 "tools": [{"name": n, "description": tool_schema(n)[0], "input_schema": tool_schema(n)[1]} for n in tools]}
@@ -190,7 +206,7 @@ def build_request(task, history, tools):
         if m["role"] == "tool":
             messages.append({"role": "tool", "tool_call_id": m["tool_call_id"], "content": m["content"]})
         elif m["role"] == "assistant":
-            entry = {"role": "assistant", "content": m.get("content")}
+            entry = {"role": "assistant", "content": m.get("content") or ""}
             if m.get("tool_calls"):
                 entry["tool_calls"] = [{"id": c["id"], "type": "function",
                                         "function": {"name": c["name"], "arguments": c["arguments"]}}
@@ -207,7 +223,7 @@ def build_request(task, history, tools):
 def call_model(task, key, history, tools):
     budget = int(task.get("context_chars") or MAX_HISTORY_CHARS)
     path, body = build_request(task, trim_history(history, budget), tools)
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "XCodes/1.0"}
     if task["dialect"] == "anthropic":
         headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
     else:
@@ -244,9 +260,14 @@ def parse_response(dialect, root):
         return text, calls, (usage.get("input_tokens", 0), usage.get("output_tokens", 0))
     choice = (root.get("choices") or [{}])[0]
     message = choice.get("message") or {}
-    calls = [{"id": c.get("id") or "", "name": c["function"]["name"],
-              "arguments": c["function"].get("arguments") or "{}"}
-             for c in message.get("tool_calls") or [] if c.get("function")]
+    calls = []
+    for c in message.get("tool_calls") or []:
+        fn = c.get("function")
+        if not fn or not fn.get("name"):
+            continue
+        raw_args = fn.get("arguments")
+        args_str = json.dumps(raw_args) if isinstance(raw_args, dict) else (raw_args or "{}")
+        calls.append({"id": c.get("id") or "", "name": fn["name"], "arguments": args_str})
     usage = root.get("usage") or {}
     return message.get("content") or "", calls, (usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
 

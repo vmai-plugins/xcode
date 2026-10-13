@@ -9,6 +9,7 @@ android {
 
 dependencies {
     api(projects.core.common)
+    implementation(projects.core.network)
+    implementation(projects.core.security)
     implementation(projects.core.ssh)
 }
-

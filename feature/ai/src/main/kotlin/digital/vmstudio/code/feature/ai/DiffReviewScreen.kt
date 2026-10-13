@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -25,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -116,7 +121,10 @@ fun DiffReviewScreen(
                     DiffContent(
                         diff = currentDiff,
                         isSaving = state.isSaving,
-                        onAccept = viewModel::accept,
+                        onAccept = {
+                            viewModel.accept()
+                            onNavigateBack()
+                        },
                         onReject = viewModel::reject,
                     )
                 }
@@ -173,8 +181,8 @@ private fun DiffContent(
                 item(key = "header-${fileDiff.displayPath}") {
                     FileDiffHeader(fileDiff)
                 }
-                items(fileDiff.lines, key = { "${fileDiff.displayPath}-${it.hashCode()}" }) { line ->
-                    DiffLineRow(line)
+                items(fileDiff.lines.size, key = { idx -> "${fileDiff.displayPath}-$idx" }) { idx ->
+                    DiffLineRow(fileDiff.lines[idx])
                 }
             }
         }
@@ -209,91 +217,119 @@ private fun DiffContent(
 
 @Composable
 private fun FileDiffHeader(fileDiff: FileDiff) {
-    val spacing = VmTheme.spacing
-    val icon = when {
-        fileDiff.isNew -> "new"
-        fileDiff.isDeleted -> "deleted"
-        fileDiff.isRename -> "renamed"
-        else -> null
-    }
-
-    Row(
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF1E1F22),
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = spacing.screenHorizontal, vertical = spacing.sm),
-        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        Text(
-            text = fileDiff.displayPath,
-            style = VmTheme.code.mono,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold,
-        )
-        if (icon != null) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Color(0xFF29B6F6)),
+            )
             Text(
-                text = "($icon)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = fileDiff.displayPath.substringAfterLast('/'),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFE2E2E5),
+            )
+            Text(
+                text = fileDiff.displayPath,
+                style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                color = Color(0xFF8E919A),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "+${fileDiff.additions}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF4CAF50),
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "-${fileDiff.deletions}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFFEF5350),
+                fontWeight = FontWeight.Bold,
             )
         }
-        Text(
-            text = " +${fileDiff.additions} -${fileDiff.deletions}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
 @Composable
 private fun DiffLineRow(line: DiffLine) {
-    val spacing = VmTheme.spacing
-    val bgColor = when (line.type) {
-        DiffLineType.ADDED -> VmTheme.colors.successContainer
-        DiffLineType.REMOVED -> VmTheme.colors.warningContainer
-        else -> MaterialTheme.colorScheme.surface
+    if (line.type == DiffLineType.HEADER) {
+        // Antigravity-style context separator pill: "+N more lines (+10 / +10)"
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF2B2D31),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = line.text.trim(),
+                        style = VmTheme.code.mono.copy(fontSize = 10.sp),
+                        color = Color(0xFF8E919A),
+                    )
+                }
+            }
+        }
+        return
     }
-    val textColor = when (line.type) {
-        DiffLineType.ADDED -> VmTheme.colors.onSuccessContainer
-        DiffLineType.REMOVED -> VmTheme.colors.onWarningContainer
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    val prefix = when (line.type) {
-        DiffLineType.ADDED -> "+"
-        DiffLineType.REMOVED -> "-"
-        else -> " "
+
+    val (bg, textCol) = when (line.type) {
+        DiffLineType.ADDED -> Color(0x2E2E7D32) to Color(0xFF81C784)
+        DiffLineType.REMOVED -> Color(0x2EC62828) to Color(0xFFE57373)
+        else -> Color.Transparent to Color(0xFFC4C6D0)
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(bgColor)
+            .background(bg)
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = spacing.screenHorizontal, vertical = 1.dp),
+            .padding(vertical = 1.dp),
         verticalAlignment = Alignment.Top,
     ) {
+        // Dual line numbers side-by-side like Antigravity
         Text(
             text = line.oldLineNumber?.toString() ?: "",
             style = VmTheme.code.mono.copy(fontSize = 11.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.width(32.dp),
+            color = Color(0xFF5A5D66),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.width(36.dp).padding(end = 6.dp),
         )
         Text(
             text = line.newLineNumber?.toString() ?: "",
             style = VmTheme.code.mono.copy(fontSize = 11.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.width(32.dp),
-        )
-        Text(
-            text = prefix,
-            style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-            color = textColor,
-            modifier = Modifier.width(12.dp),
+            color = Color(0xFF5A5D66),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.width(36.dp).padding(end = 12.dp),
         )
         Text(
             text = line.text,
             style = VmTheme.code.mono.copy(fontSize = 11.sp),
-            color = textColor,
+            color = textCol,
         )
     }
 }

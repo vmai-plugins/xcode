@@ -56,6 +56,23 @@ internal fun List<TranscriptItem>.dropStreamingDraft(): List<TranscriptItem> =
     filterNot { it is TranscriptItem.StreamingText }
 
 /**
+ * Settles any in-progress streaming draft into a finished assistant reply.
+ *
+ * Used when a run completes, fails, or is stopped by the user without receiving an
+ * authoritative [AgentEvent.AssistantMessage], so whatever partial reply was streamed
+ * is preserved for the user to read without leaving a permanent typing cursor.
+ * Blank drafts (e.g. whitespace before an error) are dropped.
+ */
+internal fun List<TranscriptItem>.settleStreamingDraft(nextId: () -> String): List<TranscriptItem> =
+    mapNotNull { item ->
+        if (item is TranscriptItem.StreamingText) {
+            item.text.takeIf { it.isNotBlank() }?.let { TranscriptItem.AssistantText(nextId(), it) }
+        } else {
+            item
+        }
+    }
+
+/**
  * Marks a tool call finished in place, so it appears once transitioning from running
  * to done rather than twice.
  *
@@ -132,4 +149,4 @@ internal class DeltaBatcher(
     }
 }
 
-private const val DELTA_BATCH_MILLIS = 50L
+private const val DELTA_BATCH_MILLIS = 80L

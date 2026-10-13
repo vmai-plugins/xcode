@@ -16,15 +16,23 @@ class GatewayModelPricingTest {
                 {"id":"flagged","free":true},
                 {"id":"tiered","tier":"free"},
                 {"id":"tagged","tags":["fast","free"]},
+                {"id":"omni-zero","pricing":{"input":0,"output":0}},
+                {"id":"groq-owned","owned_by":"groq"},
                 {"id":"meta/llama-3.3-70b:free"}
             ]}""",
         )
-        assertEquals(setOf("or-free", "flagged", "tiered", "tagged", "meta/llama-3.3-70b:free"), free)
+        assertEquals(
+            setOf("or-free", "flagged", "tiered", "tagged", "omni-zero", "groq-owned", "meta/llama-3.3-70b:free"),
+            free,
+        )
     }
 
     @Test
     fun `free by name`() {
         assertTrue(GatewayModelPricing.isFreeModelId("deepseek/deepseek-r1:free"))
+        assertTrue(GatewayModelPricing.isFreeModelId("auto/coding:free"))
+        assertTrue(GatewayModelPricing.isFreeModelId("auto/best-free"))
+        assertTrue(GatewayModelPricing.isFreeModelId("groq/openai/gpt-oss-120b"))
         assertTrue(GatewayModelPricing.isFreeModelId("qwen-coder-free"))
         assertFalse(GatewayModelPricing.isFreeModelId("gpt-4o"))
         assertFalse(GatewayModelPricing.isFreeModelId("freedom-7b"))

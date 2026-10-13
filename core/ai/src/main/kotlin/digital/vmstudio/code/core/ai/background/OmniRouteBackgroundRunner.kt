@@ -67,7 +67,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
             is VmResult.Failure -> return@withContext installed
             is VmResult.Success -> installed.value
         }
-        val access = when (val gateway = omniRoute.gatewayAccess()) {
+        val access = when (val gateway = omniRoute.gatewayAccess(model)) {
             is VmResult.Failure -> return@withContext gateway
             is VmResult.Success -> gateway.value
         }
@@ -274,7 +274,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
     companion object {
         const val RUN_ID_PREFIX = "xo-"
         private const val TAG = "OmniRouteBackground"
-        private const val RUNNER_VERSION = "4"
+        private const val RUNNER_VERSION = "5"
         private const val RUNNER_RESOURCE = "/xcodes/xcodes_agent.py"
         private const val RUNNER_PATH = ".xcodes/bin/xcodes_agent.py"
         private const val RUNNER = "python3 ~/.xcodes/bin/xcodes_agent.py"

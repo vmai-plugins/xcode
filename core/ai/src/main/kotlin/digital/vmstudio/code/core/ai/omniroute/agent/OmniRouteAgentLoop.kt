@@ -12,6 +12,7 @@ import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.preferences.AgentAutonomyLevel
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
+import digital.vmstudio.code.core.git.GitHubRepositoryClient
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.network.http.VmHttpException
@@ -57,6 +58,7 @@ class OmniRouteAgentLoop @Inject constructor(
     private val fileEditApprovalGate: FileEditApprovalGate,
     private val serverRepository: ServerRepository,
     private val webFetcher: WebFetcher,
+    private val gitHubRepositoryClient: GitHubRepositoryClient,
 ) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -78,12 +80,19 @@ class OmniRouteAgentLoop @Inject constructor(
         model: String,
         config: AgentRunConfig,
         autonomyLevel: AgentAutonomyLevel,
+        fallbackModel: String? = null,
     ): Flow<AgentEvent> = flow {
         val serverId = config.serverId
         val workingDirectory = config.workingDirectory
         val startedAt = System.currentTimeMillis()
 
         val allowedTools = allowedToolsFor(config)
+        // If tools are required and auto/best-free was requested, transparently use the tool-capable free counterpart
+        var currentModel = if (allowedTools.isNotEmpty() && (model == "auto/best-free" || model == "best-free")) {
+            fallbackModel ?: "auto/coding:free"
+        } else {
+            model
+        }
         // Continue the conversation the chat screen asks to resume, if this process
         // still holds it; otherwise start fresh, exactly as a new chat would.
         val sessionId = config.resumeSessionId?.takeIf { sessions.get(it) != null }
@@ -100,26 +109,57 @@ class OmniRouteAgentLoop @Inject constructor(
                 AgentEvent.SessionStarted(
                     sessionId = sessionId,
                     workingDirectory = workingDirectory,
-                    model = model,
+                    model = currentModel,
                     availableTools = allowedTools.map { it.toolName },
                 ),
             )
 
             var inputTokensTotal = 0L
             var outputTokensTotal = 0L
+            val maxIterations = config.maxIterations ?: MAX_ITERATIONS
+            val maxCommands = config.maxCommandsPerRun ?: 50
+            val commandCount = java.util.concurrent.atomic.AtomicInteger(0)
 
-            repeat(MAX_ITERATIONS) {
+            repeat(maxIterations) {
                 currentCoroutineContext().ensureActive()
 
                 val budget = config.contextChars ?: MAX_HISTORY_CHARS
-                val target = GatewayTarget(baseUrl, key, dialect, model, budget)
+                var target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
+                var nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history)
+
+                val shouldFailover = when {
+                    nextTurnResult is VmResult.Failure -> isFailoverCandidate(nextTurnResult.error)
+                    nextTurnResult is VmResult.Success && nextTurnResult.value.first is OmniRouteTurn.GatewayError -> {
+                        val gw = nextTurnResult.value.first as OmniRouteTurn.GatewayError
+                        gw.retryable || isFailoverCandidate(gw.failure())
+                    }
+                    else -> false
+                }
+
+                if (shouldFailover && fallbackModel != null && currentModel != fallbackModel) {
+                    val errMsg = when (nextTurnResult) {
+                        is VmResult.Failure -> nextTurnResult.error.summary
+                        is VmResult.Success -> (nextTurnResult.value.first as? OmniRouteTurn.GatewayError)?.message.orEmpty()
+                    }
+                    VmLog.i(LogCategory.AI, TAG, "Turn failed on $currentModel ($errMsg). Failing over to $fallbackModel")
+                    emit(
+                        AgentEvent.Diagnostic(
+                            line = "[Model $currentModel unavailable ($errMsg); routing via fallback $fallbackModel...]",
+                            isStderr = false,
+                        ),
+                    )
+                    currentModel = fallbackModel
+                    target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
+                    nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history)
+                }
+
                 val (turn, streamedText) =
-                    when (val next = nextTurn(target, workingDirectory, allowedTools, history)) {
+                    when (nextTurnResult) {
                         is VmResult.Failure -> {
-                            emit(AgentEvent.Failed(next.error))
+                            emit(AgentEvent.Failed(nextTurnResult.error))
                             return@flow
                         }
-                        is VmResult.Success -> next.value
+                        is VmResult.Success -> nextTurnResult.value
                     }
 
                 when (turn) {
@@ -166,7 +206,7 @@ class OmniRouteAgentLoop @Inject constructor(
                             "call_" + UUID.randomUUID().toString().take(TOOL_ID_LENGTH)
                         }
                         history += toolRound(turn.truncated, streamedText, calls) { call ->
-                            runToolCall(call, config, autonomyLevel, allowedTools)
+                            runToolCall(call, config, autonomyLevel, allowedTools, commandCount, maxCommands)
                         }
                     }
                 }
@@ -176,7 +216,7 @@ class OmniRouteAgentLoop @Inject constructor(
                 AgentEvent.Failed(
                     VmError.Ai(
                         summary = "Reached the tool-call limit",
-                        reason = "Stopped after $MAX_ITERATIONS model turns to avoid a runaway loop.",
+                        reason = "Stopped after $maxIterations model turns to avoid a runaway loop.",
                         suggestedAction = "Ask a narrower question, or continue in a new message.",
                         retryable = false,
                         provider = "omniroute",
@@ -229,15 +269,32 @@ class OmniRouteAgentLoop @Inject constructor(
     private fun allowedToolsFor(config: AgentRunConfig): Set<OmniRouteTool> = buildSet {
         add(OmniRouteTool.READ_FILE)
         add(OmniRouteTool.LIST_DIRECTORY)
-        add(OmniRouteTool.GREP_SEARCH)
+        val isLocalWorkspace = digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(config.serverId)
+        val isGitHubWorkspace = config.workingDirectory.startsWith("/github/")
+        if (!isLocalWorkspace || isGitHubWorkspace) add(OmniRouteTool.GREP_SEARCH)
         // Read-only, but it sends a model-chosen URL off the device, so a
-        // restricted run does not get it.
-        if (!config.restricted) add(OmniRouteTool.WEB_FETCH)
+        // restricted run or web access disabled does not get it.
+        if (!config.restricted && config.webAccessEnabled) {
+            add(OmniRouteTool.WEB_FETCH)
+        }
+        if (!isLocalWorkspace && !isGitHubWorkspace) add(OmniRouteTool.LIST_APKS)
         if (config.permissionMode != AgentPermissionMode.PLAN) {
             add(OmniRouteTool.WRITE_FILE)
             add(OmniRouteTool.EDIT_FILE)
-            if (!config.restricted) add(OmniRouteTool.RUN_COMMAND)
+            if (!config.restricted && !isLocalWorkspace && !isGitHubWorkspace) {
+                add(OmniRouteTool.RUN_COMMAND)
+                add(OmniRouteTool.RUN_BUILD)
+            }
         }
+    }
+
+    private fun parseGitHubPath(resolvedPath: String): Pair<String, String>? {
+        if (!resolvedPath.startsWith("/github/")) return null
+        val parts = resolvedPath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
+        if (parts.size < 2) return null
+        val repoFullName = "${parts[0]}/${parts[1]}"
+        val relativePath = parts.drop(2).joinToString("/")
+        return repoFullName to relativePath
     }
 
     private fun buildRequest(
@@ -330,10 +387,15 @@ class OmniRouteAgentLoop @Inject constructor(
         config: AgentRunConfig,
         autonomyLevel: AgentAutonomyLevel,
         allowedTools: Set<OmniRouteTool>,
+        commandCount: java.util.concurrent.atomic.AtomicInteger,
+        maxCommands: Int,
     ): OmniRouteMessage.ToolResult {
         val tool = OmniRouteTool.fromToolName(call.name)
-        val path = argument(call.argumentsJson, "path")
-        val target = path ?: argument(call.argumentsJson, "url")
+        val path = filePathArgument(call.argumentsJson)
+        val target = path
+            ?: argument(call.argumentsJson, "url")
+            ?: argument(call.argumentsJson, "directory")
+            ?: argument(call.argumentsJson, "tasks")
         // Resolved to an absolute path, not the raw model argument:
         // a model editing a repo-root file may well call this with
         // just "README.md", and DiffReviewViewModel derives the
@@ -352,15 +414,35 @@ class OmniRouteAgentLoop @Inject constructor(
             ),
         )
 
-        val outcome = dispatch(
-            tool = tool,
-            call = call,
-            serverId = config.serverId,
-            workingDirectory = config.workingDirectory,
-            autonomyLevel = autonomyLevel,
-            permissionMode = config.permissionMode,
-            allowedTools = allowedTools,
-        )
+        val outcome = if (tool == OmniRouteTool.RUN_COMMAND || tool == OmniRouteTool.RUN_BUILD) {
+            if (commandCount.get() >= maxCommands) {
+                ToolOutcome(
+                    "Command limit reached: maximum $maxCommands commands per run allowed. Command skipped.",
+                    isError = true,
+                )
+            } else {
+                commandCount.incrementAndGet()
+                dispatch(
+                    tool = tool,
+                    call = call,
+                    serverId = config.serverId,
+                    workingDirectory = config.workingDirectory,
+                    autonomyLevel = autonomyLevel,
+                    permissionMode = config.permissionMode,
+                    allowedTools = allowedTools,
+                )
+            }
+        } else {
+            dispatch(
+                tool = tool,
+                call = call,
+                serverId = config.serverId,
+                workingDirectory = config.workingDirectory,
+                autonomyLevel = autonomyLevel,
+                permissionMode = config.permissionMode,
+                allowedTools = allowedTools,
+            )
+        }
 
         emit(
             AgentEvent.ToolFinished(
@@ -393,6 +475,12 @@ class OmniRouteAgentLoop @Inject constructor(
         // restricted dropping run_command), but a call naming it anyway must still
         // be refused rather than trusting the request body kept it out.
         if (tool !in allowedTools) {
+            if (tool == OmniRouteTool.GOOGLE_SHEET_READ || tool == OmniRouteTool.GOOGLE_SHEET_APPEND) {
+                return ToolOutcome(
+                    "Google Sheets operations are unavailable because this agent session has no authenticated Sheets connection.",
+                    isError = true,
+                )
+            }
             return ToolOutcome(
                 "\"${tool.toolName}\" is not available in this run's permission mode.",
                 isError = true,
@@ -401,7 +489,7 @@ class OmniRouteAgentLoop @Inject constructor(
 
         if (tool in FILE_TOOLS) {
             val default = if (tool == OmniRouteTool.LIST_DIRECTORY) "." else null
-            val path = argument(call.argumentsJson, "path") ?: default
+            val path = filePathArgument(call.argumentsJson) ?: default
             val problem = path?.let { PathGuard.problem(workingDirectory, it) }
             if (problem != null) return ToolOutcome(problem, isError = true)
         }
@@ -415,7 +503,14 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.EDIT_FILE ->
                 editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId, workingDirectory)
+            OmniRouteTool.RUN_BUILD -> runBuild(call, serverId, workingDirectory)
+            OmniRouteTool.LIST_APKS -> listApks(call, serverId, workingDirectory)
             OmniRouteTool.WEB_FETCH -> webFetch(call)
+            OmniRouteTool.GOOGLE_SHEET_READ,
+            OmniRouteTool.GOOGLE_SHEET_APPEND -> ToolOutcome(
+                "Google Sheets operations are unavailable because this agent session has no authenticated Sheets connection.",
+                isError = true,
+            )
         }
     }
 
@@ -433,9 +528,19 @@ class OmniRouteAgentLoop @Inject constructor(
         serverId: String,
         workingDirectory: String,
     ): ToolOutcome {
-        val path = argument(call.argumentsJson, "path")
+        val path = filePathArgument(call.argumentsJson)
             ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
         val resolved = resolvePath(workingDirectory, path)
+
+        parseGitHubPath(resolved)?.let { (repoFullName, relativePath) ->
+            if (relativePath.isBlank()) {
+                return ToolOutcome("Cannot read repository root as a file; use list_directory.", isError = true)
+            }
+            return when (val result = gitHubRepositoryClient.getFileContent(repoFullName, relativePath)) {
+                is VmResult.Success -> ToolOutcome(result.value, isError = false)
+                is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            }
+        }
 
         return when (val result = remoteFileSystem.readText(serverId, resolved, MAX_READ_BYTES)) {
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
@@ -455,6 +560,23 @@ class OmniRouteAgentLoop @Inject constructor(
     ): ToolOutcome {
         val path = argument(call.argumentsJson, "path") ?: "."
         val resolved = resolvePath(workingDirectory, path)
+
+        parseGitHubPath(resolved)?.let { (repoFullName, relativePath) ->
+            return when (val result = gitHubRepositoryClient.getRepositoryTree(repoFullName)) {
+                is VmResult.Success -> {
+                    val prefix = if (relativePath.isBlank()) "" else "$relativePath/"
+                    val immediateChildren = result.value.mapNotNull { item ->
+                        if (prefix.isNotEmpty() && !item.path.startsWith(prefix)) return@mapNotNull null
+                        val remainder = item.path.removePrefix(prefix)
+                        if (remainder.isBlank() || '/' in remainder) return@mapNotNull null
+                        val kind = if (item.type == "tree") "d" else "-"
+                        "$kind ${item.size.toString().padStart(SIZE_COLUMN_WIDTH)}  $remainder"
+                    }
+                    ToolOutcome(immediateChildren.joinToString("\n").ifBlank { "(empty directory)" }, isError = false)
+                }
+                is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            }
+        }
 
         return when (val result = remoteFileSystem.list(serverId, resolved)) {
             is VmResult.Success -> {
@@ -477,10 +599,55 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"query\".", isError = true)
         val path = argument(call.argumentsJson, "path") ?: "."
         val resolved = resolvePath(workingDirectory, path)
+        val caseSensitive = booleanArgument(call.argumentsJson, "case_sensitive") ?: false
+
+        parseGitHubPath(resolved)?.let { (repoFullName, relativePath) ->
+            return when (val treeResult = gitHubRepositoryClient.getRepositoryTree(repoFullName)) {
+                is VmResult.Failure -> ToolOutcome(treeResult.error.summaryWithReason(), isError = true)
+                is VmResult.Success -> {
+                    val prefix = if (relativePath.isBlank()) "" else "$relativePath/"
+                    val regex = runCatching {
+                        if (caseSensitive) Regex(query) else Regex(query, RegexOption.IGNORE_CASE)
+                    }.getOrElse {
+                        Regex(Regex.escape(query), if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE))
+                    }
+                    val matchingFiles = treeResult.value.filter { item ->
+                        item.type == "blob" &&
+                            (prefix.isEmpty() || item.path.startsWith(prefix)) &&
+                            regex.containsMatchIn(item.path)
+                    }
+                    val candidateBlobs = treeResult.value.filter { item ->
+                        item.type == "blob" &&
+                            item.size in 1..65_536 &&
+                            (prefix.isEmpty() || item.path.startsWith(prefix))
+                    }.take(15)
+                    val lineMatches = mutableListOf<String>()
+                    matchingFiles.forEach { item ->
+                        lineMatches += "[file path match] ${item.path}"
+                    }
+                    for (blob in candidateBlobs) {
+                        if (lineMatches.size >= GREP_MAX_LINES) break
+                        val contentResult = gitHubRepositoryClient.getFileContent(repoFullName, blob.path)
+                        if (contentResult is VmResult.Success) {
+                            contentResult.value.lineSequence().forEachIndexed { idx, line ->
+                                if (lineMatches.size < GREP_MAX_LINES && regex.containsMatchIn(line)) {
+                                    lineMatches += "${blob.path}:${idx + 1}: ${line.trim()}"
+                                }
+                            }
+                        }
+                    }
+                    ToolOutcome(
+                        output = lineMatches.joinToString("\n").ifBlank { "(no matches found for '$query')" },
+                        isError = false,
+                    )
+                }
+            }
+        }
+
         val command = grepCommand(
             query = query,
             path = resolved,
-            caseSensitive = booleanArgument(call.argumentsJson, "case_sensitive") ?: false,
+            caseSensitive = caseSensitive,
         )
 
         return when (val result = commandGuard.run(serverId, command, requestedByAgent = true)) {
@@ -500,10 +667,10 @@ class OmniRouteAgentLoop @Inject constructor(
      * when the run or the standing autonomy level already permits edits.
      */
     private fun canAutoApply(
-        server: Server,
+        environment: ServerEnvironment,
         permissionMode: AgentPermissionMode,
         autonomyLevel: AgentAutonomyLevel,
-    ): Boolean = server.environment != ServerEnvironment.PRODUCTION &&
+    ): Boolean = environment != ServerEnvironment.PRODUCTION &&
         permissionMode != AgentPermissionMode.MANUAL &&
         (
             permissionMode == AgentPermissionMode.ACCEPT_EDITS ||
@@ -532,9 +699,9 @@ class OmniRouteAgentLoop @Inject constructor(
         autonomyLevel: AgentAutonomyLevel,
         permissionMode: AgentPermissionMode,
     ): ToolOutcome {
-        val path = argument(call.argumentsJson, "path")
-        val target = argument(call.argumentsJson, "target_content")
-        val replacement = argument(call.argumentsJson, "replacement_content")
+        val path = filePathArgument(call.argumentsJson)
+        val target = targetContentArgument(call.argumentsJson)
+        val replacement = replacementContentArgument(call.argumentsJson)
         if (path == null || target == null || replacement == null) {
             val missing = when {
                 path == null -> "path"
@@ -545,9 +712,54 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         val resolved = resolvePath(workingDirectory, path)
 
-        val server = when (val result = serverRepository.get(serverId)) {
-            is VmResult.Success -> result.value
-            is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
+        parseGitHubPath(resolved)?.let { (repoFullName, relativePath) ->
+            val existingContent = when (val result = gitHubRepositoryClient.getFileContent(repoFullName, relativePath)) {
+                is VmResult.Success -> result.value
+                is VmResult.Failure -> return ToolOutcome(
+                    "Failed to read GitHub file before edit: ${result.error.summaryWithReason()}",
+                    isError = true,
+                )
+            }
+            uniqueMatchProblem(existingContent, target, resolved)?.let { problem ->
+                return ToolOutcome(problem, isError = true)
+            }
+            val newContent = existingContent.replace(target, replacement)
+            val autoApply = canAutoApply(ServerEnvironment.DEVELOPMENT, permissionMode, autonomyLevel)
+            if (!autoApply) {
+                val approved = fileEditApprovalGate.request(
+                    FileEditApprovalRequest(
+                        path = resolved,
+                        isNewFile = false,
+                        oldContent = existingContent,
+                        newContent = newContent,
+                        serverId = serverId.ifBlank { "github" },
+                        serverName = "GitHub ($repoFullName)",
+                        environment = ServerEnvironment.DEVELOPMENT,
+                    ),
+                )
+                if (!approved) {
+                    return ToolOutcome("The edit to \"$resolved\" was not approved.", isError = true)
+                }
+            }
+            return when (
+                val result = gitHubRepositoryClient.putFileContent(
+                    repoFullName = repoFullName,
+                    path = relativePath,
+                    content = newContent,
+                    commitMessage = "Edit $relativePath via X-Codes AI",
+                )
+            ) {
+                is VmResult.Success -> ToolOutcome("Successfully edited $resolved on GitHub.", isError = false)
+                is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            }
+        }
+
+        val server = when {
+            RemoteFileSystem.isLocalServer(serverId) || resolved.startsWith("/vmhub/") -> null
+            else -> when (val result = serverRepository.get(serverId)) {
+                is VmResult.Success -> result.value
+                is VmResult.Failure -> null
+            }
         }
 
         val existingContent = when (val result = remoteFileSystem.readText(serverId, resolved)) {
@@ -564,7 +776,11 @@ class OmniRouteAgentLoop @Inject constructor(
 
         val newContent = existingContent.replace(target, replacement)
 
-        val autoApply = canAutoApply(server, permissionMode, autonomyLevel)
+        val autoApply = canAutoApply(
+            environment = server?.environment ?: ServerEnvironment.LOCAL,
+            permissionMode = permissionMode,
+            autonomyLevel = autonomyLevel,
+        )
 
         if (!autoApply) {
             val approved = fileEditApprovalGate.request(
@@ -573,9 +789,9 @@ class OmniRouteAgentLoop @Inject constructor(
                     isNewFile = false,
                     oldContent = existingContent,
                     newContent = newContent,
-                    serverId = server.id,
-                    serverName = server.name,
-                    environment = server.environment,
+                    serverId = server?.id ?: serverId,
+                    serverName = server?.name ?: "Phone folder",
+                    environment = server?.environment ?: ServerEnvironment.LOCAL,
                 ),
             )
             if (!approved) {
@@ -596,15 +812,51 @@ class OmniRouteAgentLoop @Inject constructor(
         autonomyLevel: AgentAutonomyLevel,
         permissionMode: AgentPermissionMode,
     ): ToolOutcome {
-        val path = argument(call.argumentsJson, "path")
+        val path = filePathArgument(call.argumentsJson)
             ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
-        val content = argument(call.argumentsJson, "content")
+        val content = contentArgument(call.argumentsJson)
             ?: return ToolOutcome("Missing required argument \"content\".", isError = true)
         val resolved = resolvePath(workingDirectory, path)
 
-        val server = when (val result = serverRepository.get(serverId)) {
-            is VmResult.Success -> result.value
-            is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
+        parseGitHubPath(resolved)?.let { (repoFullName, relativePath) ->
+            val existingContent = (gitHubRepositoryClient.getFileContent(repoFullName, relativePath) as? VmResult.Success)?.value
+            val autoApply = canAutoApply(ServerEnvironment.DEVELOPMENT, permissionMode, autonomyLevel)
+            if (!autoApply) {
+                val approved = fileEditApprovalGate.request(
+                    FileEditApprovalRequest(
+                        path = resolved,
+                        isNewFile = existingContent == null,
+                        oldContent = existingContent,
+                        newContent = content,
+                        serverId = serverId.ifBlank { "github" },
+                        serverName = "GitHub ($repoFullName)",
+                        environment = ServerEnvironment.DEVELOPMENT,
+                    ),
+                )
+                if (!approved) {
+                    return ToolOutcome("The write to \"$resolved\" was not approved.", isError = true)
+                }
+            }
+            return when (
+                val result = gitHubRepositoryClient.putFileContent(
+                    repoFullName = repoFullName,
+                    path = relativePath,
+                    content = content,
+                    commitMessage = "Write $relativePath via X-Codes AI",
+                )
+            ) {
+                is VmResult.Success ->
+                    ToolOutcome("Wrote ${content.length} characters to $resolved on GitHub.", isError = false)
+                is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            }
+        }
+
+        val server = when {
+            RemoteFileSystem.isLocalServer(serverId) || resolved.startsWith("/vmhub/") -> null
+            else -> when (val result = serverRepository.get(serverId)) {
+                is VmResult.Success -> result.value
+                is VmResult.Failure -> null
+            }
         }
 
         // Production always requires a human decision, exactly as UserPreferences
@@ -612,7 +864,11 @@ class OmniRouteAgentLoop @Inject constructor(
         // ceiling." MANUAL asks for everything with an effect, by the user's own
         // per-run choice, regardless of the standing autonomy level. Everything else
         // (ACCEPT_EDITS, BYPASS, or DEVELOPER+/FULL_AGENT autonomy) may auto-apply.
-        val autoApply = canAutoApply(server, permissionMode, autonomyLevel)
+        val autoApply = canAutoApply(
+            environment = server?.environment ?: ServerEnvironment.LOCAL,
+            permissionMode = permissionMode,
+            autonomyLevel = autonomyLevel,
+        )
 
         if (!autoApply) {
             // Existence is checked directly rather than inferred from whether the
@@ -623,7 +879,13 @@ class OmniRouteAgentLoop @Inject constructor(
                 is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
             }
             val existingContent = if (fileExists) {
-                (remoteFileSystem.readText(serverId, resolved) as? VmResult.Success)?.value
+                when (val result = remoteFileSystem.readText(serverId, resolved)) {
+                    is VmResult.Success -> result.value
+                    is VmResult.Failure -> return ToolOutcome(
+                        "Failed to read file before write approval: ${result.error.summaryWithReason()}",
+                        isError = true,
+                    )
+                }
             } else {
                 null
             }
@@ -634,9 +896,9 @@ class OmniRouteAgentLoop @Inject constructor(
                     isNewFile = !fileExists,
                     oldContent = existingContent,
                     newContent = content,
-                    serverId = server.id,
-                    serverName = server.name,
-                    environment = server.environment,
+                    serverId = server?.id ?: serverId,
+                    serverName = server?.name ?: "Phone folder",
+                    environment = server?.environment ?: ServerEnvironment.LOCAL,
                 ),
             )
             if (!approved) {
@@ -658,6 +920,12 @@ class OmniRouteAgentLoop @Inject constructor(
     ): ToolOutcome {
         val requested = argument(call.argumentsJson, "command")
             ?: return ToolOutcome("Missing required argument \"command\".", isError = true)
+        if (RemoteFileSystem.isLocalServer(serverId) || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/")) {
+            return ToolOutcome(
+                "Terminal commands are not supported in local or virtual workspaces. Running commands requires an active SSH VPS server.",
+                isError = true,
+            )
+        }
         // The model is told it works in the project, so its commands run there, not
         // in the SSH login directory; builds and tests get time to finish.
         val directory = workingDirectory.trim().replace("'", "'\\''")
@@ -686,13 +954,92 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.WRITE_FILE -> "Write ${path ?: "?"}"
         OmniRouteTool.EDIT_FILE -> "Edit ${path ?: "?"}"
         OmniRouteTool.RUN_COMMAND -> "Run command"
+        OmniRouteTool.RUN_BUILD -> "Build ${path ?: "project"}"
+        OmniRouteTool.LIST_APKS -> "List APKs in ${path ?: "."}"
         OmniRouteTool.WEB_FETCH -> "Fetch ${path ?: "web page"}"
+        OmniRouteTool.GOOGLE_SHEET_READ -> "Read spreadsheet ${path ?: "?"}"
+        OmniRouteTool.GOOGLE_SHEET_APPEND -> "Append spreadsheet rows"
         null -> toolName
     }
+    private suspend fun runBuild(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
+        val tasks = argument(call.argumentsJson, "tasks")?.ifBlank { null } ?: "assembleRelease"
+        if (!BUILD_TASKS_PATTERN.matches(tasks)) {
+            return ToolOutcome(
+                "Invalid tasks \"$tasks\". Use Gradle task names only " +
+                    "(letters, digits, ':', '-', '_', '.', spaces).",
+                isError = true,
+            )
+        }
+        val directory = argument(call.argumentsJson, "directory")?.ifBlank { null } ?: workingDirectory
+        PathGuard.problem(workingDirectory, directory)?.let { problem ->
+            return ToolOutcome(problem, isError = true)
+        }
+        if (RemoteFileSystem.isLocalServer(serverId) || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/")) {
+            return ToolOutcome(
+                "Gradle builds cannot run on phone storage or virtual workspaces. Attach an active SSH build server to compile.",
+                isError = true,
+            )
+        }
+        val resolved = resolvePath(workingDirectory, directory)
+        val quotedDirectory = resolved.replace("'", "'\\''")
+        val command = "cd '$quotedDirectory' && ./gradlew $tasks --no-daemon"
+        val result = commandGuard.run(serverId, command, AGENT_COMMAND_LIMITS, requestedByAgent = true)
+        return when (result) {
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Success -> {
+                val output = result.value.combinedOutput()
+                ToolOutcome(
+                    output = output.ifBlank { "(no output)" } +
+                        if (!result.value.isSuccess) "\n[exit code ${result.value.exitCode}]" else "",
+                    isError = !result.value.isSuccess,
+                )
+            }
+        }
+    }
 
-    /** Absolute and home-relative paths pass through; anything else is relative to [workingDirectory]. */
-    private fun resolvePath(workingDirectory: String, path: String): String =
-        if (path.startsWith("/") || path.startsWith("~")) path else "${workingDirectory.trimEnd('/')}/$path"
+    private suspend fun listApks(
+        call: OmniRouteToolCall,
+        serverId: String,
+        workingDirectory: String,
+    ): ToolOutcome {
+        val apkDirectory = argument(call.argumentsJson, "directory")?.ifBlank { null } ?: workingDirectory
+        PathGuard.problem(workingDirectory, apkDirectory)?.let { problem ->
+            return ToolOutcome(problem, isError = true)
+        }
+        if (RemoteFileSystem.isLocalServer(serverId) || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/")) {
+            return ToolOutcome(
+                "APK artifact search requires an active SSH Linux build server.",
+                isError = true,
+            )
+        }
+        val resolvedApks = resolvePath(workingDirectory, apkDirectory)
+        val quotedApks = resolvedApks.replace("'", "'\\''")
+        val result = commandGuard.run(
+            serverId,
+            "cd '$quotedApks' && find . -maxdepth 5 -type f -name '*.apk' -printf '%P (%s bytes)\n'",
+            AGENT_COMMAND_LIMITS,
+            requestedByAgent = true,
+        )
+        return when (result) {
+            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Success -> {
+                val output = result.value.combinedOutput()
+                ToolOutcome(output = output.ifBlank { "(no apk files found)" }, isError = false)
+            }
+        }
+    }
+
+
+    /** Confines paths to [workingDirectory] to prevent escaping the project root. */
+    private fun resolvePath(workingDirectory: String, path: String): String {
+        PathGuard.resolve(workingDirectory, path)?.let { return it }
+        val root = workingDirectory.trimEnd('/')
+        return digital.vmstudio.code.core.sftp.model.RemotePath.confine(root, path) ?: root
+    }
 
     /** JSON booleans arrive as `true`, not `"true"`; [argument] reads strings only. */
     private fun booleanArgument(argumentsJson: String, key: String): Boolean? {
@@ -704,8 +1051,34 @@ class OmniRouteAgentLoop @Inject constructor(
     private fun argument(argumentsJson: String, key: String): String? {
         val root = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull()
             as? JsonObject ?: return null
-        return (root[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        return (root[key] as? JsonPrimitive)?.content
     }
+
+    private fun filePathArgument(argumentsJson: String): String? =
+        argument(argumentsJson, "path")
+            ?: argument(argumentsJson, "file_path")
+            ?: argument(argumentsJson, "filePath")
+            ?: argument(argumentsJson, "file")
+
+    private fun contentArgument(argumentsJson: String): String? =
+        argument(argumentsJson, "content")
+            ?: argument(argumentsJson, "text")
+            ?: argument(argumentsJson, "file_text")
+            ?: argument(argumentsJson, "code")
+
+    private fun targetContentArgument(argumentsJson: String): String? =
+        argument(argumentsJson, "target_content")
+            ?: argument(argumentsJson, "target")
+            ?: argument(argumentsJson, "old_content")
+            ?: argument(argumentsJson, "old_str")
+            ?: argument(argumentsJson, "old_string")
+
+    private fun replacementContentArgument(argumentsJson: String): String? =
+        argument(argumentsJson, "replacement_content")
+            ?: argument(argumentsJson, "replacement")
+            ?: argument(argumentsJson, "new_content")
+            ?: argument(argumentsJson, "new_str")
+            ?: argument(argumentsJson, "new_string")
 
     private fun VmError.summaryWithReason(): String = reason?.let { "$summary: $it" } ?: summary
 
@@ -735,7 +1108,8 @@ class OmniRouteAgentLoop @Inject constructor(
         if (OmniRouteTool.RUN_COMMAND in allowedTools) {
             append(
                 "Use run_command to run build, test, git, and lint commands, inspect outputs, " +
-                    "and self-correct any errors. ",
+                    "and self-correct any errors. Use run_build for Gradle builds and " +
+                    "list_apks to find built APKs. ",
             )
         }
         if (OmniRouteTool.WRITE_FILE !in allowedTools) {
@@ -745,7 +1119,7 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
         append(
-            "Prefer relative paths under $workingDirectory. When done, reply " +
+            "Prefer relative paths under $workingDirectory. For large or multi-step requests, formulate a plan by listing steps first, then execute them sequentially. Validate your results between steps. When done, reply " +
                 "with a clear summary of findings or modifications.",
         )
     }
@@ -771,6 +1145,7 @@ class OmniRouteAgentLoop @Inject constructor(
         const val DEFAULT_MAX_TOKENS = 8192
         const val SIZE_COLUMN_WIDTH = 10
         const val COMMAND_TIMEOUT_MILLIS = 10 * 60_000L
+        val BUILD_TASKS_PATTERN = Regex("[A-Za-z0-9:_\\-. ]+")
 
         /** Long enough for a build or test run; output stays at the usual cap. */
         val AGENT_COMMAND_LIMITS = CommandLimits(timeoutMillis = COMMAND_TIMEOUT_MILLIS)
@@ -875,6 +1250,21 @@ private fun VmError.isFinalForTurn(): Boolean =
     this is VmError.Authentication || (this as? VmError.Network)?.statusCode in FINAL_STATUSES
 
 private val FINAL_STATUSES = setOf(401, 403, 404, 429)
+
+internal fun isFailoverCandidate(error: VmError): Boolean {
+    val status = (error as? VmError.Network)?.statusCode
+    val text = listOfNotNull(error.summary, error.reason).joinToString(" ").lowercase()
+    return status == 429 || (status != null && status in 500..504) ||
+        text.contains("capability_mismatch") ||
+        text.contains("supports tool calling") ||
+        text.contains("capability mismatch") ||
+        text.contains("tool calling") ||
+        text.contains("quota") ||
+        text.contains("rate limit") ||
+        text.contains("overloaded") ||
+        text.contains("unavailable") ||
+        text.contains("not available in the active live catalog")
+}
 
 /** What a turn that cannot continue reports to the chat. */
 private fun OmniRouteTurn.failure(): VmError = when (this) {

@@ -45,14 +45,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
 /** The chip's text: a gateway id's last part, so `auto/best-coding` reads `best-coding`. */
 internal fun modelChipLabel(selectedModel: String): String =
-    ClaudeCodeModels.CHOICES.firstOrNull { it.id == selectedModel }?.label
-        ?: selectedModel.substringAfterLast('/')
+    selectedModel.substringAfterLast('/').ifBlank { "Select model" }
 
 /**
  * Models whose id contains every word of [query], in any order and any case.
@@ -84,7 +82,6 @@ internal fun ModelPicker(
     enabled: Boolean,
     onModelChange: (String) -> Unit,
     onSync: () -> Unit,
-    isClaudeCodeMissing: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
     ComposerChip(label = modelChipLabel(selectedModel), enabled = enabled, onClick = { open = true })
@@ -93,7 +90,6 @@ internal fun ModelPicker(
             selectedModel = selectedModel,
             omniModels = omniModels,
             isSyncing = isSyncing,
-            isClaudeCodeMissing = isClaudeCodeMissing,
             onPick = {
                 onModelChange(it)
                 open = false
@@ -104,8 +100,30 @@ internal fun ModelPicker(
     }
 }
 
-/** What the picker lists: everything, only free gateway models, or only Claude Code. */
-internal enum class ModelFilter { ALL, FREE, CLAUDE }
+/** What the picker lists: Smart Auto routes, only Free gateway models, or All models. */
+internal enum class ModelFilter { SMART, FREE, ALL }
+
+private val SMART_COMBO_IDS = setOf("opus", "opus-nvidia", "Kimi Coding")
+
+internal fun isSmartRouteModel(id: String): Boolean =
+    id.startsWith("auto/") || id in SMART_COMBO_IDS
+
+internal fun smartRouteDescription(id: String): String? = when (id) {
+    "auto/best-coding" -> "Smart Router · Best coding model with live failover"
+    "auto/coding:free" -> "Smart Router · 100% free coding model with tool execution"
+    "auto/best-free" -> "Smart Router · Free general model (auto-routes tools to coding:free)"
+    "auto/best-reasoning" -> "Smart Router · Deep reasoning & architecture"
+    "auto/best-fast" -> "Smart Router · Ultra-low latency instant responses"
+    "auto/best-vision" -> "Smart Router · Multimodal vision & UI analysis"
+    "auto/best-chat" -> "Smart Router · General engineering chat"
+    "auto/best-coding-fast" -> "Smart Router · Fast code edits & completions"
+    "auto/pro-coding" -> "Smart Router · Pro-tier coding cluster"
+    "auto/pro-reasoning" -> "Smart Router · Pro-tier deep reasoning cluster"
+    "opus" -> "Combo · Claude Opus 4.6 Thinking -> Sonnet 4.6 -> Nemotron 120B"
+    "opus-nvidia" -> "Combo · Nemotron 120B -> Qwen 3.8 27B -> Codestral"
+    "Kimi Coding" -> "Combo · Codestral Latest -> Qwen 3.8 27B -> GPT-OSS 120B"
+    else -> null
+}
 
 /** The gateway ids a filter keeps, after the search. */
 internal fun visibleGatewayModels(
@@ -114,7 +132,7 @@ internal fun visibleGatewayModels(
     query: String,
     filter: ModelFilter,
 ): List<String> = when (filter) {
-    ModelFilter.CLAUDE -> emptyList()
+    ModelFilter.SMART -> filterModels(ids.filter(::isSmartRouteModel), query)
     ModelFilter.FREE -> filterModels(ids.filter { it in freeIds }, query)
     ModelFilter.ALL -> filterModels(ids, query)
 }
@@ -125,26 +143,46 @@ private fun ModelPickerSheet(
     selectedModel: String,
     omniModels: OmniRouteModels,
     isSyncing: Boolean,
-    isClaudeCodeMissing: Boolean,
     onPick: (String) -> Unit,
     onSync: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
-    // Opens on Free when the gateway marks any model free: that is what most people
-    // pick from, and it answers "which ones cost nothing" at a glance.
-    var filter by remember {
-        mutableStateOf(if (omniModels.freeIds.isEmpty()) ModelFilter.ALL else ModelFilter.FREE)
-    }
-    val claude = if (filter == ModelFilter.FREE) {
-        emptyList()
-    } else {
-        ClaudeCodeModels.CHOICES.filter { choice ->
-            filterModels(listOf("${choice.label} ${choice.id} ${choice.description}"), query).isNotEmpty()
+    val initialTab = remember {
+        when {
+            selectedModel in omniModels.freeIds && !selectedModel.startsWith("auto/best-coding") -> ModelFilter.FREE
+            isSmartRouteModel(selectedModel) -> ModelFilter.SMART
+            omniModels.freeIds.isNotEmpty() -> ModelFilter.FREE
+            else -> ModelFilter.ALL
         }
     }
-    val groups = groupModels(visibleGatewayModels(omniModels.ids, omniModels.freeIds, query, filter))
-    val nothing = claude.isEmpty() && groups.all { it.second.isEmpty() }
+    var filter by remember { mutableStateOf(initialTab) }
+
+    // Live-sync automatically when opening the picker if never synced or free catalog is empty
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (omniModels.isConfigured && !isSyncing && (omniModels.syncedAtMillis == 0L || omniModels.freeIds.isEmpty())) {
+            onSync()
+        }
+    }
+
+    val effectiveFilter = if (query.isNotBlank() && filter == ModelFilter.SMART) ModelFilter.ALL else filter
+    val rawGroups = groupModels(visibleGatewayModels(omniModels.ids, omniModels.freeIds, query, effectiveFilter))
+    val groups = remember(rawGroups) {
+        rawGroups.sortedBy { (vendor, _) ->
+            when (vendor) {
+                "auto" -> "00_auto"
+                "other" -> "01_combos"
+                "antigravity", "agy" -> "02_$vendor"
+                "groq", "g4f-groq" -> "03_$vendor"
+                else -> "10_${vendor.orEmpty()}"
+            }
+        }
+    }
+    val smartCount = remember(omniModels.ids) { omniModels.ids.count(::isSmartRouteModel) }
+    val freeCount = remember(omniModels.ids, omniModels.freeIds) {
+        omniModels.ids.count { it in omniModels.freeIds }
+    }
+    val nothing = groups.all { it.second.isEmpty() }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -153,7 +191,7 @@ private fun ModelPickerSheet(
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Choose a model", style = MaterialTheme.typography.titleLarge)
+                    Text("OmniRoute AI Models", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
                         text = omniSectionTitle(omniModels, isSyncing),
                         style = MaterialTheme.typography.bodySmall,
@@ -163,34 +201,32 @@ private fun ModelPickerSheet(
                 SyncButton(omniModels.isConfigured, isSyncing, onSync)
             }
             SearchField(query = query, onQueryChange = { query = it })
-            FilterRow(filter, freeCount = omniModels.freeIds.size, onFilter = { filter = it })
+            FilterRow(
+                filter = filter,
+                smartCount = smartCount,
+                freeCount = freeCount,
+                allCount = omniModels.ids.size,
+                onFilter = { filter = it },
+            )
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 160.dp, max = 560.dp),
+                    .heightIn(min = 200.dp, max = 560.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                if (claude.isNotEmpty()) {
-                    item(key = "header-claude") {
-                        SectionLabel(if (isClaudeCodeMissing) CLAUDE_MISSING_LABEL else CLAUDE_LABEL)
-                    }
-                    items(claude, key = { "claude-${it.id}" }) { choice ->
-                        ModelRow(
-                            title = choice.label,
-                            subtitle = choice.description,
-                            vendor = "claude",
-                            selected = choice.id == selectedModel,
-                            free = false,
-                        ) { onPick(choice.id) }
-                    }
-                }
                 groups.forEach { (vendor, ids) ->
                     if (ids.isEmpty()) return@forEach
-                    item(key = "header-$vendor") { SectionLabel(vendor ?: "OmniRoute") }
+                    val headerTitle = when (vendor) {
+                        "auto" -> "Smart Auto Routers"
+                        "other" -> "Curated Failover Combos"
+                        null -> "OmniRoute"
+                        else -> vendor
+                    }
+                    item(key = "header-$vendor") { SectionLabel(headerTitle) }
                     items(ids, key = { "omni-$it" }) { id ->
                         ModelRow(
                             title = id.substringAfterLast('/'),
-                            subtitle = id.takeIf { '/' in it },
+                            subtitle = smartRouteDescription(id) ?: id.takeIf { '/' in it },
                             vendor = vendor ?: id,
                             selected = id == selectedModel,
                             free = id in omniModels.freeIds,
@@ -204,15 +240,21 @@ private fun ModelPickerSheet(
 }
 
 @Composable
-private fun FilterRow(filter: ModelFilter, freeCount: Int, onFilter: (ModelFilter) -> Unit) {
+private fun FilterRow(
+    filter: ModelFilter,
+    smartCount: Int,
+    freeCount: Int,
+    allCount: Int,
+    onFilter: (ModelFilter) -> Unit,
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(bottom = 4.dp),
+        modifier = Modifier.padding(bottom = 6.dp),
     ) {
         FilterChip(
-            selected = filter == ModelFilter.ALL,
-            onClick = { onFilter(ModelFilter.ALL) },
-            label = { Text("All") },
+            selected = filter == ModelFilter.SMART,
+            onClick = { onFilter(ModelFilter.SMART) },
+            label = { Text(if (smartCount > 0) "Smart · $smartCount" else "Smart") },
         )
         FilterChip(
             selected = filter == ModelFilter.FREE,
@@ -228,9 +270,9 @@ private fun FilterRow(filter: ModelFilter, freeCount: Int, onFilter: (ModelFilte
             ),
         )
         FilterChip(
-            selected = filter == ModelFilter.CLAUDE,
-            onClick = { onFilter(ModelFilter.CLAUDE) },
-            label = { Text("Claude Code") },
+            selected = filter == ModelFilter.ALL,
+            onClick = { onFilter(ModelFilter.ALL) },
+            label = { Text(if (allCount > 0) "All · $allCount" else "All") },
         )
     }
 }
@@ -412,5 +454,3 @@ private fun relativeAge(millis: Long): String {
 
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val MINUTES_PER_HOUR = 60L
-private const val CLAUDE_LABEL = "Claude Code · runs on your server"
-private const val CLAUDE_MISSING_LABEL = "Claude Code · not installed on this server"

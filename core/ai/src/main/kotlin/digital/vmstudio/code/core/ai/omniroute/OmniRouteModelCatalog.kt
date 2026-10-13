@@ -39,11 +39,11 @@ class OmniRouteModelCatalog @Inject constructor(
     val models: Flow<OmniRouteModels> = preferences.preferences
         .map { prefs ->
             OmniRouteModels(
-                ids = prefs.aiAvailableModelIds,
+                ids = prioritizeSmartModels(prefs.aiAvailableModelIds),
                 freeIds = prefs.aiFreeModelIds +
                     prefs.aiAvailableModelIds.filter(GatewayModelPricing::isFreeModelId),
                 syncedAtMillis = prefs.aiModelsSyncedAtMillis,
-                isConfigured = prefs.aiBaseUrl.isNotBlank() && prefs.aiApiKeyCredentialId != null,
+                isConfigured = prefs.aiBaseUrl.isNotBlank(),
             )
         }
         .distinctUntilChanged()
@@ -55,19 +55,64 @@ class OmniRouteModelCatalog @Inject constructor(
     suspend fun sync(): VmResult<List<String>> = syncLock.withLock {
         val result = provider.listModels()
         if (result is VmResult.Success && result.value.ids.isNotEmpty()) {
-            preferences.setAiModels(result.value.ids, result.value.freeIds)
+            val ids = prioritizeSmartModels(result.value.ids)
+            val freeIds = result.value.freeIds + ids.filter(GatewayModelPricing::isFreeModelId)
+            preferences.setAiModels(ids, freeIds)
+            val currentPrefs = preferences.preferences.first()
+            if (currentPrefs.aiSelectedModelId.isNullOrBlank() || currentPrefs.aiSelectedModelId !in ids) {
+                val preferred = PREFERRED_DEFAULT_MODELS.firstOrNull { it in ids } ?: ids.first()
+                preferences.setAiModel(preferred, currentPrefs.aiModelPreset)
+            }
         }
-        result.map { it.ids }
+        result.map { prioritizeSmartModels(it.ids) }
     }
 
-    /** Syncs only when a gateway is configured and the stored list has gone stale. */
+    /** Syncs when a gateway is configured and the stored list is stale or missing free models. */
     suspend fun syncIfStale() {
         val current = models.first()
         val age = System.currentTimeMillis() - current.syncedAtMillis
-        if (current.isConfigured && age > STALE_AFTER_MILLIS) sync()
+        if (current.isConfigured && (age > STALE_AFTER_MILLIS || current.freeIds.isEmpty())) {
+            sync()
+        }
     }
 
     companion object {
-        const val STALE_AFTER_MILLIS: Long = 15 * 60 * 1000L
+        const val STALE_AFTER_MILLIS: Long = 5 * 60 * 1000L
+
+        private val PREFERRED_DEFAULT_MODELS = listOf(
+            "auto/best-coding",
+            "auto/coding:free",
+            "auto/best-free",
+            "opus",
+        )
+
+        private val SMART_PRIORITY_ORDER = listOf(
+            "auto/best-coding",
+            "auto/coding:free",
+            "auto/best-free",
+            "auto/best-reasoning",
+            "auto/best-fast",
+            "auto/best-vision",
+            "auto/best-chat",
+            "auto/best-coding-fast",
+            "auto/pro-coding",
+            "auto/pro-reasoning",
+            "auto/coding",
+            "auto/fast",
+            "opus",
+            "opus-nvidia",
+            "Kimi Coding",
+        )
+
+        fun prioritizeSmartModels(ids: List<String>): List<String> {
+            if (ids.isEmpty()) return ids
+            val priorityIndex = SMART_PRIORITY_ORDER.withIndex().associate { (i, id) -> id to i }
+            return ids.distinct().sortedWith(
+                compareBy<String> { id ->
+                    priorityIndex[id]
+                        ?: if (id.startsWith("auto/")) SMART_PRIORITY_ORDER.size else SMART_PRIORITY_ORDER.size + 1
+                },
+            )
+        }
     }
 }

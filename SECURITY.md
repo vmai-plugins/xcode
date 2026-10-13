@@ -71,6 +71,16 @@ Secrets in memory are `Secret`, not `String`:
 ViewModels clear secret fields from UI state the moment they are stored: ViewModel
 state survives configuration changes and appears in heap dumps.
 
+## GitHub repository access
+
+The GitHub personal access token is stored in `FileSecureCredentialStore`. Repository
+listing sends it as a bearer token only to GitHub's HTTPS API. Public repository
+imports clone without sending the token to the VPS. A private import temporarily
+stages the token on the explicitly selected VPS in a mode-`700` directory and a
+mode-`600` token file for Git's askpass helper; the app removes those files in a
+non-cancellable cleanup step. If cleanup fails, the import reports that explicitly
+and tells the user to inspect the VPS and revoke the token if necessary.
+
 ## Redaction
 
 `SecretRedactor` runs on every log message *before* any sink sees it, so even a

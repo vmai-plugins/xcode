@@ -105,6 +105,7 @@ class RegexSyntaxHighlighter(
         while (i < source.length) {
             if (source[i] == '\\') {
                 i += 2
+                if (i >= source.length) break
                 continue
             }
             if (source[i] == delimiter) {

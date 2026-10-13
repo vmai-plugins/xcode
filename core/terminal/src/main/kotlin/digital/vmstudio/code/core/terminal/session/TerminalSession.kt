@@ -168,6 +168,9 @@ class TerminalSession internal constructor(
                     ),
                 )
                 VmLog.w(LogCategory.TERMINAL, TAG, "Shell session $id failed", throwable)
+            } finally {
+                trailingPublish?.cancel()
+                trailingPublish = null
             }
         }
     }

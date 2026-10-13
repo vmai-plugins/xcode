@@ -82,10 +82,23 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
           cp "$APK" "xcodes-${VERSION}.apk"
 
-      - name: Publish release
+      - name: Publish release to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" "xcodes-${VERSION}.apk" \
             --title "X-Codes ${VERSION}" \
             --generate-notes
+
+      - name: Deploy APK to apps.vmstudio.digital
+        if: env.DEPLOY_SSH_KEY != ''
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
+          TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
+        run: |
+          mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
+          scp -i ~/.ssh/id_rsa "xcodes-${VERSION}.apk" "${DEPLOY_HOST}:${TARGET_DIR}/app-release.apk"
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "chmod 644 ${TARGET_DIR}/app-release.apk"
+          echo "Successfully published xcodes-${VERSION}.apk to https://apps.vmstudio.digital/x-codes/app-release.apk"

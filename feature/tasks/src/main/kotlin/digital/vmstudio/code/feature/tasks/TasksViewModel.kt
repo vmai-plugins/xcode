@@ -5,44 +5,87 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.repository.AgentTask
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
+import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.project.HubTaskItem
+import digital.vmstudio.code.core.project.VmProjectHubClient
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Backs the Tasks record screen. The list is a live Flow from the repository, so a
- * run that finishes in the background updates an open Tasks screen by itself.
- *
- * Each row is paired with its project's server id so the UI can open diff review
- * without knowing anything about how projects map to servers.
+ * Backs the Tasks screen: combines live Kanban tasks from VM Project Hub
+ * (`vmstudio.digital/wp-json/xcodes/v1/tasks`) and recorded AI agent runs.
  */
 @HiltViewModel
 class TasksViewModel @Inject constructor(
     private val tasks: AgentTaskRepository,
+    private val projectHubClient: VmProjectHubClient,
 ) : ViewModel() {
 
-    val uiState: StateFlow<TasksUiState> =
-        tasks.observeAll().map { list ->
-            // Fetched concurrently rather than one query per task in sequence: a
-            // busy project can emit rapidly, and awaiting each lookup in turn would
-            // make this pipeline fall increasingly behind the live repository state.
-            val rows = coroutineScope {
-                list.map { task ->
-                    async { TaskRowUi(task = task, serverId = tasks.serverIdFor(task.projectId)) }
-                }.awaitAll()
-            }
-            TasksUiState(isLoading = false, tasks = rows)
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = TasksUiState(isLoading = true),
+    private val hubTasks = MutableStateFlow<List<HubTaskItem>>(emptyList())
+    private val isSyncingHub = MutableStateFlow(false)
+
+    val uiState: StateFlow<TasksUiState> = combine(
+        tasks.observeAll(),
+        hubTasks,
+        isSyncingHub,
+    ) { list, hubList, syncing ->
+        val rows = coroutineScope {
+            list.map { task ->
+                async { TaskRowUi(task = task, serverId = tasks.serverIdFor(task.projectId)) }
+            }.awaitAll()
+        }
+        TasksUiState(
+            isLoading = false,
+            isSyncingHub = syncing,
+            tasks = rows,
+            hubTasks = hubList,
         )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = TasksUiState(isLoading = true),
+    )
+
+    init {
+        syncHubTasks()
+    }
+
+    fun syncHubTasks() {
+        if (isSyncingHub.value) return
+        isSyncingHub.value = true
+        viewModelScope.launch {
+            try {
+                when (val res = projectHubClient.fetchTasks()) {
+                    is VmResult.Success -> hubTasks.value = res.value
+                    is VmResult.Failure -> Unit
+                }
+            } finally {
+                isSyncingHub.value = false
+            }
+        }
+    }
+
+    fun cycleHubTaskStatus(item: HubTaskItem) {
+        val nextStatus = when (item.status.lowercase()) {
+            "todo" -> "in_progress"
+            "in_progress" -> "done"
+            else -> "todo"
+        }
+        hubTasks.value = hubTasks.value.map {
+            if (it.id == item.id) it.copy(status = nextStatus) else it
+        }
+        viewModelScope.launch {
+            projectHubClient.updateTaskStatus(item.id, nextStatus)
+        }
+    }
 
     fun delete(taskId: String) {
         viewModelScope.launch { tasks.delete(taskId) }
@@ -61,6 +104,8 @@ data class TaskRowUi(
 
 data class TasksUiState(
     val isLoading: Boolean = false,
+    val isSyncingHub: Boolean = false,
     val tasks: List<TaskRowUi> = emptyList(),
+    val hubTasks: List<HubTaskItem> = emptyList(),
 )
 

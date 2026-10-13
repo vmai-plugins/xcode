@@ -14,6 +14,7 @@ import digital.vmstudio.code.core.sftp.fs.TransferEvent
 import digital.vmstudio.code.core.sftp.model.RemoteFileEntry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.lastOrNull
@@ -57,13 +58,16 @@ class FileTransfers @Inject constructor(
             is VmResult.Success -> downloaded.value
         }
         val bitmap = withContext(ioDispatcher) { decodeBitmap(file) }
-            ?: return PreviewContent.Failed(
+        if (bitmap == null) {
+            discard(file)
+            return PreviewContent.Failed(
                 VmError.FileSystem(
                     summary = "Could not show ${entry.name}",
                     reason = "The image is damaged or in a format this phone cannot decode.",
                     path = entry.path,
                 ),
             )
+        }
         return PreviewContent.Image(bitmap, file)
     }
 
@@ -79,14 +83,28 @@ class FileTransfers @Inject constructor(
         val destination = withContext(ioDispatcher) {
             val root = File(context.cacheDir, DOWNLOAD_DIR)
             pruneOlderThan(root, System.currentTimeMillis() - DOWNLOAD_TTL_MILLIS)
-            File(File(root, System.nanoTime().toString()), entry.name)
+            File(
+                File(root, System.nanoTime().toString()),
+                entry.name.replace(UNSAFE_NAME_CHARS, "_").ifBlank { "download" },
+            )
         }
-        val failure = runTransfer(
-            remoteFileSystem.download(serverId, entry.path, destination, resume = false),
-            onProgress,
-            failed = { reason -> transferFailed("Could not download ${entry.name}", reason, entry.path) },
-        )
-        return if (failure == null) VmResult.Success(destination) else VmResult.Failure(failure)
+        var completed = false
+        try {
+            val failure = runTransfer(
+                remoteFileSystem.download(serverId, entry.path, destination, resume = false),
+                onProgress,
+                failed = { reason -> transferFailed("Could not download ${entry.name}", reason, entry.path) },
+            )
+            if (failure != null) return VmResult.Failure(failure)
+            completed = true
+            return VmResult.Success(destination)
+        } finally {
+            if (!completed) {
+                withContext(NonCancellable + ioDispatcher) {
+                    destination.parentFile?.deleteRecursively()
+                }
+            }
+        }
     }
 
     /** Uploads [source] to [remotePath]; null on success. */
@@ -106,17 +124,26 @@ class FileTransfers @Inject constructor(
      * the SFTP layer streams from a [File] and a content Uri is not one.
      */
     suspend fun copyToCache(uri: Uri): VmResult<File> = withContext(ioDispatcher) {
-        val name = displayName(uri).replace(UNSAFE_NAME_CHARS, "_").ifBlank { "upload" }
+        val fallbackName = uri.lastPathSegment.orEmpty().substringAfterLast('/').ifBlank { "upload" }
+        var name = fallbackName
         val target = File(File(File(context.cacheDir, UPLOAD_DIR), System.nanoTime().toString()), name)
         try {
-            target.parentFile?.mkdirs()
+            name = displayName(uri).replace(UNSAFE_NAME_CHARS, "_").ifBlank { fallbackName }
+            val namedTarget = File(target.parentFile, name)
+            namedTarget.parentFile?.mkdirs()
             val input = context.contentResolver.openInputStream(uri)
-                ?: return@withContext VmResult.Failure(unreadable(name, "The file could not be opened."))
-            input.use { source -> target.outputStream().use { source.copyTo(it) } }
-            VmResult.Success(target)
+                ?: run {
+                    namedTarget.parentFile?.deleteRecursively()
+                    return@withContext VmResult.Failure(unreadable(name, "The file could not be opened."))
+                }
+            input.use { source -> namedTarget.outputStream().use { source.copyTo(it) } }
+            VmResult.Success(namedTarget)
         } catch (io: IOException) {
             target.parentFile?.deleteRecursively()
             VmResult.Failure(unreadable(name, io.message))
+        } catch (denied: SecurityException) {
+            target.parentFile?.deleteRecursively()
+            VmResult.Failure(unreadable(name, denied.message))
         }
     }
 
@@ -143,11 +170,7 @@ class FileTransfers @Inject constructor(
                 emit(TransferEvent.Failed(failed(cause.message), 0))
             }
             .lastOrNull()
-        return when (last) {
-            null -> failed("The transfer ended without reporting a result.")
-            is TransferEvent.Failed -> last.error
-            else -> null
-        }
+        return transferFailure(last, failed)
     }
 
     private fun decodeBitmap(file: File): Bitmap? {
@@ -183,4 +206,14 @@ class FileTransfers @Inject constructor(
         const val DOWNLOAD_TTL_MILLIS = 60L * 60 * 1000
         val UNSAFE_NAME_CHARS = Regex("[/\\\\:*?\"<>|]")
     }
+}
+
+internal fun transferFailure(
+    last: TransferEvent?,
+    failed: (String?) -> VmError,
+): VmError? = when (last) {
+    is TransferEvent.Completed -> null
+    is TransferEvent.Failed -> last.error
+    null -> failed("The transfer ended without reporting a result.")
+    else -> failed("The transfer ended before reporting completion.")
 }

@@ -1,5 +1,9 @@
 package digital.vmstudio.code.core.ai.omniroute.agent
 
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
 /**
  * Keeps the agent's file tools inside the project folder and away from secrets.
  *
@@ -19,6 +23,15 @@ internal object PathGuard {
         if (path.startsWith("~")) {
             return "Home-relative paths are not available. Use a path inside $workingDirectory."
         }
+        if (isTreeUri(workingDirectory)) {
+            val target = resolveTreeUriPath(workingDirectory, path)
+                ?: return "That path is outside the selected phone folder. File tools only work inside it."
+            return if (isSecret(treeUriRelativePath(target))) {
+                "That path holds credentials, so the agent may not read or change it."
+            } else {
+                null
+            }
+        }
         val root = normalize(workingDirectory)
         val target = normalize(if (path.startsWith("/")) path else "$workingDirectory/$path")
         val inside = root == "/" || target == root || target.startsWith("$root/")
@@ -28,6 +41,66 @@ internal object PathGuard {
             else -> null
         }
     }
+
+    fun resolve(workingDirectory: String, path: String): String? {
+        if (isTreeUri(workingDirectory)) return resolveTreeUriPath(workingDirectory, path)
+        return normalize(if (path.startsWith("/")) path else "$workingDirectory/$path")
+            .takeIf { target ->
+                val root = normalize(workingDirectory)
+                root == "/" || target == root || target.startsWith("$root/")
+            }
+    }
+
+    private fun isTreeUri(path: String): Boolean =
+        path.startsWith("content://") && path.contains("!/")
+
+    private fun resolveTreeUriPath(root: String, path: String): String? {
+        val marker = root.indexOf("!/")
+        val tree = root.substring(0, marker + 2)
+        val rootSegments = root.substring(marker + 2)
+            .split('/')
+            .filter(String::isNotEmpty)
+            .map(::decodeSegment)
+        val isAbsoluteTreePath = isTreeUri(path)
+        val inputSegments = if (isAbsoluteTreePath) {
+            if (!path.startsWith(tree)) return null
+            path.substring(marker + 2).split('/').filter(String::isNotEmpty).map(::decodeSegment)
+        } else {
+            if (path.startsWith('/')) return null
+            path.split('/').filter(String::isNotEmpty)
+        }
+        val segments = if (isAbsoluteTreePath) mutableListOf() else rootSegments.toMutableList()
+        val minimumDepth = if (isAbsoluteTreePath) 0 else rootSegments.size
+        inputSegments.forEach { segment ->
+            when (segment) {
+                "." -> Unit
+                ".." -> {
+                    if (segments.size <= minimumDepth) return null
+                    segments.removeAt(segments.lastIndex)
+                }
+                else -> segments += segment
+            }
+        }
+        if (segments.size < rootSegments.size ||
+            segments.take(rootSegments.size) != rootSegments
+        ) {
+            return null
+        }
+        return tree + segments.joinToString("/") { encodeSegment(it) }
+    }
+
+    private fun treeUriRelativePath(path: String): String =
+        path.substringAfter("!/").split('/')
+            .filter(String::isNotEmpty)
+            .joinToString("/") { decodeSegment(it) }
+
+    private fun decodeSegment(segment: String): String =
+        URLDecoder.decode(segment.replace("+", "%2B"), StandardCharsets.UTF_8.name())
+
+    private fun encodeSegment(segment: String): String =
+        URLEncoder.encode(segment, StandardCharsets.UTF_8.name())
+            .replace("+", "%20")
+            .replace("%7E", "~")
 
     internal fun normalize(path: String): String {
         val parts = ArrayDeque<String>()
@@ -44,7 +117,7 @@ internal object PathGuard {
     private fun isSecret(path: String): Boolean {
         val segments = path.split('/').filter { it.isNotEmpty() }
         val name = segments.lastOrNull().orEmpty().lowercase()
-        return segments.any { it in secretDirectories } ||
+        return segments.any { it.lowercase() in secretDirectories } ||
             (name.startsWith(".env") && templateSuffixes.none(name::endsWith)) ||
             name.startsWith("id_rsa") || name.startsWith("id_ed25519") || name.startsWith("id_ecdsa") ||
             secretSuffixes.any(name::endsWith)

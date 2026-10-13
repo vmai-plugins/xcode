@@ -72,6 +72,39 @@ class ChatStreamDecoderTest {
         )
     }
 
+    @Test
+    fun `openai reasoning content is extracted`() {
+        val reasoning = ChatStreamDecoder.reasoningDelta(
+            OmniRouteDialect.OPENAI_CHAT,
+            """{"choices":[{"delta":{"reasoning_content":"Step 1: analyze"}}]}""",
+        )
+        assertEquals("Step 1: analyze", reasoning)
+    }
+
+    @Test
+    fun `anthropic thinking delta is extracted`() {
+        val reasoning = ChatStreamDecoder.reasoningDelta(
+            OmniRouteDialect.ANTHROPIC_MESSAGES,
+            """{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Thinking deep"}}""",
+        )
+        assertEquals("Thinking deep", reasoning)
+    }
+
+    @Test
+    fun `unknown dialect extracts reasoning from either shape`() {
+        val openAiReasoning = ChatStreamDecoder.reasoningDelta(
+            OmniRouteDialect.UNKNOWN,
+            """{"choices":[{"delta":{"reasoning":"Quick reasoning"}}]}""",
+        )
+        assertEquals("Quick reasoning", openAiReasoning)
+
+        val anthropicReasoning = ChatStreamDecoder.reasoningDelta(
+            OmniRouteDialect.UNKNOWN,
+            """{"delta":{"type":"thinking_delta","thinking":"Anthropic reasoning"}}""",
+        )
+        assertEquals("Anthropic reasoning", anthropicReasoning)
+    }
+
     // --- unknown dialect falls back to trying both --------------------------------
 
     @Test

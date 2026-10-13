@@ -24,21 +24,19 @@ callbacks do. Any feature can be built and tested alone.
 | Module | Owns |
 |---|---|
 | `:core:common` | `VmResult`, `VmError`, logging + redaction, dispatchers, network monitor, user preferences |
-| `:core:ui` | Theme tokens, typography, `Vm*` components. No domain knowledge. |
+| `:core:ui` | Theme tokens, typography, `Vm*` components, streaming markdown renderer |
 | `:core:security` | Keystore crypto, `Secret`, the encrypted credential store, secure clipboard |
 | `:core:database` | Room entities, DAOs, database, startup reconciliation |
-| `:core:network` | HTTP/SSE client, retry and backoff *(pending)* |
-| `:core:ssh` | Server domain + repository; SSH connection engine *(engine pending)* |
-| `:core:sftp` | Remote filesystem and transfers *(pending)* |
-| `:core:terminal` | Terminal emulation and sessions *(pending)* |
-| `:core:editor` | Editor abstraction and language services *(pending)* |
-| `:core:git` | Git operations *(pending)* |
-| `:core:project` | Project types, configuration, detection *(pending)* |
-| `:core:workspace` | Workspace state across local/remote/connector *(pending)* |
-| `:core:ai` | Provider abstraction, OmniRoute client *(pending)* |
-| `:core:agent` | Planner, context engine, tool registry, execution loop *(pending)* |
-| `:core:connectors` | Connector framework, Google Drive *(pending)* |
-| `:feature:*` | One section of the UI each |
+| `:core:network` | HTTP/SSE client, retry and backoff |
+| `:core:ssh` | Server domain + repository, SSH multiplexing connection engine, command safety guard |
+| `:core:sftp` | Remote filesystem and file streaming |
+| `:core:terminal` | Terminal emulation and session handling |
+| `:core:editor` | Editor syntax highlighting and language registry |
+| `:core:git` | Git operations over SSH, diff parsers, and repo auto-discovery |
+| `:core:project` | Project types, configuration, and repositories |
+| `:core:ai` | Claude Code CLI provider, streaming parser, detached background runner |
+| `:core:update` | In-app self-updater and GitHub release client |
+| `:feature:*` | Feature UI modules (ai, editor, files, projects, servers, settings, tasks, terminal) |
 
 Directory `core/ui` maps to Gradle path `:core:ui`. The spec's `core-ui` naming is
 expressed as directory nesting, which is the idiomatic Gradle layout.
@@ -46,7 +44,7 @@ expressed as directory nesting, which is the idiomatic Gradle layout.
 ## Build logic
 
 Seven convention plugins in `build-logic/` own all shared Gradle configuration, so
-SDK levels, Java/Kotlin targets and compiler flags cannot drift between 29 modules:
+SDK levels, Java/Kotlin targets and compiler flags cannot drift between 24 modules:
 
 `vmstudio.android.application`, `.library`, `.compose`, `.hilt`, `.room`,
 `.feature`, and `vmstudio.jvm.library`.

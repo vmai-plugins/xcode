@@ -38,12 +38,34 @@ object GatewayModelPricing {
         }.toSet()
     }
 
-    /** Free by name alone: `vendor/model:free`, `…-free`, or a `free/` route. */
+    /** Free by name alone: `vendor/model:free`, `…-free`, a `free/` route, or known free provider prefixes. */
     fun isFreeModelId(id: String): Boolean {
-        val lower = id.lowercase()
-        return lower.endsWith(":free") || lower.endsWith("-free") || lower.startsWith("free/") ||
-            lower.contains("/free/")
+        val lower = id.lowercase().trim()
+        return lower.endsWith(":free") ||
+            lower.endsWith("-free") ||
+            lower.startsWith("free/") ||
+            lower.contains("/free/") ||
+            lower == "auto/best-free" ||
+            lower == "auto/coding:free" ||
+            lower.startsWith("groq/") ||
+            lower.startsWith("g4f-groq/") ||
+            lower.startsWith("cloudflare-ai/")
     }
+
+    private val FREE_PROVIDER_OWNERS = setOf(
+        "groq",
+        "g4f-groq",
+        "cloudflare-ai",
+        "free-ai",
+        "opencode",
+        "gemini-web",
+        "qwen-web",
+        "huggingchat",
+        "theoldllm",
+        "aihorde",
+        "uncloseai",
+        "chipotle",
+    )
 
     private fun isFreeEntry(entry: JsonObject): Boolean {
         val flag = listOf("free", "is_free").any { key ->
@@ -55,11 +77,16 @@ object GatewayModelPricing {
         val tagged = (entry["tags"] as? JsonArray)?.any {
             (it as? JsonPrimitive)?.content?.equals("free", ignoreCase = true) == true
         } == true
+        val owner = (entry.string("owned_by") ?: entry.string("provider"))?.lowercase()?.trim()
+        val freeOwner = owner != null && owner in FREE_PROVIDER_OWNERS
         val pricing = entry["pricing"] as? JsonObject
-        val zeroPrice = pricing != null && listOf("prompt", "completion").all { key ->
+        val zeroOpenRouter = pricing != null && listOf("prompt", "completion").all { key ->
             (pricing[key] as? JsonPrimitive)?.content?.toDoubleOrNull() == 0.0
         }
-        return flag || tier || tagged || zeroPrice
+        val zeroOmniRoute = pricing != null && listOf("input", "output").all { key ->
+            (pricing[key] as? JsonPrimitive)?.content?.toDoubleOrNull() == 0.0
+        }
+        return flag || tier || tagged || freeOwner || zeroOpenRouter || zeroOmniRoute
     }
 
     private fun JsonObject.string(key: String): String? =

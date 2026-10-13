@@ -216,8 +216,9 @@ class TerminalViewModel @Inject constructor(
             return
         }
 
+        val safeServer = server ?: return
         viewModelScope.launch {
-            when (val authorised = commandGuard.authorize(server!!, line)) {
+            when (val authorised = commandGuard.authorize(safeServer, line)) {
                 is VmResult.Success -> session.sendKey(TerminalKey.ENTER)
                 is VmResult.Failure -> {
                     // The characters are already echoed on the remote line buffer, so
@@ -263,3 +264,5 @@ class TerminalViewModel @Inject constructor(
         const val ARG_PATH = "path"
     }
 }
+
+

@@ -5,14 +5,8 @@ import digital.vmstudio.code.core.ai.model.AgentRunConfig
 import digital.vmstudio.code.core.common.result.VmResult
 import kotlinx.coroutines.flow.Flow
 
-/** How an agent backend is reached. */
-enum class AiProviderKind {
-    /** Claude Code CLI driven over SSH on the development machine. */
-    CLAUDE_CODE_CLI,
-
-    /** An HTTP gateway the app calls directly. */
-    OMNIROUTE,
-}
+/** How the agent backend is reached. */
+enum class AiProviderKind { OMNIROUTE }
 
 /** Result of a provider health check, for the connection-test screen. */
 data class AiProviderHealth(
@@ -23,18 +17,13 @@ data class AiProviderHealth(
     val isAuthenticated: Boolean = false,
     val latencyMillis: Long? = null,
     val availableModels: List<String> = emptyList(),
+    val freeModels: Set<String> = emptySet(),
     /** What to do about it when [isAvailable] or [isAuthenticated] is false. */
     val diagnosis: String? = null,
 )
 
 /**
- * A backend that can run an agent task.
- *
- * The abstraction exists because the two backends differ in kind, not just in
- * transport: the CLI provider delegates the whole agent loop — planning, tools,
- * context management — to a program running next to the code, while an HTTP provider
- * would require the app to implement that loop itself. Both are reduced to the same
- * event stream so nothing above this interface has to know which it is talking to.
+ * An AI backend that can run an agent task.
  */
 interface AiProvider {
 

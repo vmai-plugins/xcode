@@ -23,14 +23,19 @@ object DiffParser {
             val line = lines[i]
 
             if (line.startsWith("--- ") && i + 1 < lines.size && lines[i + 1].startsWith("+++ ")) {
-                val oldPath = FILE_HEADER_OLD.matchEntire(line)?.groupValues?.get(1)
-                val newPath = FILE_HEADER_NEW.matchEntire(lines[i + 1])?.groupValues?.get(1)
+                val rawOld = FILE_HEADER_OLD.matchEntire(line)?.groupValues?.get(1)
+                val rawNew = FILE_HEADER_NEW.matchEntire(lines[i + 1])?.groupValues?.get(1)
                 i += 2
 
+                val isNewFile = rawOld == "dev/null" || rawOld == "/dev/null"
+                val isDeletedFile = rawNew == "dev/null" || rawNew == "/dev/null"
+                val oldPath = if (isNewFile) null else rawOld
+                val newPath = if (isDeletedFile) null else rawNew
+
                 val diffLines = mutableListOf<DiffLine>()
-                var isNew = false
-                var isDeleted = false
-                var isRename = false
+                var isNew = isNewFile
+                var isDeleted = isDeletedFile
+                var isRename = oldPath != null && newPath != null && oldPath != newPath
 
                 // Check for file mode changes
                 if (i < lines.size && lines[i].startsWith("new file mode")) {

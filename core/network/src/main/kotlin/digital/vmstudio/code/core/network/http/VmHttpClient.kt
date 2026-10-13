@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import java.io.File
 import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -94,6 +95,58 @@ class VmHttpClient @Inject constructor(
         }
 
         VmResult.Failure(lastError ?: VmError.Network(summary = "Request failed"))
+    }
+
+    /**
+     * Downloads response body directly to a local destination file.
+     */
+    suspend fun download(
+        request: Request,
+        destination: File,
+        policy: RetryPolicy = RetryPolicy(maxAttempts = 2),
+    ): VmResult<File> = withContext(ioDispatcher) {
+        offlineCheck()?.let { return@withContext VmResult.Failure(it) }
+
+        var lastError: VmError? = null
+        repeat(policy.maxAttempts) { attempt ->
+            try {
+                val response = runInterruptible { client.newCall(request).execute() }
+                response.use { res ->
+                    if (!res.isSuccessful) {
+                        val body = res.body?.string().orEmpty()
+                        val error = mapHttpError(res, body, request)
+                        if (!res.isRetryable(request)) return@withContext VmResult.Failure(error)
+                        lastError = error
+                    } else {
+                        destination.parentFile?.mkdirs()
+                        val body = res.body ?: return@withContext VmResult.Failure(
+                            VmError.Network(
+                                summary = "Empty response body",
+                                endpoint = request.url.redactedForDisplay(),
+                            ),
+                        )
+                        destination.outputStream().use { out ->
+                            body.byteStream().copyTo(out)
+                        }
+                        return@withContext VmResult.Success(destination)
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                val error = mapTransportError(throwable, request)
+                if (!error.retryable || !transportErrorIsSafeToRetry(throwable, request)) {
+                    return@withContext VmResult.Failure(error)
+                }
+                lastError = error
+            }
+
+            if (attempt < policy.maxAttempts - 1) {
+                delay(backoffFor(attempt, policy))
+            }
+        }
+
+        VmResult.Failure(lastError ?: VmError.Network(summary = "Download failed"))
     }
 
     /**

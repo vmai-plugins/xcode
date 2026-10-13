@@ -69,4 +69,17 @@ class OmniRouteStreamAssemblerTest {
         assertTrue(body.contains("\"stream\":true"))
         assertTrue(body.contains("include_usage"))
     }
+
+    @Test
+    fun `openai tool call chunks without index field still append to active draft`() {
+        val a = OmniRouteStreamAssembler(OmniRouteDialect.OPENAI_CHAT)
+        a.accept(
+            """{"choices":[{"delta":{"tool_calls":[{"id":"c1","function":{"name":"read_file","arguments":"{\"pa"}}]}}]}""",
+        )
+        a.accept(
+            """{"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"th\":\"b.kt\"}"}}]}}]}""",
+        )
+        val turn = a.finish() as OmniRouteTurn.ToolCalls
+        assertEquals(listOf(OmniRouteToolCall("c1", "read_file", """{"path":"b.kt"}""")), turn.calls)
+    }
 }

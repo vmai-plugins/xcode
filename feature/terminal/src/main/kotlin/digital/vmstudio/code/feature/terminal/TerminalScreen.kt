@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Terminal
@@ -77,6 +78,7 @@ fun TerminalRoute(
                 activeId = state.activeSessionId,
                 onSelect = viewModel::selectSession,
                 onClose = viewModel::closeSession,
+                onNewSession = { viewModel.openSession(DEFAULT_COLUMNS, DEFAULT_ROWS) },
                 onNavigateBack = onNavigateBack,
             )
         } else if (onNavigateBack != null) {
@@ -172,6 +174,7 @@ private fun TerminalTabBar(
     activeId: String?,
     onSelect: (String) -> Unit,
     onClose: (String) -> Unit,
+    onNewSession: () -> Unit,
     onNavigateBack: (() -> Unit)? = null,
 ) {
     Row(
@@ -240,6 +243,17 @@ private fun TerminalTabBar(
                         )
                     }
                 }
+            }
+            IconButton(
+                onClick = onNewSession,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "New terminal session",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

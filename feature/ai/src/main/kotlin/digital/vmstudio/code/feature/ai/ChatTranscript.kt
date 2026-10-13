@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,14 +20,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Difference
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
@@ -55,6 +60,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import digital.vmstudio.code.core.ui.component.VmChip
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.markdown.MarkdownText
@@ -72,37 +81,8 @@ internal sealed interface TranscriptRowItem {
     ) : TranscriptRowItem
 }
 
-internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem> {
-    val result = mutableListOf<TranscriptRowItem>()
-    val currentTools = mutableListOf<TranscriptItem.ToolCall>()
-
-    fun flushTools() {
-        if (currentTools.isEmpty()) return
-        if (currentTools.size == 1) {
-            result.add(TranscriptRowItem.Single(currentTools.first()))
-        } else {
-            result.add(
-                TranscriptRowItem.ToolBatch(
-                    // Stable while the batch grows, so a batch the user opened stays open.
-                    id = "batch-${currentTools.first().id}",
-                    tools = currentTools.toList(),
-                ),
-            )
-        }
-        currentTools.clear()
-    }
-
-    for (item in items) {
-        if (item is TranscriptItem.ToolCall) {
-            currentTools.add(item)
-        } else {
-            flushTools()
-            result.add(TranscriptRowItem.Single(item))
-        }
-    }
-    flushTools()
-    return result
-}
+internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem> =
+    items.map { TranscriptRowItem.Single(it) }
 
 /**
  * Consecutive tool calls collapse into one quiet line ("Ran 5 tools ›") that expands
@@ -118,39 +98,78 @@ internal fun ToolBatchRow(
     var expanded by remember { mutableStateOf(false) }
     val isRunning = batch.tools.any { it.isRunning }
     val failed = batch.tools.count { it.isError }
-    val label = when {
-        isRunning -> "Running ${batch.tools.size} tools…"
-        failed > 0 -> "Ran ${batch.tools.size} tools, $failed failed"
-        else -> "Ran ${batch.tools.size} tools"
+    val readCount = batch.tools.count { it.name.contains("read", ignoreCase = true) || it.name.contains("list", ignoreCase = true) }
+    val editCount = batch.tools.count { it.name.contains("edit", ignoreCase = true) || it.name.contains("write", ignoreCase = true) }
+    val cmdCount = batch.tools.count { it.name.contains("command", ignoreCase = true) || it.name.contains("bash", ignoreCase = true) }
+
+    val summary = buildString {
+        if (isRunning) {
+            append("Executing ${batch.tools.size} steps…")
+        } else {
+            val parts = mutableListOf<String>()
+            if (readCount > 0) parts.add("read $readCount file${if (readCount > 1) "s" else ""}")
+            if (editCount > 0) parts.add("edited $editCount file${if (editCount > 1) "s" else ""}")
+            if (cmdCount > 0) parts.add("ran $cmdCount command${if (cmdCount > 1) "s" else ""}")
+            if (parts.isNotEmpty()) {
+                append("Explored: " + parts.joinToString(", "))
+            } else {
+                append("Ran ${batch.tools.size} tools")
+            }
+        }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
+    val haptic = LocalHapticFeedback.current
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF1E1F22),
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { expanded = !expanded }
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isRunning) {
-                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (failed > 0) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                .clip(RoundedCornerShape(12.dp))
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    expanded = !expanded
                 },
-            )
-            Icon(
-                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (expanded) "Hide" else "Show",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
-            )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isRunning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(11.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF2B2D31))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    ) {
+                        Text(
+                            text = "${batch.tools.size}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = Color(0xFFC4C6D0),
+                        )
+                    }
+                }
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (failed > 0) MaterialTheme.colorScheme.error else Color(0xFFC4C6D0),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "Hide" else "Show",
+                    tint = Color(0xFF8E919A),
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
 
         AnimatedVisibility(visible = expanded) {
@@ -186,20 +205,23 @@ internal fun TranscriptRow(
     val spacing = VmTheme.spacing
 
     when (item) {
-        is TranscriptItem.UserPrompt -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+        is TranscriptItem.UserPrompt -> Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            contentAlignment = Alignment.CenterEnd,
         ) {
             Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.widthIn(max = 320.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF1E1F23),
+                border = BorderStroke(1.dp, Color(0xFF2E3036)),
+                modifier = Modifier.widthIn(max = 340.dp),
             ) {
                 Text(
                     text = item.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = Color(0xFFF3F4F6),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
         }
@@ -271,47 +293,58 @@ internal fun TranscriptRow(
     }
 }
 
-/** "Thinking" is a quiet label that expands to the reasoning text. */
+/** Antigravity-style compact reasoning line. */
 @Composable
 private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
     var expanded by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+    ) {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .clickable { expanded = !expanded }
-                .padding(vertical = 4.dp),
+                .padding(vertical = 3.dp, horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Thinking",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "Thought",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                color = Color(0xFF9CA3AF),
             )
             Icon(
-                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = if (expanded) "Hide" else "Show",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
+                tint = Color(0xFF6B7280),
+                modifier = Modifier.size(14.dp),
             )
         }
         AnimatedVisibility(visible = expanded) {
-            Text(
-                text = item.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF141416),
+                border = BorderStroke(1.dp, Color(0xFF27272A)),
                 modifier = Modifier
-                    .padding(start = 4.dp, top = 2.dp)
-                    .fillMaxWidth(),
-            )
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 4.dp),
+            ) {
+                Text(
+                    text = item.text,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                    color = Color(0xFFD1D5DB),
+                    modifier = Modifier.padding(10.dp),
+                )
+            }
         }
     }
 }
 
 /**
- * Terminal & tool execution card.
+ * Antigravity-style tight tool execution row (e.g. "Analyzed ◧ file.kt #L1-60", "Edited ◧ file.kt +1 -0").
  */
 @Composable
 private fun ToolRow(
@@ -321,81 +354,173 @@ private fun ToolRow(
     onPreview: ((String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val spacing = VmTheme.spacing
     val hasOutput = !item.output.isNullOrBlank()
+    val isEdit = isFileChange(item.name)
+    val isRead = item.name.contains("read", ignoreCase = true) || item.name.contains("view", ignoreCase = true)
+    val isSearch = item.name.contains("search", ignoreCase = true) || item.name.contains("grep", ignoreCase = true)
+    val isCmd = item.name.contains("command", ignoreCase = true) || item.name.contains("bash", ignoreCase = true)
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    val verb = when {
+        isEdit -> "Edited"
+        isRead -> "Analyzed"
+        isSearch -> "Search"
+        isCmd -> "Ran"
+        else -> item.name.replace("_", " ").replaceFirstChar { it.uppercase() }
+    }
+
+    val targetName = when {
+        item.affectedPath != null -> item.affectedPath.substringAfterLast('/')
+        item.summary.isNotBlank() -> {
+            val s = item.summary
+            s.removePrefix("Read ")
+                .removePrefix("View ")
+                .removePrefix("Write ")
+                .removePrefix("Edit ")
+                .removePrefix("Analyzed ")
+                .removePrefix("Search ")
+                .removePrefix("Ran ")
+        }
+        else -> item.name
+    }
+
+    val rawOutput = item.output.orEmpty()
+    val diffPlus = if (isEdit && hasOutput) {
+        rawOutput.lines().count { it.startsWith("+") && !it.startsWith("+++") }.takeIf { it > 0 }
+    } else null
+    val diffMinus = if (isEdit && hasOutput) {
+        rawOutput.lines().count { it.startsWith("-") && !it.startsWith("---") }.takeIf { it > 0 }
+    } else null
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .then(if (hasOutput) Modifier.clickable { expanded = !expanded } else Modifier),
+            .padding(vertical = 2.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ToolStatusIcon(item)
-                Text(
-                    text = item.summary,
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = if (expanded) Int.MAX_VALUE else 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .clickable(enabled = hasOutput) { expanded = !expanded }
+                .padding(vertical = 3.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = verb,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                color = Color(0xFF9CA3AF),
+            )
+
+            // Antigravity Purple glyph badge
+            if (item.isRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp,
+                    color = Color(0xFFA855F7),
                 )
-                item.affectedPath?.let { path ->
-                    FileActions(item, path, onOpenDiff, onRollback, onPreview)
-                }
+            } else if (item.isError) {
+                Icon(
+                    imageVector = Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(13.dp),
+                )
+            } else {
+                Icon(
+                    imageVector = when {
+                        isEdit -> Icons.Default.Edit
+                        isSearch -> Icons.Default.Search
+                        isCmd -> Icons.Default.Terminal
+                        else -> Icons.Default.Code
+                    },
+                    contentDescription = null,
+                    tint = Color(0xFFA855F7),
+                    modifier = Modifier.size(13.dp),
+                )
             }
 
-            AnimatedVisibility(visible = expanded && hasOutput) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = VmTheme.colors.codeSurface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
-                ) {
-                    val rawOutput = item.output.orEmpty()
-                    val outputLines = rawOutput.lines()
-                    val isDiff = outputLines.any { it.startsWith("+") || it.startsWith("-") }
-                    if (isDiff) {
-                        Column(modifier = Modifier.padding(6.dp)) {
-                            outputLines.take(300).forEach { line ->
-                                val dim = MaterialTheme.colorScheme.onSurfaceVariant
-                                val colors = VmTheme.colors
-                                val (bg, textColor) = when {
-                                    line.startsWith("+++") || line.startsWith("---") ->
-                                        Color.Transparent to dim
-                                    line.startsWith("+") ->
-                                        colors.diffAddedBackground to colors.diffAddedGutter
-                                    line.startsWith("-") ->
-                                        colors.diffRemovedBackground to colors.diffRemovedGutter
-                                    line.startsWith("@@") -> Color.Transparent to dim
-                                    else -> Color.Transparent to MaterialTheme.colorScheme.onSurface
-                                }
-                                Text(
-                                    text = line,
-                                    style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                                    color = textColor,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(bg)
-                                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                                )
+            Text(
+                text = targetName,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontWeight = FontWeight.Medium),
+                color = Color(0xFFE5E7EB),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+
+            if (diffPlus != null) {
+                Text(
+                    text = "+$diffPlus",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                    color = Color(0xFF22C55E),
+                )
+            }
+            if (diffMinus != null) {
+                Text(
+                    text = "-$diffMinus",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                    color = Color(0xFFEF4444),
+                )
+            }
+
+            item.affectedPath?.let { path ->
+                FileActions(item, path, onOpenDiff, onRollback, onPreview)
+            }
+
+            if (hasOutput) {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color(0xFF6B7280),
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+
+        AnimatedVisibility(visible = expanded && hasOutput) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF141416),
+                border = BorderStroke(1.dp, Color(0xFF27272A)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 4.dp),
+            ) {
+                val outputLines = rawOutput.lines()
+                val isDiff = outputLines.any { it.startsWith("+") || it.startsWith("-") }
+                if (isDiff) {
+                    Column(modifier = Modifier.padding(6.dp)) {
+                        outputLines.take(300).forEach { line ->
+                            val dim = MaterialTheme.colorScheme.onSurfaceVariant
+                            val colors = VmTheme.colors
+                            val (bg, textColor) = when {
+                                line.startsWith("+++") || line.startsWith("---") ->
+                                    Color.Transparent to dim
+                                line.startsWith("+") ->
+                                    colors.diffAddedBackground to colors.diffAddedGutter
+                                line.startsWith("-") ->
+                                    colors.diffRemovedBackground to colors.diffRemovedGutter
+                                line.startsWith("@@") -> Color.Transparent to dim
+                                else -> Color.Transparent to MaterialTheme.colorScheme.onSurface
                             }
+                            Text(
+                                text = line,
+                                style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                                color = textColor,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(bg)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            )
                         }
-                    } else {
-                        Text(
-                            text = rawOutput,
-                            style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(8.dp),
-                        )
                     }
+                } else {
+                    Text(
+                        text = rawOutput,
+                        style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                        color = Color(0xFFD1D5DB),
+                        modifier = Modifier.padding(8.dp),
+                    )
                 }
             }
         }
@@ -527,6 +652,8 @@ internal fun isWebPage(path: String): Boolean =
 @Composable
 private fun AssistantReply(text: String) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -534,7 +661,11 @@ private fun AssistantReply(text: String) {
     ) {
         MarkdownText(markdown = text)
         IconButton(
-            onClick = { clipboard.setText(AnnotatedString(text)) },
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                clipboard.setText(AnnotatedString(text))
+                Toast.makeText(context, "Copied reply", Toast.LENGTH_SHORT).show()
+            },
             modifier = Modifier.size(32.dp),
         ) {
             Icon(
@@ -605,16 +736,13 @@ internal fun FollowTail(listState: LazyListState, transcript: List<TranscriptIte
             }
     }
     val tailLength = (transcript.lastOrNull() as? TranscriptItem.StreamingText)?.text?.length ?: 0
-    LaunchedEffect(transcript.size, tailLength) {
+    val tailChunk = tailLength / 50
+    LaunchedEffect(transcript.size, tailChunk) {
         if (!following) return@LaunchedEffect
         val last = listState.layoutInfo.totalItemsCount - 1
         if (last >= 0) {
-            listState.scrollToItem(last)
-            listState.scrollBy(TAIL_SCROLL_PX)
+            listState.scrollToItem(last, scrollOffset = 100_000)
         }
     }
 }
-
-/** More than any row is tall; scrolling clamps at the end of the content. */
-private const val TAIL_SCROLL_PX = 100_000f
 

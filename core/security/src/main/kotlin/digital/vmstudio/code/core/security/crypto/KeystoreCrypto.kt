@@ -87,7 +87,11 @@ class AndroidKeystoreCrypto @Inject constructor() : KeystoreCrypto {
     }
 
     override fun isHardwareBacked(): Boolean {
-        masterKeyOrNull()
+        val existingKey = runCatching {
+            if (!keyStore.containsAlias(KEY_ALIAS)) return false
+            (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+        }.getOrNull() ?: return false
+        hardwareBacked = detectHardwareBacking(existingKey)
         return hardwareBacked
     }
 
@@ -95,8 +99,6 @@ class AndroidKeystoreCrypto @Inject constructor() : KeystoreCrypto {
         if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
         VmLog.w(LogCategory.SECURITY, TAG, "Master key destroyed; stored secrets are now unreadable")
     }
-
-    private fun masterKeyOrNull(): SecretKey? = runCatching { masterKey() }.getOrNull()
 
     @Synchronized
     private fun masterKey(): SecretKey {

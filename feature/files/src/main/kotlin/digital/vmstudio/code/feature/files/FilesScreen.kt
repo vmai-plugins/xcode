@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
@@ -200,21 +201,45 @@ private fun FilesContent(
         }
 
         when {
-            state.transfer != null -> VmProgress(
-                progress = state.transfer.fraction,
-                label = state.transfer.label,
-                trailingLabel = state.transfer.fraction?.let { "${(it * 100).toInt()}%" },
-                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
-            )
+            state.transfer != null -> Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                VmProgress(
+                    progress = state.transfer.fraction,
+                    label = state.transfer.label,
+                    trailingLabel = state.transfer.fraction?.let { "${(it * 100).toInt()}%" },
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = viewModel::cancelTransfer,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cancel transfer",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
             state.isLoading && !pulling -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
 
-        state.error?.let { error ->
+        (state.error ?: state.warning)?.let { error ->
+            val isWarning = state.error == null
             VmErrorPanel(
                 error = error,
                 modifier = Modifier.padding(spacing.md),
-                onRetry = viewModel::refresh,
-                actions = listOf(VmErrorAction(label = "Dismiss", onClick = viewModel::dismissError)),
+                onRetry = if (isWarning) null else { { viewModel.refresh() } },
+                actions = listOf(
+                    VmErrorAction(
+                        label = "Dismiss",
+                        onClick = if (isWarning) viewModel::dismissWarning else viewModel::dismissError,
+                    ),
+                ),
             )
         }
 

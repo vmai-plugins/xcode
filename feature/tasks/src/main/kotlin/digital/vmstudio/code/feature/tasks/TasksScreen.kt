@@ -27,6 +27,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +49,8 @@ import java.util.concurrent.TimeUnit
  * Each row answers "what ran, did it finish, what did it touch?" and links onward
  * to the transcript and — when the run changed files — to diff review.
  */
+private enum class TasksScreenTab { HUB_TASKS, AGENT_RUNS }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
@@ -53,52 +58,213 @@ fun TasksScreen(
     onReviewChanges: (String, String) -> Unit,
     modifier: Modifier = Modifier,
     onNavigateBack: () -> Unit = {},
+    onSolveWithAi: ((String, String) -> Unit)? = null,
     viewModel: TasksViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
+    var activeTab by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(TasksScreenTab.HUB_TASKS)
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Tasks") },
+                title = {
+                    Column {
+                        Text("Tasks & Agent Runs")
+                        Text(
+                            text = if (state.isSyncingHub) {
+                                "Syncing VM Project Hub tasks…"
+                            } else {
+                                "${state.hubTasks.size} Hub tasks · ${state.tasks.size} AI runs"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    androidx.compose.material3.TextButton(
+                        onClick = viewModel::syncHubTasks,
+                        enabled = !state.isSyncingHub,
+                    ) {
+                        Text(if (state.isSyncingHub) "Syncing…" else "Sync Hub")
+                    }
+                },
             )
         },
     ) { padding ->
-        when {
-            state.isLoading -> Unit
-
-            state.tasks.isEmpty() -> Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                VmEmptyState(
-                    icon = Icons.Default.AutoAwesome,
-                    title = "No agent runs yet",
-                    description = "When the agent works in a project, every run is " +
-                        "recorded here with what it changed and how it finished.",
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                androidx.compose.material3.FilterChip(
+                    selected = activeTab == TasksScreenTab.HUB_TASKS,
+                    onClick = { activeTab = TasksScreenTab.HUB_TASKS },
+                    label = { Text("VM Project Hub (${state.hubTasks.size})") },
+                )
+                androidx.compose.material3.FilterChip(
+                    selected = activeTab == TasksScreenTab.AGENT_RUNS,
+                    onClick = { activeTab = TasksScreenTab.AGENT_RUNS },
+                    label = { Text("AI Agent Runs (${state.tasks.size})") },
                 )
             }
 
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(
-                    horizontal = spacing.md,
-                    vertical = spacing.md,
-                ),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            when (activeTab) {
+                TasksScreenTab.HUB_TASKS -> {
+                    if (state.hubTasks.isEmpty() && !state.isSyncingHub) {
+                        VmEmptyState(
+                            icon = Icons.Default.AutoAwesome,
+                            title = "No Project Hub tasks",
+                            description = "Tap 'Sync Hub' to pull Kanban tasks from vmstudio.digital.",
+                            actionLabel = "Sync Hub",
+                            onAction = viewModel::syncHubTasks,
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            items(state.hubTasks, key = { "hub-${it.id}" }) { hubTask ->
+                                HubTaskRow(
+                                    item = hubTask,
+                                    onCycleStatus = { viewModel.cycleHubTaskStatus(hubTask) },
+                                    onSolveWithAi = onSolveWithAi?.let { solve ->
+                                        { solve(hubTask.title, hubTask.detail) }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                TasksScreenTab.AGENT_RUNS -> {
+                    when {
+                        state.isLoading -> Unit
+                        state.tasks.isEmpty() -> VmEmptyState(
+                            icon = Icons.Default.AutoAwesome,
+                            title = "No agent runs yet",
+                            description = "When the agent works in a project, every run is " +
+                                "recorded here with what it changed and how it finished.",
+                        )
+                        else -> LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            items(state.tasks, key = { it.task.id }) { row ->
+                                TaskRow(
+                                    row = row,
+                                    onOpenConversation = onOpenConversation,
+                                    onReviewChanges = onReviewChanges,
+                                    onDelete = { viewModel.delete(row.task.id) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HubTaskRow(
+    item: digital.vmstudio.code.core.project.HubTaskItem,
+    onCycleStatus: () -> Unit,
+    onSolveWithAi: (() -> Unit)? = null,
+) {
+    val spacing = VmTheme.spacing
+    val (statusLabel, statusColor) = when (item.status.lowercase()) {
+        "done", "completed" -> "Done" to VmTheme.colors.success
+        "in_progress", "doing" -> "In Progress" to MaterialTheme.colorScheme.primary
+        else -> "To Do" to MaterialTheme.colorScheme.secondary
+    }
+    val priorityColor = when (item.priority.lowercase()) {
+        "urgent", "critical" -> MaterialTheme.colorScheme.error
+        "high" -> VmTheme.colors.warning
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+
+    VmCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCycleStatus),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(state.tasks, key = { it.task.id }) { row ->
-                    TaskRow(
-                        row = row,
-                        onOpenConversation = onOpenConversation,
-                        onReviewChanges = onReviewChanges,
-                        onDelete = { viewModel.delete(row.task.id) },
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    VmChip(
+                        text = item.projectName,
+                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = CHIP_ALPHA),
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    )
+                    VmChip(
+                        text = statusLabel,
+                        containerColor = statusColor.copy(alpha = CHIP_ALPHA),
+                        contentColor = statusColor,
                     )
                 }
+                if (onSolveWithAi != null) {
+                    IconButton(
+                        onClick = onSolveWithAi,
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "Solve with AI",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (item.detail.isNotBlank()) {
+                Text(
+                    text = item.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                VmChip(
+                    text = item.priority.uppercase(),
+                    containerColor = priorityColor.copy(alpha = CHIP_ALPHA),
+                    contentColor = priorityColor,
+                )
+                item.dueDate?.let { due ->
+                    VmChip(text = "Due $due", monospace = true)
+                }
+                VmChip(text = "Tap to advance status")
             }
         }
     }

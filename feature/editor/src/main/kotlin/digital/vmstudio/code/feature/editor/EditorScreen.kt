@@ -3,11 +3,13 @@ package digital.vmstudio.code.feature.editor
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -16,8 +18,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FormatListNumbered
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,7 +32,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -107,66 +116,187 @@ fun EditorScreen(
         viewModel.commitChange()
     }
 
+    var isSearchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var replaceQuery by remember { mutableStateOf("") }
+    var isReplaceVisible by remember { mutableStateOf(false) }
+    var showGoToLineDialog by remember { mutableStateOf(false) }
+    var targetLineInput by remember { mutableStateOf("") }
+
+    if (showGoToLineDialog) {
+        AlertDialog(
+            onDismissRequest = { showGoToLineDialog = false },
+            title = { Text("Go to Line") },
+            text = {
+                OutlinedTextField(
+                    value = targetLineInput,
+                    onValueChange = { targetLineInput = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Line number") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val num = targetLineInput.toIntOrNull()
+                        if (num != null && num > 0) {
+                            viewModel.goToLine(num)
+                        }
+                        showGoToLineDialog = false
+                    },
+                ) { Text("Go") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoToLineDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = state.filePath.substringAfterLast('/'),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = "${state.serverName} · ${state.filePath}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = leave) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    state.snapshot?.let { snapshot ->
-                        IconButton(
-                            onClick = viewModel::undo,
-                            enabled = snapshot.canUndo,
-                        ) {
-                            Icon(
-                                Icons.Default.Undo,
-                                contentDescription = "Undo",
-                                tint = if (snapshot.canUndo) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = state.filePath.substringAfterLast('/'),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                if (state.snapshot?.isDirty == true) {
+                                    Text(
+                                        text = " ●",
+                                        color = MaterialTheme.colorScheme.primary,
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "${state.serverName} · ${state.filePath}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(
-                            onClick = viewModel::redo,
-                            enabled = snapshot.canRedo,
-                        ) {
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = leave) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { isSearchOpen = !isSearchOpen }) {
                             Icon(
-                                Icons.Default.Redo,
-                                contentDescription = "Redo",
-                                tint = if (snapshot.canRedo) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                Icons.Default.Search,
+                                contentDescription = "Find",
+                                tint = if (isSearchOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             )
                         }
-                        IconButton(
-                            onClick = viewModel::save,
-                            enabled = state.canSave,
-                        ) {
+                        IconButton(onClick = { showGoToLineDialog = true }) {
                             Icon(
-                                Icons.Default.Save,
-                                contentDescription = "Save",
-                                tint = if (state.canSave) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                Icons.Default.FormatListNumbered,
+                                contentDescription = "Go to line",
                             )
+                        }
+                        state.snapshot?.let { snapshot ->
+                            IconButton(
+                                onClick = viewModel::undo,
+                                enabled = snapshot.canUndo,
+                            ) {
+                                Icon(
+                                    Icons.Default.Undo,
+                                    contentDescription = "Undo",
+                                    tint = if (snapshot.canUndo) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                )
+                            }
+                            IconButton(
+                                onClick = viewModel::redo,
+                                enabled = snapshot.canRedo,
+                            ) {
+                                Icon(
+                                    Icons.Default.Redo,
+                                    contentDescription = "Redo",
+                                    tint = if (snapshot.canRedo) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                )
+                            }
+                            IconButton(
+                                onClick = viewModel::save,
+                                enabled = state.canSave,
+                            ) {
+                                Icon(
+                                    Icons.Default.Save,
+                                    contentDescription = "Save",
+                                    tint = if (state.canSave) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                )
+                            }
+                        }
+                    },
+                )
+
+                if (isSearchOpen) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        tonalElevation = 2.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            ) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = {
+                                        searchQuery = it
+                                        if (it.isNotEmpty()) viewModel.findNext(it, forward = true)
+                                    },
+                                    placeholder = { Text("Find...") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(onClick = { viewModel.findNext(searchQuery, forward = false) }) {
+                                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Previous")
+                                }
+                                IconButton(onClick = { viewModel.findNext(searchQuery, forward = true) }) {
+                                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Next")
+                                }
+                                TextButton(onClick = { isReplaceVisible = !isReplaceVisible }) {
+                                    Text(if (isReplaceVisible) "Hide" else "Replace")
+                                }
+                                IconButton(onClick = { isSearchOpen = false }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close search")
+                                }
+                            }
+
+                            if (isReplaceVisible) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = spacing.xs),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                                ) {
+                                    OutlinedTextField(
+                                        value = replaceQuery,
+                                        onValueChange = { replaceQuery = it },
+                                        placeholder = { Text("Replace with...") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(onClick = { viewModel.replace(searchQuery, replaceQuery, all = false) }) {
+                                        Text("Replace")
+                                    }
+                                    TextButton(onClick = { viewModel.replace(searchQuery, replaceQuery, all = true) }) {
+                                        Text("All")
+                                    }
+                                }
+                            }
                         }
                     }
-                },
-            )
+                }
+            }
         },
     ) { padding ->
         Box(
@@ -183,15 +313,17 @@ fun EditorScreen(
                     )
                 }
                 state.loadError != null -> {
+                    val errorArgs = state.loadError ?: return@Box
                     VmErrorPanel(
-                        error = state.loadError!!,
+                        error = errorArgs,
                         onRetry = { viewModel.loadFile() },
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
                 state.snapshot != null -> {
+                    val snapshotArgs = state.snapshot ?: return@Box
                     EditorContent(
-                        snapshot = state.snapshot!!,
+                        snapshot = snapshotArgs,
                         isSaving = state.isSaving,
                         saveError = state.saveError,
                         hasConflict = state.hasConflict,
@@ -239,7 +371,11 @@ private fun EditorContent(
             )
         }
 
-        Row(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
             // Line number gutter
             Column(
                 modifier = Modifier
@@ -296,6 +432,22 @@ private fun EditorContent(
                 }
             }
         }
+
+        DeveloperSymbolBar(
+            onInsert = { symbol, cursorOffset ->
+                val current = snapshot.textFieldValue
+                val text = current.text
+                val selection = current.selection
+                val newText = text.replaceRange(selection.min, selection.max, symbol)
+                val newCursor = (selection.min + cursorOffset).coerceIn(0, newText.length)
+                onValueChange(
+                    current.copy(
+                        text = newText,
+                        selection = androidx.compose.ui.text.TextRange(newCursor),
+                    ),
+                )
+            },
+        )
     }
 }
 
@@ -345,3 +497,82 @@ private fun editorColorScheme(): ColorScheme {
         plain = colors.onSurface,
     )
 }
+
+@Composable
+private fun DeveloperSymbolBar(
+    onInsert: (String, Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val symbols = remember {
+        listOf(
+            "Tab" to ("    " to 4),
+            "{ }" to ("{}" to 1),
+            "( )" to ("()" to 1),
+            "[ ]" to ("[]" to 1),
+            "\" \"" to ("\"\"" to 1),
+            "' '" to ("''" to 1),
+            "< >" to ("<>" to 1),
+            ";" to (";" to 1),
+            ":" to (":" to 1),
+            "=" to ("=" to 1),
+            "." to ("." to 1),
+            "," to ("," to 1),
+            "_" to ("_" to 1),
+            "->" to ("->" to 2),
+            "=>" to ("=>" to 2),
+            "$" to ("$" to 1),
+            "&" to ("&" to 1),
+            "|" to ("|" to 1),
+            "!" to ("!" to 1),
+            "?" to ("?" to 1),
+            "/" to ("/" to 1),
+            "\\" to ("\\" to 1),
+            "+" to ("+" to 1),
+            "-" to ("-" to 1),
+            "*" to ("*" to 1),
+            "%" to ("%" to 1),
+            "@" to ("@" to 1),
+            "#" to ("#" to 1),
+        )
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 3.dp,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            symbols.forEach { (label, insertion) ->
+                val (symbol, offset) = insertion
+                Surface(
+                    onClick = { onInsert(symbol, offset) },
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    modifier = Modifier.height(34.dp),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                    ) {
+                        Text(
+                            text = label,
+                            style = VmTheme.code.mono.copy(
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+

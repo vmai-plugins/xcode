@@ -12,4 +12,5 @@ dependencies {
     api(projects.core.ssh)
     implementation(projects.core.database)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.documentfile)
 }

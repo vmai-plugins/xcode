@@ -2,10 +2,8 @@ package digital.vmstudio.code.core.ai.di
 
 import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import digital.vmstudio.code.core.ai.claudecode.ClaudeCodeStreamParser
 import digital.vmstudio.code.core.ai.omniroute.agent.DefaultFileEditApprovalGate
 import digital.vmstudio.code.core.ai.omniroute.agent.FileEditApprovalGate
 import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
@@ -41,9 +39,4 @@ abstract class AiModule {
         impl: DefaultFileEditApprovalGate,
     ): FileEditApprovalGate
 
-    companion object {
-        @Provides
-        @Singleton
-        fun provideClaudeCodeStreamParser(): ClaudeCodeStreamParser = ClaudeCodeStreamParser()
-    }
 }

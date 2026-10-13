@@ -1,46 +1,26 @@
 package digital.vmstudio.code.core.ai.provider
 
-import digital.vmstudio.code.core.ai.claudecode.ClaudeCodeCliProvider
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteProvider
-import digital.vmstudio.code.core.common.preferences.UserPreferences
-import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
-import kotlinx.coroutines.flow.first
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Resolves which backend a request should use.
- *
- * The user's choice decides, with no silent substitution. Falling back to the other
- * provider when one looks unavailable would be worse than failing: the two differ in
- * capability, not just in transport, and an agentic request quietly answered by a
- * chat-only backend would appear to have run without doing anything.
+ * Resolves the app's sole AI backend.
  */
 @Singleton
 class AiProviderRegistry @Inject constructor(
-    private val claudeCode: ClaudeCodeCliProvider,
     private val omniRoute: OmniRouteProvider,
-    private val preferences: UserPreferencesSource,
 ) {
 
-    suspend fun active(): AiProvider = forId(preferences.preferences.first().aiProviderId)
+    suspend fun active(): AiProvider = omniRoute
 
-    fun forKind(kind: AiProviderKind): AiProvider = when (kind) {
-        AiProviderKind.CLAUDE_CODE_CLI -> claudeCode
-        AiProviderKind.OMNIROUTE -> omniRoute
-    }
+    fun forKind(kind: AiProviderKind): AiProvider = omniRoute
 
-    fun forId(providerId: String): AiProvider = when (providerId) {
-        UserPreferences.PROVIDER_OMNIROUTE -> omniRoute
-        // Claude Code is the default: it is the only backend that can actually do
-        // agentic work on a project.
-        else -> claudeCode
-    }
+    fun forId(providerId: String): AiProvider = omniRoute
 
-    /** Every provider, for the settings screen and the connection test. */
-    fun all(): List<AiProvider> = listOf(claudeCode, omniRoute)
+    fun all(): List<AiProvider> = listOf(omniRoute)
 
     private val healthCache = ConcurrentHashMap<HealthCacheKey, CachedHealth>()
 
@@ -93,24 +73,13 @@ class AiProviderRegistry @Inject constructor(
 
 /** What a backend is capable of, so the UI can set expectations honestly. */
 val AiProvider.supportsTools: Boolean
-    get() = kind == AiProviderKind.CLAUDE_CODE_CLI
+    get() = true
 
 val AiProvider.requiresServer: Boolean
-    get() = kind == AiProviderKind.CLAUDE_CODE_CLI
+    get() = false
 
 val AiProviderKind.displayName: String
-    get() = when (this) {
-        AiProviderKind.CLAUDE_CODE_CLI -> "Claude Code on a server"
-        AiProviderKind.OMNIROUTE -> "OmniRoute gateway"
-    }
+    get() = "OmniRoute"
 
 val AiProviderKind.capabilitySummary: String
-    get() = when (this) {
-        AiProviderKind.CLAUDE_CODE_CLI ->
-            "Full agent: reads and edits files, runs commands and tests on the server. " +
-                "Needs an SSH server with Claude Code installed and signed in."
-        AiProviderKind.OMNIROUTE ->
-            "Chat by default: answers questions and writes code into the conversation. " +
-                "Can optionally read, write and run commands too - turn on \"Tool use\" " +
-                "below - but reliability then depends entirely on the selected model."
-    }
+    get() = "OmniRoute models with optional project tools, using your API key."

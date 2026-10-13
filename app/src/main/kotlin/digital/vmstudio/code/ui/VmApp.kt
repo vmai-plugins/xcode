@@ -1,10 +1,16 @@
 package digital.vmstudio.code.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -65,8 +71,11 @@ private const val DRAWER_RECENT_CHATS = 15
 fun VmApp(
     isOnline: Boolean,
     modifier: Modifier = Modifier,
+    hasSignedIn: Boolean = true,
+    hasCompletedOnboarding: Boolean = true,
     navController: NavHostController = rememberNavController(),
     conversationsViewModel: AgentConversationsViewModel = hiltViewModel(),
+    appViewModel: VmAppViewModel = hiltViewModel(),
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -123,13 +132,43 @@ fun VmApp(
             gesturesEnabled = drawerAvailable,
             drawerContent = {
                 ModalDrawerSheet {
-                    Text(
-                        text = "VMStudio Code",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 12.dp),
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Dns,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "X-codes Workspace",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            )
+                            Text(
+                                text = "Cloud IDE & Autonomous Agent",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
                     NavigationDrawerItem(
-                        label = { Text("New chat") },
+                        label = { Text("New chat", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
                         icon = { Icon(Icons.Default.Add, contentDescription = null) },
                         selected = false,
                         onClick = { closeDrawerThen { navigateToNewChat(navController) } },
@@ -137,10 +176,11 @@ fun VmApp(
                     )
 
                     Text(
-                        text = "Recents",
-                        style = MaterialTheme.typography.labelLarge,
+                        text = "Recents & History",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 28.dp, top = 16.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 6.dp),
                     )
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         items(
@@ -149,11 +189,22 @@ fun VmApp(
                         ) { chat ->
                             NavigationDrawerItem(
                                 label = {
-                                    Text(
-                                        text = chat.title.ifBlank { "Untitled chat" },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                                    Column {
+                                        Text(
+                                            text = chat.title.ifBlank { "Untitled chat" },
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        chat.workingDirectory?.let { dir ->
+                                            Text(
+                                                text = dir.substringAfterLast('/'),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                    }
                                 },
                                 selected = chat.id == currentConversationId,
                                 badge = {
@@ -209,13 +260,6 @@ fun VmApp(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     NavigationDrawerItem(
-                        label = { Text("Servers") },
-                        icon = { Icon(Icons.Default.Dns, contentDescription = null) },
-                        selected = currentRoute == VmDestination.Servers.route,
-                        onClick = { openTopLevel(VmDestination.Servers) },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
-                    NavigationDrawerItem(
                         label = { Text("Projects") },
                         icon = { Icon(Icons.Default.Folder, contentDescription = null) },
                         selected = currentRoute == VmDestination.Projects.route,
@@ -230,14 +274,10 @@ fun VmApp(
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
-                        label = { Text("Connectors") },
+                        label = { Text("Cloud & Connectors Hub") },
                         icon = { Icon(Icons.Default.Cloud, contentDescription = null) },
                         selected = currentRoute == VmDestination.Connectors.route,
-                        // Pushed rather than made top-level: the screen has a back arrow,
-                        // and back should return here instead of leaving the app.
-                        onClick = {
-                            closeDrawerThen { navController.navigate(VmDestination.Connectors.route) }
-                        },
+                        onClick = { openTopLevel(VmDestination.Connectors) },
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
@@ -258,6 +298,9 @@ fun VmApp(
                         navController = navController,
                         isOnline = isOnline,
                         onOpenMenu = { scope.launch { drawerState.open() } },
+                        hasCompletedOnboarding = hasCompletedOnboarding,
+                        hasSignedIn = hasSignedIn,
+                        onFinishOnboarding = appViewModel::completeOnboarding,
                     )
 
                     // Above the graph so an approval raised by background work
@@ -274,7 +317,6 @@ fun VmApp(
 private val DRAWER_ROUTES = setOf(
     VmDestination.NewChat.route,
     VmDestination.GeneralChat.route,
-    VmDestination.Servers.route,
     VmDestination.Projects.route,
     VmDestination.Files.route,
     VmDestination.Settings.route,
@@ -282,3 +324,10 @@ private val DRAWER_ROUTES = setOf(
     VmDestination.ServerAgent.ROUTE_PATTERN,
     VmDestination.AgentConversation.ROUTE_PATTERN,
 )
+
+
+
+
+
+
+

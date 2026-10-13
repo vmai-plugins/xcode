@@ -5,4 +5,8 @@
     <!-- Matches FileTransfers' destination in feature/files: context.cacheDir/downloads,
          shared to other apps from the Files browser. -->
     <cache-path name="downloads" path="downloads/" />
+    <files-path name="internal_files" path="." />
+    <external-path name="external_storage" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-cache-path name="external_cache" path="." />
 </paths>

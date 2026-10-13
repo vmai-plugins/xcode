@@ -76,6 +76,7 @@ sealed interface StoredEntry {
         override val timestampMillis: Long,
         val callId: String,
         val name: String,
+        val argumentsJson: String = "{}",
         val output: String?,
         val isError: Boolean,
     ) : StoredEntry
@@ -164,6 +165,7 @@ class DefaultAgentConversationRepository @Inject constructor(
                             timestampMillis = tool.startedAtMillis,
                             callId = tool.providerCallId ?: tool.id,
                             name = tool.toolName,
+                            argumentsJson = tool.argumentsJson,
                             output = tool.resultText ?: tool.errorText,
                             isError = tool.status == ToolExecutionStatus.FAILED,
                         ),

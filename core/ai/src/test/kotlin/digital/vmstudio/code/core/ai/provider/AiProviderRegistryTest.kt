@@ -1,15 +1,12 @@
 package digital.vmstudio.code.core.ai.provider
 
-import digital.vmstudio.code.core.ai.claudecode.ClaudeCodeCliProvider
+import digital.vmstudio.code.core.ai.omniroute.OmniRouteProvider
 import digital.vmstudio.code.core.common.error.VmError
-import digital.vmstudio.code.core.common.preferences.UserPreferences
-import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -24,23 +21,17 @@ import org.junit.Test
 class AiProviderRegistryTest {
 
     private fun health(available: Boolean) = AiProviderHealth(
-        kind = AiProviderKind.CLAUDE_CODE_CLI,
+        kind = AiProviderKind.OMNIROUTE,
         isAvailable = available,
     )
 
-    private fun registry(claudeCode: ClaudeCodeCliProvider = mockk(relaxed = true)) =
-        AiProviderRegistry(
-            claudeCode = claudeCode,
-            omniRoute = mockk(relaxed = true),
-            preferences = mockk<UserPreferencesSource> {
-                every { preferences } returns flowOf(UserPreferences())
-            },
-        )
+    private fun registry(provider: OmniRouteProvider = mockk(relaxed = true)) =
+        AiProviderRegistry(omniRoute = provider)
 
     @Test
     fun `a second call within the ttl reuses the result rather than probing again`() = runTest {
-        val provider = mockk<ClaudeCodeCliProvider>(relaxed = true) {
-            coEvery { kind } returns AiProviderKind.CLAUDE_CODE_CLI
+        val provider = mockk<OmniRouteProvider>(relaxed = true) {
+            coEvery { kind } returns AiProviderKind.OMNIROUTE
             coEvery { checkHealth("srv-1") } returns VmResult.Success(health(true))
         }
         val registry = registry(provider)
@@ -53,8 +44,8 @@ class AiProviderRegistryTest {
 
     @Test
     fun `forceRefresh always probes live even with a fresh cache entry`() = runTest {
-        val provider = mockk<ClaudeCodeCliProvider>(relaxed = true) {
-            coEvery { kind } returns AiProviderKind.CLAUDE_CODE_CLI
+        val provider = mockk<OmniRouteProvider>(relaxed = true) {
+            coEvery { kind } returns AiProviderKind.OMNIROUTE
             coEvery { checkHealth("srv-1") } returns VmResult.Success(health(true))
         }
         val registry = registry(provider)
@@ -67,8 +58,8 @@ class AiProviderRegistryTest {
 
     @Test
     fun `different servers are cached independently`() = runTest {
-        val provider = mockk<ClaudeCodeCliProvider>(relaxed = true) {
-            coEvery { kind } returns AiProviderKind.CLAUDE_CODE_CLI
+        val provider = mockk<OmniRouteProvider>(relaxed = true) {
+            coEvery { kind } returns AiProviderKind.OMNIROUTE
             coEvery { checkHealth(any()) } returns VmResult.Success(health(true))
         }
         val registry = registry(provider)
@@ -83,8 +74,8 @@ class AiProviderRegistryTest {
     @Test
     fun `a failure is never cached, so the next call probes again`() = runTest {
         val error = VmError.Network(summary = "unreachable")
-        val provider = mockk<ClaudeCodeCliProvider>(relaxed = true) {
-            coEvery { kind } returns AiProviderKind.CLAUDE_CODE_CLI
+        val provider = mockk<OmniRouteProvider>(relaxed = true) {
+            coEvery { kind } returns AiProviderKind.OMNIROUTE
             coEvery { checkHealth("srv-1") } returns VmResult.Failure(error)
         }
         val registry = registry(provider)
@@ -100,8 +91,8 @@ class AiProviderRegistryTest {
         // Regression case for the reason this exists: the server goes down between
         // the agent screen's automatic check and a manual "Run test" tap, and the
         // stale "available" cached seconds earlier must not survive either call.
-        val provider = mockk<ClaudeCodeCliProvider>(relaxed = true) {
-            coEvery { kind } returns AiProviderKind.CLAUDE_CODE_CLI
+        val provider = mockk<OmniRouteProvider>(relaxed = true) {
+            coEvery { kind } returns AiProviderKind.OMNIROUTE
         }
         val registry = registry(provider)
 
@@ -124,8 +115,8 @@ class AiProviderRegistryTest {
     @Test
     fun `a successful result is returned as-is on a cache hit`() = runTest {
         val expected = health(true).copy(version = "2.1.0")
-        val provider = mockk<ClaudeCodeCliProvider>(relaxed = true) {
-            coEvery { kind } returns AiProviderKind.CLAUDE_CODE_CLI
+        val provider = mockk<OmniRouteProvider>(relaxed = true) {
+            coEvery { kind } returns AiProviderKind.OMNIROUTE
             coEvery { checkHealth("srv-1") } returns VmResult.Success(expected)
         }
         val registry = registry(provider)

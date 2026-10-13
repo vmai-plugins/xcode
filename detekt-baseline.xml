@@ -7,14 +7,10 @@
     <ID>CyclomaticComplexMethod:ClaudeCodeStreamParser.kt$ToolSummary$fun describe(name: String, input: JsonObject): String</ID>
     <ID>CyclomaticComplexMethod:CommandSafety.kt$CommandSafety$internal fun splitSegments(command: String): List&lt;String&gt;</ID>
     <ID>CyclomaticComplexMethod:CommandSafety.kt$CommandSafety$private fun analyseRemove(segment: String): List&lt;CommandFinding&gt;</ID>
-    <ID>CyclomaticComplexMethod:FilesScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun FilesScreen( onNavigateBack: () -&gt; Unit, onOpenEditor: (serverId: String, filePath: String) -&gt; Unit = { _, _ -&gt; }, modifier: Modifier = Modifier, viewModel: FilesViewModel = hiltViewModel(), )</ID>
     <ID>CyclomaticComplexMethod:GitParsers.kt$GitParsers$fun parseStatus(output: String, branch: String): GitStatus</ID>
     <ID>CyclomaticComplexMethod:RegexSyntaxHighlighter.kt$RegexSyntaxHighlighter$override fun tokenize(source: String, scheme: ColorScheme): List&lt;SyntaxToken&gt;</ID>
     <ID>CyclomaticComplexMethod:TerminalEmulator.kt$TerminalEmulator$internal fun applyGraphicRendition(params: IntArray)</ID>
     <ID>CyclomaticComplexMethod:TerminalKeys.kt$TerminalKeyEncoder$fun encode(key: TerminalKey): String</ID>
-    <ID>CyclomaticComplexMethod:UserPreferencesRepository.kt$UserPreferencesRepository$private fun Preferences.toUserPreferences(): UserPreferences</ID>
-    <ID>FunctionNaming:VmNavHost.kt$@Composable fun VmNavHost( navController: NavHostController, isOnline: Boolean, modifier: Modifier = Modifier, )</ID>
-    <ID>LongMethod:VmNavHost.kt$@Composable fun VmNavHost( navController: NavHostController, isOnline: Boolean, modifier: Modifier = Modifier, )</ID>
     <ID>LongParameterList:ClaudeCodeCommandBuilderTest.kt$ClaudeCodeCommandBuilderTest$( prompt: String = "add rate limiting", workingDirectory: String = "/srv/app", permissionMode: AgentPermissionMode = AgentPermissionMode.PLAN, resumeSessionId: String? = null, allowedTools: List&lt;String&gt; = emptyList(), disallowedTools: List&lt;String&gt; = emptyList(), restricted: Boolean = false, model: String? = null, )</ID>
     <ID>LongParameterList:TerminalSession.kt$TerminalScreen$( val columns: Int, val rows: Int, val lines: List&lt;TerminalRowSnapshot&gt;, val cursorRow: Int, val cursorColumn: Int, val cursorVisible: Boolean, val scrollbackSize: Int, /** True while a full-screen program (vim, less, top) owns the screen. */ val alternateScreenActive: Boolean, val title: String?, val revision: Long, )</ID>
     <ID>LoopWithTooManyJumpStatements:DiffParser.kt$DiffParser$while</ID>
@@ -55,15 +51,12 @@
     <ID>MagicNumber:CommandSafety.kt$CommandSafety$120</ID>
     <ID>MagicNumber:CommandSafety.kt$CommandSafety$80</ID>
     <ID>MagicNumber:DiffParser.kt$DiffParser$3</ID>
-    <ID>MagicNumber:FilesScreen.kt$10</ID>
-    <ID>MagicNumber:FilesScreen.kt$20</ID>
-    <ID>MagicNumber:FilesScreen.kt$30</ID>
     <ID>MagicNumber:GitParsers.kt$GitParsers$3</ID>
     <ID>MagicNumber:GitParsers.kt$GitParsers$4</ID>
     <ID>MagicNumber:GitParsers.kt$GitParsers$6</ID>
     <ID>MagicNumber:GitParsers.kt$GitParsers$7</ID>
     <ID>MagicNumber:KeystoreCrypto.kt$AndroidKeystoreCrypto$8</ID>
-    <ID>MagicNumber:OmniRouteProvider.kt$OmniRouteProvider$404</ID>
+    <ID>MagicNumber:OmniRouteAgentLoop.kt$OmniRouteAgentLoop$50</ID>
     <ID>MagicNumber:RemoteFileEntry.kt$RemotePermissions$0xFFF</ID>
     <ID>MagicNumber:RemoteFileEntry.kt$RemotePermissions$3</ID>
     <ID>MagicNumber:RemoteFileEntry.kt$RemotePermissions$8</ID>
@@ -115,14 +108,9 @@
     <ID>MagicNumber:TerminalStyle.kt$TerminalStyle$0xFFFFFF</ID>
     <ID>MagicNumber:TerminalStyle.kt$TerminalStyle$16</ID>
     <ID>MagicNumber:TerminalStyle.kt$TerminalStyle$8</ID>
-    <ID>MagicNumber:UserPreferences.kt$UserPreferences$1024</ID>
-    <ID>MagicNumber:UserPreferences.kt$UserPreferences$256L</ID>
-    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$1024</ID>
-    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$16L</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$200</ID>
     <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$32f</ID>
-    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$500</ID>
-    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$50_000</ID>
-    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$8</ID>
+    <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$5</ID>
     <ID>MagicNumber:UserPreferencesRepository.kt$UserPreferencesRepository$8f</ID>
     <ID>MagicNumber:VmHttpClient.kt$443</ID>
     <ID>MagicNumber:VmHttpClient.kt$80</ID>
@@ -136,19 +124,42 @@
     <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$500</ID>
     <ID>MagicNumber:VmHttpClient.kt$VmHttpClient$599</ID>
     <ID>MagicNumber:VmLog.kt$DiagnosticsLogSink$72</ID>
+    <ID>MaxLineLength:ActivityTimelineScreen.kt$description = "Key events like agent actions, Git operations, and file saves appear here."</ID>
     <ID>MaxLineLength:AiDao.kt$ConversationDao$"SELECT * FROM conversation WHERE projectId = :projectId AND isArchived = 0 ORDER BY updatedAtMillis DESC"</ID>
-    <ID>MaxLineLength:AiDao.kt$MessageDao$"UPDATE message SET status = :status, errorText = :errorText, tokenCount = :tokenCount WHERE id = :id"</ID>
+    <ID>MaxLineLength:AiSettingsSection.kt$onClick = { viewModel.setMaxCommandsPerRun((state.preferences.agentMaxCommandsPerRun + 10).coerceAtMost(200)) }</ID>
+    <ID>MaxLineLength:AiSettingsSection.kt$onClick = { viewModel.setMaxCommandsPerRun((state.preferences.agentMaxCommandsPerRun - 10).coerceAtLeast(5)) }</ID>
+    <ID>MaxLineLength:AiSettingsSection.kt$onClick = { viewModel.setMaxIterations((state.preferences.agentMaxIterations + 5).coerceAtMost(100)) }</ID>
+    <ID>MaxLineLength:AiSettingsSection.kt$onClick = { viewModel.setMaxIterations((state.preferences.agentMaxIterations - 5).coerceAtLeast(5)) }</ID>
+    <ID>MaxLineLength:AiSettingsSection.kt$text = "Ceilings enforced on the autonomous agent loop to avoid runaway token usage and unintended commands."</ID>
     <ID>MaxLineLength:AnsiParser.kt$AnsiParser$if (params.isEmpty()) IntArray(0) else params.map { if (it == NO_PARAM) 0 else it }.toIntArray()</ID>
     <ID>MaxLineLength:AppProcessManager.kt$AppProcessManager$suspend</ID>
     <ID>MaxLineLength:AppScanner.kt$AppScanner.Companion$" elif [ -f \"\$dir/docker-compose.yml\" ] || [ -f \"\$dir/docker-compose.yaml\" ] || [ -f \"\$dir/Dockerfile\" ]; then echo \"FRAMEWORK=docker\""</ID>
     <ID>MaxLineLength:AppScanner.kt$AppScanner.Companion$" elif [ -f \"\$dir/requirements.txt\" ] || [ -f \"\$dir/pyproject.toml\" ] || [ -f \"\$dir/Pipfile\" ]; then echo \"FRAMEWORK=python\""</ID>
     <ID>MaxLineLength:AppScanner.kt$AppScanner.Companion$"find \"\$APPS_ROOT\" -mindepth 1 -maxdepth 1 -type d 2&gt;/dev/null | sort | while IFS= read -r dir; do"</ID>
+    <ID>MaxLineLength:ChatTopBar.kt$color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
+    <ID>MaxLineLength:ChatTopBar.kt$tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
+    <ID>MaxLineLength:CommandGitService.kt$CommandGitService$val script = "for r in $roots; do if [ -d \"\$r\" ]; then find \"\$r\" -maxdepth $maxDepth -name .git -type d 2&gt;/dev/null; fi; done"</ID>
     <ID>MaxLineLength:CommandSafety.kt$CommandSafety$pattern = "\\b(cat|less|more|head|tail|strings)\\b[^|;]*(\\.env\\b|id_rsa\\b|id_ed25519\\b|\\.pem\\b|credentials\\b|\\.netrc\\b)"</ID>
     <ID>MaxLineLength:DiffParser.kt$DiffParser$files += FileDiff(oldPath, newPath, isNew, isDeleted, isRename, calculateLineNumbers(diffLines))</ID>
     <ID>MaxLineLength:DiffParser.kt$DiffParser$line.startsWith(" ") -&gt; { output += DiffLine(text = line.drop(1), type = DiffLineType.UNCHANGED); i++ }</ID>
     <ID>MaxLineLength:DiffParser.kt$DiffParser$line.startsWith("+") -&gt; { output += DiffLine(text = line.drop(1), type = DiffLineType.ADDED); i++ }</ID>
     <ID>MaxLineLength:DiffParser.kt$DiffParser$line.startsWith("-") -&gt; { output += DiffLine(text = line.drop(1), type = DiffLineType.REMOVED); i++ }</ID>
+    <ID>MaxLineLength:EditorScreen.kt$TextButton</ID>
+    <ID>MaxLineLength:EditorScreen.kt$tint = if (isSearchOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
+    <ID>MaxLineLength:EditorViewModel.kt$EditorViewModel$onTextFieldValueChange(current.copy(selection = androidx.compose.ui.text.TextRange(offset.coerceIn(0, current.text.length))))</ID>
+    <ID>MaxLineLength:OmniRouteTool.kt$put("description", "Working directory to run the build from (defaults to the project's working directory).")</ID>
+    <ID>MaxLineLength:OnboardingScreen.kt$description = "Connect securely to any remote VPS, server, or cloud container via SSH. Run terminals, monitor resources, and develop on the go."</ID>
+    <ID>MaxLineLength:OnboardingScreen.kt$description = "Inspect and edit remote source files with line gutter, search &amp; replace, undo/redo, and resumable transfer management."</ID>
+    <ID>MaxLineLength:OnboardingScreen.kt$description = "Never waste device or remote storage cloning duplicate repositories. Detect and bind straight to existing Git projects on your server."</ID>
+    <ID>MaxLineLength:OnboardingScreen.kt$description = "Pair program with autonomous AI. Enforce safeguard limits on iterations and commands with full user approval for edits."</ID>
+    <ID>MaxLineLength:ProjectCreateScreen.kt$label = { Text(if (isLocal) "Directory on Phone (Local Storage)" else "Directory on server") }</ID>
+    <ID>MaxLineLength:ProjectCreateScreen.kt$placeholder = { Text(if (isLocal) "/sdcard/VMStudio/Projects/myapp" else "~/projects/myapp") }</ID>
+    <ID>MaxLineLength:ProjectCreateViewModel.kt$ProjectCreateViewModel$ProjectSource.LINKED -&gt; if (repoUrl.isNotBlank()) "Linked to $repoUrl (${state.branch})" else "Linked directory"</ID>
     <ID>MaxLineLength:ProjectDao.kt$RecentFileDao$"SELECT * FROM recent_file WHERE projectId = :projectId ORDER BY isPinned DESC, lastOpenedAtMillis DESC LIMIT :limit"</ID>
+    <ID>MaxLineLength:ProjectDetailScreen.kt$tint = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
+    <ID>MaxLineLength:ProjectDetailScreen.kt$val canCommit = !state.isSyncing &amp;&amp; (state.gitStatus?.hasChanges == true || state.gitStatus == null)</ID>
+    <ID>MaxLineLength:ProjectDetailScreen.kt$val targetText = serverName ?: if (project.isLocal) "This Device (Local Storage)" else "Remote VPS"</ID>
+    <ID>MaxLineLength:ProjectDetailViewModel.kt$ProjectDetailViewModel$val</ID>
     <ID>MaxLineLength:RecipeRegistry.kt$RecipeRegistry$command</ID>
     <ID>MaxLineLength:RegexSyntaxHighlighter.kt$RegexSyntaxHighlighter$tokens += SyntaxToken(numberMatch.range.first, numberMatch.range.last + 1, SpanStyle(color = scheme.number))</ID>
     <ID>MaxLineLength:ServerAppsScreen.kt$onConfirm(url.trim(), appName.trim().takeIf { it.isNotBlank() }, branch.trim().takeIf { it.isNotBlank() })</ID>
@@ -159,8 +170,7 @@
     <ID>MaxLineLength:UserPreferencesRepository.kt$UserPreferencesRepository$confirmDestructiveCommands = this[Keys.CONFIRM_DESTRUCTIVE] ?: defaults.confirmDestructiveCommands</ID>
     <ID>MaxLineLength:VmDestination.kt$VmDestination.ServerDiff$data</ID>
     <ID>MaxLineLength:VmDestination.kt$VmDestination.ServerEditor$data</ID>
-    <ID>MaxLineLength:VmNavHost.kt$val agentServerId = backStackEntry.arguments?.getString(VmDestination.ServerAgent.ARG_SERVER_ID) ?: ""</ID>
-    <ID>MissingPackageDeclaration:VmNavHost.kt$.VmNavHost.kt</ID>
+    <ID>MaxLineLength:VmNavHost.kt$startDestination = if (hasCompletedOnboarding) VmDestination.NewChat.route else VmDestination.Onboarding.route</ID>
     <ID>NestedBlockDepth:AppScannerParser.kt$AppScannerParser$private fun splitSections(output: String): Sections</ID>
     <ID>NewLineAtEndOfFile:AppProcessManager.kt$digital.vmstudio.code.core.ssh.apps.AppProcessManager.kt</ID>
     <ID>NewLineAtEndOfFile:AppProject.kt$digital.vmstudio.code.core.ssh.apps.AppProject.kt</ID>
@@ -169,16 +179,20 @@
     <ID>NewLineAtEndOfFile:AppScannerParserTest.kt$digital.vmstudio.code.core.ssh.apps.AppScannerParserTest.kt</ID>
     <ID>NewLineAtEndOfFile:ServerAppsScreen.kt$digital.vmstudio.code.feature.servers.ServerAppsScreen.kt</ID>
     <ID>NewLineAtEndOfFile:ServerAppsViewModel.kt$digital.vmstudio.code.feature.servers.ServerAppsViewModel.kt</ID>
+    <ID>TooManyFunctions:AgentChatViewModel.kt$AgentChatViewModel : ViewModel</ID>
     <ID>TooManyFunctions:DatabaseModule.kt$DatabaseModule</ID>
+    <ID>TooManyFunctions:ProjectCreateViewModel.kt$ProjectCreateViewModel : ViewModel</ID>
     <ID>TooManyFunctions:RemotePath.kt$RemotePath</ID>
     <ID>TooManyFunctions:TerminalEmulator.kt$TerminalEmulator</ID>
     <ID>TooManyFunctions:TerminalStyle.kt$TerminalStyle</ID>
-    <ID>TooManyFunctions:UserPreferencesRepository.kt$UserPreferencesRepository : UserPreferencesSource</ID>
-    <ID>UnusedImports:RecipeExecutor.kt$import digital.vmstudio.code.core.common.error.VmError</ID>
+    <ID>UnusedImports:ActivityTimelineScreen.kt$import androidx.compose.runtime.rememberCoroutineScope</ID>
+    <ID>UnusedImports:ActivityTimelineScreen.kt$import digital.vmstudio.code.core.ui.component.VmStatusBadge</ID>
+    <ID>UnusedImports:OnboardingScreen.kt$import androidx.compose.animation.AnimatedVisibility</ID>
     <ID>UnusedImports:SyntaxHighlighter.kt$import androidx.compose.ui.text.font.FontWeight</ID>
     <ID>UnusedParameter:RecipeScreen.kt$onDismissError: () -&gt; Unit</ID>
     <ID>UnusedParameter:TerminalView.kt$foregroundColor: Color</ID>
     <ID>UnusedParameter:VmNavHost.kt$isOnline: Boolean</ID>
+    <ID>UnusedPrivateProperty:ActivityTimelineScreen.kt$val status = when (activity.severity) { ActivitySeverity.SUCCESS -&gt; VmStatus.CONNECTED ActivitySeverity.WARNING -&gt; VmStatus.DEGRADED ActivitySeverity.ERROR -&gt; VmStatus.ERROR ActivitySeverity.INFO -&gt; VmStatus.CONNECTED }</ID>
     <ID>VariableNaming:TerminalEmulatorTest.kt$TerminalEmulatorTest$/** Control characters built from code points so the source stays plain ASCII. */ private val ESC = Char(27).toString()</ID>
     <ID>VariableNaming:TerminalEmulatorTest.kt$TerminalEmulatorTest$private val BEL = Char(7).toString()</ID>
   </CurrentIssues>

@@ -1,10 +1,14 @@
 package digital.vmstudio.code.feature.ai
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -26,9 +30,13 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -37,6 +45,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -84,7 +94,6 @@ internal fun ModernComposer(
     isSyncingModels: Boolean,
     onSyncModels: () -> Unit,
     attachments: List<Uri>,
-    isClaudeCodeMissing: Boolean = false,
     onAttach: (Uri) -> Unit,
     onRemoveAttachment: (Uri) -> Unit,
     workingDirectory: String,
@@ -92,29 +101,132 @@ internal fun ModernComposer(
     onSend: (String) -> Unit,
     onSendInBackground: (String, () -> Unit) -> Unit,
     onStop: () -> Unit,
+    onOpenPreview: (() -> Unit)? = null,
+    onOpenFiles: (() -> Unit)? = null,
+    onDetach: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
     val canSend = enabled && text.isNotBlank()
+    val haptic = LocalHapticFeedback.current
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing.md, vertical = spacing.sm),
-        shape = RoundedCornerShape(26.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            .padding(horizontal = spacing.md, vertical = spacing.xs),
+        shape = RoundedCornerShape(22.dp),
+        color = Color(0xFF1E1F22),
+        border = BorderStroke(1.dp, Color(0xFF2E3036)),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
             AttachmentChips(attachments = attachments, onRemove = onRemoveAttachment)
+
+            // Quick Slash Actions Bar (/preview, /files, /diff, /terminal, /clear)
+            val showQuickActions = text.isBlank() || text.endsWith("/")
+            if (showQuickActions) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (onOpenPreview != null) {
+                        MentionChip(
+                            label = "/preview",
+                            icon = Icons.Default.Code,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onOpenPreview()
+                            },
+                        )
+                    }
+                    if (onOpenFiles != null) {
+                        MentionChip(
+                            label = "/files",
+                            icon = Icons.Default.Folder,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onOpenFiles()
+                            },
+                        )
+                    }
+                    MentionChip(
+                        label = "/diff",
+                        icon = Icons.Default.Source,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val updated = if (text.endsWith("/")) text.dropLast(1) + "@git-diff " else "$text @git-diff ".trimStart()
+                            onTextChange(updated)
+                        },
+                    )
+                    MentionChip(
+                        label = "/terminal",
+                        icon = Icons.Default.Terminal,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val updated = if (text.endsWith("/")) text.dropLast(1) + "@terminal " else "$text @terminal ".trimStart()
+                            onTextChange(updated)
+                        },
+                    )
+                    MentionChip(
+                        label = "/clear",
+                        icon = Icons.Default.Close,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onTextChange("")
+                        },
+                    )
+                    if (isRunning && onDetach != null) {
+                        MentionChip(
+                            label = "/detach",
+                            icon = Icons.Default.Schedule,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onDetach()
+                            },
+                        )
+                    }
+                }
+            }
+
+            // Antigravity-style @ Mention Context Helper Pill
+            val showMentions = text.endsWith("@")
+            if (showMentions) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    MentionChip(
+                        label = "@file",
+                        icon = Icons.Default.Folder,
+                        onClick = { onTextChange(text + "file: ") },
+                    )
+                    MentionChip(
+                        label = "@git-diff",
+                        icon = Icons.Default.Source,
+                        onClick = { onTextChange(text + "git-diff ") },
+                    )
+                    MentionChip(
+                        label = "@terminal",
+                        icon = Icons.Default.Terminal,
+                        onClick = { onTextChange(text + "terminal ") },
+                    )
+                }
+            }
+
             TextField(
                 value = text,
                 onValueChange = onTextChange,
-                enabled = !isRunning,
+                enabled = enabled,
                 placeholder = {
                     Text(
-                        text = if (isResuming) "Reply…" else "Message",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = if (isRunning) "Queue follow-up task…" else "Ask anything, @ to mention, / for actions",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF8E919A),
                     )
                 },
                 colors = TextFieldDefaults.colors(
@@ -164,7 +276,6 @@ internal fun ModernComposer(
                     selectedModel = selectedModel,
                     omniModels = omniModels,
                     isSyncing = isSyncingModels,
-                    isClaudeCodeMissing = isClaudeCodeMissing,
                     enabled = !isRunning,
                     onModelChange = onModelChange,
                     onSync = onSyncModels,
@@ -172,14 +283,84 @@ internal fun ModernComposer(
 
                 Spacer(Modifier.weight(1f))
 
-                if (isRunning) {
+                // Voice-to-Code Microphone Button
+                val speechLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult(),
+                ) { result ->
+                    if (result.resultCode == android.app.Activity.RESULT_OK) {
+                        val spokenText = result.data
+                            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                            ?.firstOrNull()
+                        if (!spokenText.isNullOrBlank()) {
+                            val updated = if (text.isBlank()) spokenText else "$text $spokenText"
+                            onTextChange(updated)
+                        }
+                    }
+                }
+
+                val context = LocalContext.current
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        try {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(
+                                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                )
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak instructions for AI…")
+                            }
+                            speechLauncher.launch(intent)
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Speech recognition is not available", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Voice prompt",
+                        tint = if (text.isNotBlank()) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+
+                Spacer(modifier = Modifier.size(4.dp))
+
+                if (isRunning && text.isBlank()) {
+                    if (onDetach != null) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF2B2D31),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable(onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onDetach()
+                                }),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = "Detach to background",
+                                    tint = Color(0xFF6C9EFF),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.size(4.dp))
+                    }
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .clickable(onClick = onStop),
+                            .clickable(onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onStop()
+                            }),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -202,15 +383,21 @@ internal fun ModernComposer(
                             .size(36.dp)
                             .clip(CircleShape)
                             .clickable(enabled = canSend) {
-                                val toSend = text
-                                onTextChange("")
-                                onSend(toSend)
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                if (text.trim().equals("/detach", ignoreCase = true) && onDetach != null) {
+                                    onTextChange("")
+                                    onDetach()
+                                } else {
+                                    val toSend = text
+                                    onTextChange("")
+                                    onSend(toSend)
+                                }
                             },
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.ArrowUpward,
-                                contentDescription = "Send",
+                                contentDescription = if (isRunning) "Queue task" else "Send",
                                 tint = if (canSend) {
                                     MaterialTheme.colorScheme.onPrimary
                                 } else {
@@ -403,6 +590,41 @@ private fun AttachmentChips(attachments: List<Uri>, onRemove: (Uri) -> Unit) {
         }
     }
 }
+
+@Composable
+private fun MentionChip(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF2B2D31),
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFFE2E2E5),
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            )
+        }
+    }
+}
+
 
 private fun attachmentName(context: Context, uri: Uri): String =
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)

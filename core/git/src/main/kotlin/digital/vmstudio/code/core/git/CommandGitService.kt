@@ -83,7 +83,34 @@ class CommandGitService @Inject constructor(
     }
 
     override suspend fun restoreFile(serverId: String, repoPath: String, filePath: String): GitResult<Unit> {
-        return execute(serverId, repoPath, "git checkout HEAD -- ${filePath.shellQuoted()}").map { }
+        return execute(serverId, repoPath, "git checkout HEAD -- ${filePath.shellQuoted()} 2>/dev/null || rm -f ${filePath.shellQuoted()}").map { }
+    }
+
+    override suspend fun discoverRepositories(
+        serverId: String,
+        searchRoots: List<String>,
+        maxDepth: Int,
+    ): GitResult<List<DiscoveredGitRepo>> {
+        val roots = searchRoots.joinToString(" ") { it.shellQuoted() }
+        val script = "for r in $roots; do if [ -d \"\$r\" ]; then find \"\$r\" -maxdepth $maxDepth -name .git -type d 2>/dev/null; fi; done"
+        return when (val outcome = connectionManager.withSession(serverId) { session ->
+            session.execute(script)
+        }) {
+            is VmResult.Success -> {
+                val lines = outcome.value.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                val repos = lines.mapNotNull { gitPath ->
+                    val repoPath = gitPath.removeSuffix("/.git").removeSuffix("/.git/")
+                    if (repoPath.isNotBlank()) {
+                        val name = repoPath.substringAfterLast('/').ifBlank { repoPath }
+                        DiscoveredGitRepo(path = repoPath, name = name)
+                    } else null
+                }.distinctBy { it.path }
+                GitResult.Success(repos)
+            }
+            is VmResult.Failure -> GitResult.Failure(
+                GitError.CommandFailed("discoverRepositories", -1, outcome.error.summary),
+            )
+        }
     }
 
     private suspend fun execute(
@@ -103,7 +130,8 @@ class CommandGitService @Inject constructor(
                 if (exitCode == 0) {
                     GitResult.Success(SshCommandResult(exitCode, result.stdout, result.stderr))
                 } else {
-                    GitResult.Failure(GitError.CommandFailed(command, exitCode, result.stderr))
+                    val err = result.stderr.ifBlank { result.stdout }.ifBlank { "Git command exited with code $exitCode" }
+                    GitResult.Failure(GitError.CommandFailed(command, exitCode, err))
                 }
             }
             is VmResult.Failure -> GitResult.Failure(

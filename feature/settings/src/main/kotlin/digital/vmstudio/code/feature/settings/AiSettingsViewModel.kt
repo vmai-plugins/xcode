@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
-import digital.vmstudio.code.core.ai.provider.AiProviderKind
 import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferences
@@ -18,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,14 +29,8 @@ data class AiSettingsUiState(
     val hasStoredKey: Boolean = false,
     /** Fresh sync wins; otherwise the persisted list from the last sync. */
     val availableModels: List<String> = emptyList(),
-) {
-    val selectedKind: AiProviderKind
-        get() = if (preferences.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE) {
-            AiProviderKind.OMNIROUTE
-        } else {
-            AiProviderKind.CLAUDE_CODE_CLI
-        }
-}
+    val freeModels: Set<String> = emptySet(),
+)
 
 @HiltViewModel
 class AiSettingsViewModel @Inject constructor(
@@ -63,6 +57,8 @@ class AiSettingsViewModel @Inject constructor(
             hasStoredKey = preferences.aiApiKeyCredentialId != null,
             availableModels = currentHealth?.availableModels?.takeIf { it.isNotEmpty() }
                 ?: preferences.aiAvailableModelIds,
+            freeModels = currentHealth?.freeModels?.takeIf { it.isNotEmpty() }
+                ?: preferences.aiFreeModelIds,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -70,31 +66,8 @@ class AiSettingsViewModel @Inject constructor(
         initialValue = AiSettingsUiState(),
     )
 
-    fun selectProvider(kind: AiProviderKind) {
-        viewModelScope.launch {
-            val id = when (kind) {
-                AiProviderKind.CLAUDE_CODE_CLI -> UserPreferences.PROVIDER_CLAUDE_CODE
-                AiProviderKind.OMNIROUTE -> UserPreferences.PROVIDER_OMNIROUTE
-            }
-            val current = uiState.value.preferences
-            preferencesRepository.setAiProvider(id, current.aiBaseUrl)
-            // A health result belongs to one backend; keeping it across a switch
-            // would show the previous provider's status under the new one's name.
-            health.value = null
-        }
-    }
-
-    fun setBaseUrl(url: String) {
-        viewModelScope.launch { commitBaseUrl(url) }
-    }
-
-    /** A different gateway serves different models, so the old list is dropped. */
-    private suspend fun commitBaseUrl(url: String) {
-        val current = uiState.value.preferences
-        if (url.trim() == current.aiBaseUrl) return
-        preferencesRepository.setAiProvider(current.aiProviderId, url.trim())
-        preferencesRepository.clearAiModels()
-        health.value = null
+    init {
+        runConnectionTest()
     }
 
     /**
@@ -106,7 +79,7 @@ class AiSettingsViewModel @Inject constructor(
         viewModelScope.launch { commitApiKey(key) }
     }
 
-    private suspend fun commitApiKey(key: String) {
+    private suspend fun commitApiKey(key: String): Boolean {
         val previousId = uiState.value.preferences.aiApiKeyCredentialId
         val secret = Secret.of(key.trim())
         try {
@@ -123,8 +96,12 @@ class AiSettingsViewModel @Inject constructor(
                     // failure cannot leave the app with no usable key.
                     previousId?.let { credentialStore.delete(it) }
                     health.value = null
+                    return true
                 }
-                is VmResult.Failure -> error.value = stored.error
+                is VmResult.Failure -> {
+                    error.value = stored.error
+                    return false
+                }
             }
         } finally {
             secret.wipe()
@@ -133,9 +110,28 @@ class AiSettingsViewModel @Inject constructor(
 
     fun clearApiKey() {
         viewModelScope.launch {
-            uiState.value.preferences.aiApiKeyCredentialId?.let { credentialStore.delete(it) }
-            preferencesRepository.setAiApiKeyCredentialId(null)
-            health.value = null
+            try {
+                val credentialId = uiState.value.preferences.aiApiKeyCredentialId
+                if (credentialId != null) {
+                    when (val result = credentialStore.delete(credentialId)) {
+                        is VmResult.Success -> Unit
+                        is VmResult.Failure -> {
+                            error.value = result.error
+                            return@launch
+                        }
+                    }
+                }
+                preferencesRepository.setAiApiKeyCredentialId(null)
+                health.value = null
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                error.value = VmError.Unexpected(
+                    summary = "Could not remove the AI API key",
+                    reason = exception.message,
+                    cause = exception,
+                )
+            }
         }
     }
 
@@ -153,32 +149,58 @@ class AiSettingsViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.setAiToolsEnabled(enabled) }
     }
 
+    fun setWebAccessEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setAiWebAccessEnabled(enabled) }
+    }
+
+    fun setMaxIterations(iterations: Int) {
+        viewModelScope.launch { preferencesRepository.setAgentMaxIterations(iterations) }
+    }
+
+    fun setMaxCommandsPerRun(commands: Int) {
+        viewModelScope.launch { preferencesRepository.setAgentMaxCommandsPerRun(commands) }
+    }
+
     /**
      * Runs the connection test.
      *
-     * [serverId] is required by the CLI backend and ignored by the gateway one; the
-     * screen passes whichever it has so the test reports on the selected provider
-     * rather than refusing.
+     * Tests the fixed OmniRoute gateway using the saved API key.
      */
-    fun runConnectionTest(serverId: String?, pendingUrl: String? = null, pendingKey: String? = null) {
+    fun runConnectionTest(
+        pendingKey: String? = null,
+        onKeySaved: () -> Unit = {},
+    ) {
         testing.value = true
         error.value = null
         viewModelScope.launch {
-            // "Run test" saves what was typed: testing the old saved values while
-            // the fields show new ones made the test report "no URL set".
-            pendingUrl?.let { commitBaseUrl(it) }
-            pendingKey?.takeIf { it.isNotBlank() }?.let { commitApiKey(it) }
-            val provider = providers.forId(uiState.value.preferences.aiProviderId)
-            // The user tapped "Run test": always probe live, never the cache the
-            // agent screen's automatic check may have populated seconds ago.
-            when (val result = providers.checkHealth(provider, serverId, forceRefresh = true)) {
-                is VmResult.Success -> {
-                    health.value = result.value
-                    persistSyncedModels(result.value.availableModels)
+            try {
+                val keyWasSaved = pendingKey?.takeIf { it.isNotBlank() }?.let {
+                    commitApiKey(it)
+                } ?: true
+                if (!keyWasSaved) return@launch
+                if (!pendingKey.isNullOrBlank()) onKeySaved()
+
+                val provider = providers.active()
+                // The user tapped "Run test": always probe live, never the cache the
+                // agent screen's automatic check may have populated seconds ago.
+                when (val result = providers.checkHealth(provider, null, forceRefresh = true)) {
+                    is VmResult.Success -> {
+                        health.value = result.value
+                        persistSyncedModels(result.value.availableModels, result.value.freeModels)
+                    }
+                    is VmResult.Failure -> error.value = result.error
                 }
-                is VmResult.Failure -> error.value = result.error
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                error.value = VmError.Unexpected(
+                    summary = "AI connection test failed",
+                    reason = exception.message,
+                    cause = exception,
+                )
+            } finally {
+                testing.value = false
             }
-            testing.value = false
         }
     }
 
@@ -187,9 +209,19 @@ class AiSettingsViewModel @Inject constructor(
      * An empty answer keeps the previous list: a gateway that returned no models
      * has not been proven to have none.
      */
-    private suspend fun persistSyncedModels(models: List<String>) {
+    private suspend fun persistSyncedModels(models: List<String>, freeModels: Set<String>) {
         if (models.isNotEmpty()) {
-            preferencesRepository.setAiModels(models)
+            val prefs = uiState.value.preferences
+            val effectiveFree = freeModels.ifEmpty { prefs.aiFreeModelIds }
+            preferencesRepository.setAiModels(models, effectiveFree)
+            if (prefs.aiSelectedModelId.isNullOrBlank() || prefs.aiSelectedModelId !in models) {
+                val preferred = if (UserPreferences.DEFAULT_AI_MODEL_ID in models) {
+                    UserPreferences.DEFAULT_AI_MODEL_ID
+                } else {
+                    models.first()
+                }
+                preferencesRepository.setAiModel(preferred, prefs.aiModelPreset)
+            }
         }
     }
 

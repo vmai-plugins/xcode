@@ -5,20 +5,18 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.vmstudio.code.core.ai.background.AgentWakeLockManager
 import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
 import digital.vmstudio.code.core.ai.background.OmniRouteBackgroundRunner
 import digital.vmstudio.code.core.ai.background.BackgroundRun
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
-import digital.vmstudio.code.core.ai.model.ClaudeCodeModels
 import digital.vmstudio.code.core.ai.model.ConversationTurn
 import digital.vmstudio.code.core.ai.model.toPermissionMode
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModelCatalog
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
-import digital.vmstudio.code.core.ai.provider.AiProvider
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
-import digital.vmstudio.code.core.ai.provider.AiProviderKind
 import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
 import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
@@ -28,11 +26,22 @@ import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.database.dao.GitRepositoryDao
+import digital.vmstudio.code.core.database.entity.GitRepositoryEntity
+import digital.vmstudio.code.core.git.GitHubRepository
+import digital.vmstudio.code.core.git.GitHubRepositoryClient
+import digital.vmstudio.code.core.git.GitHubTreeItem
+import digital.vmstudio.code.core.git.GitError
 import digital.vmstudio.code.core.git.GitResult
 import digital.vmstudio.code.core.git.GitService
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.project.ProjectRepository
+import digital.vmstudio.code.core.security.model.Secret
+import digital.vmstudio.code.core.sftp.model.RemotePermissions
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
+import digital.vmstudio.code.core.ssh.command.CommandGuard
+import digital.vmstudio.code.core.ssh.command.CommandLimits
+import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -44,6 +53,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URI
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 /** One rendered entry in the transcript. */
@@ -88,6 +100,12 @@ sealed interface TranscriptItem {
     data class Failure(override val id: String, val error: VmError) : TranscriptItem
 }
 
+data class QueuedMessage(
+    val id: String,
+    val prompt: String,
+    val attachments: List<Uri> = emptyList(),
+)
+
 data class AgentChatUiState(
     val serverId: String? = null,
     val workingDirectory: String = "",
@@ -95,12 +113,6 @@ data class AgentChatUiState(
     val isRunning: Boolean = false,
     val permissionMode: AgentPermissionMode = AgentPermissionMode.PLAN,
     val health: AiProviderHealth? = null,
-    /**
-     * The last Claude Code check on this server found no `claude`. Kept after
-     * switching to the gateway (whose own health replaces [health]), so the picker
-     * can still say the Claude models will not run here.
-     */
-    val isClaudeCodeMissing: Boolean = false,
     val isCheckingHealth: Boolean = false,
     val conversationId: String? = null,
     /** Present once a run reports one; enables continuing rather than starting cold. */
@@ -117,26 +129,48 @@ data class AgentChatUiState(
     val watchServerId: String? = null,
     val error: VmError? = null,
     val availableProjects: List<Project> = emptyList(),
-    val selectedModel: String = ClaudeCodeModels.DEFAULT,
-    /** The OmniRoute gateway's models, live-synced; shown under Claude Code's in the picker. */
+    val selectedModel: String = "",
+    /** The OmniRoute gateway's available models. */
     val omniModels: OmniRouteModels = OmniRouteModels(),
     val isSyncingModels: Boolean = false,
+    val discoveredGitRepos: List<digital.vmstudio.code.core.git.DiscoveredGitRepo> = emptyList(),
+    val isDiscoveringGitRepos: Boolean = false,
+    val gitDiscoveryError: VmError? = null,
+    val githubRepositories: List<GitHubRepository> = emptyList(),
+    val isLoadingGithubRepositories: Boolean = false,
+    val githubError: VmError? = null,
+    val githubImportingRepo: String? = null,
+    val availableServers: List<ChatServerOption> = emptyList(),
+    val queuedMessages: List<QueuedMessage> = emptyList(),
+    val githubFileTree: List<GitHubTreeItem> = emptyList(),
+    val isLoadingGithubFileTree: Boolean = false,
 ) {
     /**
      * Claude Code runs on a server, in a folder. A gateway model needs neither: with
      * no project it is a general chat, like the Claude app's.
      */
     val canRun: Boolean
-        get() = (!ClaudeCodeModels.isClaudeCode(selectedModel) || hasProject) &&
-            !isRunning &&
-            health?.isAvailable == true
+        get() = selectedModel.isNotBlank() && (!isRunning || queuedMessages.isNotEmpty()) && (health == null || health?.isAvailable == true)
+
+    /** Whether the user can send/queue a message right now. */
+    val canAcceptInput: Boolean
+        get() = selectedModel.isNotBlank() && (health == null || health?.isAvailable == true)
 
     /** A server and folder are chosen; tools and Claude Code have somewhere to work. */
-    val hasProject: Boolean get() = serverId != null && workingDirectory.isNotBlank()
+    val hasProject: Boolean
+        get() = workingDirectory.isNotBlank() &&
+            (serverId != null || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/"))
 
     val isResuming: Boolean get() = providerSessionId != null
 }
 
+data class ChatServerOption(
+    val id: String,
+    val name: String,
+    val target: String,
+)
+
+@Suppress("LongParameterList")
 @HiltViewModel
 class AgentChatViewModel @Inject constructor(
     private val providers: AiProviderRegistry,
@@ -151,6 +185,11 @@ class AgentChatViewModel @Inject constructor(
     private val modelCatalog: OmniRouteModelCatalog,
     private val attachmentStager: AttachmentStager,
     private val preferenceStore: UserPreferencesRepository,
+    private val serverRepository: ServerRepository,
+    private val githubRepositoryClient: GitHubRepositoryClient,
+    private val gitRepositoryDao: GitRepositoryDao,
+    private val commandGuard: CommandGuard,
+    private val wakeLockManager: AgentWakeLockManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -169,7 +208,9 @@ class AgentChatViewModel @Inject constructor(
     val uiState: StateFlow<AgentChatUiState> = _uiState.asStateFlow()
 
     private var runJob: Job? = null
+    private val detachedJobs = java.util.Collections.synchronizedSet(mutableSetOf<Job>())
     private var healthJob: Job? = null
+    private var gitDiscoveryJob: Job? = null
 
     private val deltas = DeltaBatcher(viewModelScope) { text ->
         _uiState.update { it.copy(transcript = it.transcript.appendDelta(text, STREAMING_ID, ::nextId)) }
@@ -177,13 +218,31 @@ class AgentChatViewModel @Inject constructor(
 
     /** Until then the run list is re-read even though nothing is listed as running yet. */
     private var listRunsUntil = 0L
-    private var itemCounter = 0L
+    private var hasLoadedGithubRepositories = false
+    private val itemCounter = AtomicLong(0L)
 
     init {
         applyStoredDefaults()
         viewModelScope.launch {
             projectRepository.observeAll().collect { projects ->
                 _uiState.update { it.copy(availableProjects = projects) }
+            }
+        }
+        viewModelScope.launch {
+            serverRepository.servers.collect { servers ->
+                _uiState.update {
+                    it.copy(
+                        availableServers = listOf(
+                            ChatServerOption(
+                                id = RemoteFileSystem.LOCAL_SERVER_ID,
+                                name = "This Phone",
+                                target = "Local storage",
+                            ),
+                        ) + servers.map { server ->
+                            ChatServerOption(server.id, server.name, server.displayTarget)
+                        },
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -217,6 +276,7 @@ class AgentChatViewModel @Inject constructor(
             }
         }
         refreshBackgroundRuns()
+        scanServerGitRepos()
         // Live status for detached runs while the chat is open: re-read the list
         // only while something is still running, so an idle chat makes no SSH calls.
         viewModelScope.launch {
@@ -229,6 +289,132 @@ class AgentChatViewModel @Inject constructor(
                 val starting = System.currentTimeMillis() < listRunsUntil
                 val anyRunning = _uiState.value.backgroundRuns.any { it.isRunning }
                 if (visible && (starting || anyRunning)) refreshBackgroundRuns()
+            }
+        }
+    }
+
+    fun scanServerGitRepos() {
+        val srv = _uiState.value.serverId ?: return
+        gitDiscoveryJob?.cancel()
+        gitDiscoveryJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    discoveredGitRepos = emptyList(),
+                    isDiscoveringGitRepos = true,
+                    gitDiscoveryError = null,
+                )
+            }
+            try {
+                when (val result = gitService.discoverRepositories(srv)) {
+                    is GitResult.Success -> _uiState.update { state ->
+                        if (state.serverId == srv) {
+                            state.copy(
+                                discoveredGitRepos = result.value,
+                                isDiscoveringGitRepos = false,
+                                gitDiscoveryError = null,
+                            )
+                        } else {
+                            state
+                        }
+                    }
+                    is GitResult.Failure -> _uiState.update { state ->
+                        if (state.serverId == srv) {
+                            state.copy(
+                                isDiscoveringGitRepos = false,
+                                gitDiscoveryError = mapGitError(result.error),
+                            )
+                        } else {
+                            state
+                        }
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                _uiState.update { state ->
+                    if (state.serverId == srv) {
+                        state.copy(
+                            isDiscoveringGitRepos = false,
+                            gitDiscoveryError = VmError.Git(
+                                summary = "Could not scan Git repositories",
+                                reason = exception.message,
+                                suggestedAction = "Check the VPS connection and try again.",
+                                retryable = true,
+                            ),
+                        )
+                    } else {
+                        state
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissGitDiscoveryError() {
+        _uiState.update { it.copy(gitDiscoveryError = null) }
+    }
+
+    private fun mapGitError(error: GitError): VmError = when (error) {
+        is GitError.NotARepository -> VmError.Git(
+            summary = "Not a Git repository",
+            reason = "The directory '${error.path}' is not inside a Git repository.",
+            suggestedAction = "Navigate to a Git repository and scan again.",
+            repository = error.path,
+        )
+        is GitError.CommandFailed -> VmError.Git(
+            summary = "Git repository scan failed",
+            reason = error.stderr.ifBlank { "Git exited with code ${error.exitCode}." },
+            suggestedAction = "Check that Git is installed on the server and try again.",
+            retryable = true,
+        )
+        is GitError.ParseError -> VmError.Git(
+            summary = "Could not parse Git scan results",
+            reason = error.message,
+            suggestedAction = "Check the installed Git version and try again.",
+            retryable = true,
+        )
+        is GitError.NetworkError -> VmError.Git(
+            summary = "Git repository scan could not reach the remote",
+            reason = error.message,
+            suggestedAction = "Check the VPS connection and try again.",
+            retryable = true,
+        )
+        is GitError.AuthenticationError -> VmError.Git(
+            summary = "Git authentication failed during repository scan",
+            reason = error.message,
+            suggestedAction = "Check the Git credentials configured on the VPS.",
+        )
+        is GitError.Unknown -> VmError.Git(
+            summary = "Unexpected Git repository scan error",
+            reason = error.message,
+            suggestedAction = "Try again or check the server logs.",
+            retryable = true,
+        )
+    }
+
+    fun selectDiscoveredGitRepo(repo: digital.vmstudio.code.core.git.DiscoveredGitRepo) {
+        val srv = _uiState.value.serverId ?: return
+        viewModelScope.launch {
+            val existing = projectRepository.observeAll().first().firstOrNull {
+                it.serverId == srv && it.remotePath == repo.path
+            }
+            if (existing != null) {
+                selectProject(existing)
+            } else {
+                when (val result = projectRepository.create(
+                    name = repo.name,
+                    serverId = srv,
+                    remotePath = repo.path,
+                    branch = repo.branch,
+                )) {
+                    is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                        val created = projectRepository.get(result.value)
+                        selectProject(created)
+                    }
+                    is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                        setWorkingDirectory(repo.path)
+                    }
+                }
             }
         }
     }
@@ -251,7 +437,9 @@ class AgentChatViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     conversationId = conversationId,
-                    providerSessionId = stored.providerSessionId,
+                    providerSessionId = stored.providerSessionId?.takeIf {
+                        it.startsWith(GATEWAY_SESSION_PREFIX)
+                    },
                     workingDirectory = stored.workingDirectory ?: it.workingDirectory,
                     transcript = restored,
                     // The route of a reopened chat carries no server; without this
@@ -280,43 +468,53 @@ class AgentChatViewModel @Inject constructor(
         onStarted: () -> Unit = {},
     ) {
         val state = _uiState.value
-        val server = state.serverId ?: return
-        if (rawPrompt.isBlank() || state.isStartingBackgroundRun) return
+        val promptText = rawPrompt.trim()
+        if (promptText.isBlank() || state.isStartingBackgroundRun) return
+        val server = state.serverId
+        val directory = state.workingDirectory.trim()
+
+        // General chat, Zero-Clone /github/ workspaces, and Local Phone Folders run
+        // on-device rather than via SSH on a remote VPS, so detach the active run
+        // in-process with the wake lock held.
+        if (server.isNullOrBlank() || RemoteFileSystem.isLocalServer(server) || directory.startsWith("/github/")) {
+            onStarted()
+            send(promptText, attachments)
+            detachToBackground()
+            return
+        }
 
         _uiState.update { it.copy(isStartingBackgroundRun = true, error = null) }
         viewModelScope.launch {
-            var prompt = rawPrompt
+            var prompt = promptText
             if (attachments.isNotEmpty()) {
-                val directory = state.workingDirectory.trim()
                 when (val staged = attachmentStager.stage(server, directory, attachments)) {
                     is VmResult.Failure -> {
                         _uiState.update { it.copy(isStartingBackgroundRun = false, error = staged.error) }
                         return@launch
                     }
-                    is VmResult.Success -> prompt += "\n\nAttached files on the server:\n" +
-                        staged.value.remotePaths.joinToString("\n") { "- $it" }
+                    is VmResult.Success -> {
+                        if (staged.value.remotePaths.isNotEmpty()) {
+                            prompt += "\n\nAttached files on the server:\n" +
+                                staged.value.remotePaths.joinToString("\n") { "- $it" }
+                        }
+                        if (staged.value.inlinedTextFiles.isNotEmpty()) {
+                            prompt += "\n\nAttached file contents:\n" +
+                                staged.value.inlinedTextFiles.entries.joinToString("\n\n") { (name, content) ->
+                                    "--- $name ---\n$content"
+                                }
+                        }
+                    }
                 }
             }
-            // Claude models run as Claude Code's own detached session; gateway models
-            // run the OmniRoute loop on the server. Either way the phone can sleep.
-            val result = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
-                backgroundRunner.start(
-                    serverId = server,
-                    workingDirectory = state.workingDirectory.trim(),
-                    prompt = prompt,
-                    permissionMode = state.permissionMode,
-                )
-            } else {
-                serverSideRunner.start(
-                    serverId = server,
-                    workingDirectory = state.workingDirectory.trim(),
-                    prompt = prompt,
-                    model = state.selectedModel,
-                    permissionMode = state.permissionMode,
-                    history = state.transcript.toConversationTurns(),
-                    contextChars = preferences.contextChars(),
-                )
-            }
+            val result = serverSideRunner.start(
+                serverId = server,
+                workingDirectory = directory,
+                prompt = prompt,
+                model = state.selectedModel,
+                permissionMode = state.permissionMode,
+                history = state.transcript.toConversationTurns(),
+                contextChars = preferences.contextChars(),
+            )
             when (result) {
                 is VmResult.Success -> {
                     onStarted()
@@ -398,29 +596,194 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(isCheckingHealth = true) }
         viewModelScope.launch {
             val prefs = preferences.preferences.first()
-            val omniModel = if (prefs.aiProviderId == UserPreferences.PROVIDER_OMNIROUTE) {
-                // The gateway is the default: use its chosen model, else its first
-                // synced one, syncing now if the list is still empty.
-                prefs.aiSelectedModelId
-                    ?: prefs.aiAvailableModelIds.firstOrNull()
-                    ?: (modelCatalog.sync() as? VmResult.Success)?.value?.firstOrNull()
-            } else {
-                null
+            val syncedModels = prefs.aiAvailableModelIds.ifEmpty {
+                (modelCatalog.sync() as? VmResult.Success)?.value.orEmpty()
             }
-            // The model last picked in a chat wins, as long as it still exists: a
-            // Claude Code alias, or a gateway model the last sync still reported.
+            val omniModel = prefs.aiSelectedModelId?.takeIf { syncedModels.isEmpty() || it in syncedModels }
+                ?: syncedModels.firstOrNull()
+                ?: prefs.aiSelectedModelId
             val lastModel = prefs.lastChatModel?.takeIf { last ->
-                ClaudeCodeModels.isClaudeCode(last) || last in prefs.aiAvailableModelIds
+                syncedModels.isEmpty() || last in syncedModels
             }
             _uiState.update {
                 it.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
-                    selectedModel = lastModel ?: omniModel ?: ClaudeCodeModels.DEFAULT,
+                    selectedModel = lastModel ?: omniModel.orEmpty(),
                 )
             }
             checkHealth()
         }
     }
+
+    fun loadGithubRepositories() {
+        if (hasLoadedGithubRepositories || _uiState.value.isLoadingGithubRepositories) return
+        hasLoadedGithubRepositories = true
+        requestGithubRepositories()
+    }
+
+    fun refreshGithubRepositories() {
+        if (_uiState.value.isLoadingGithubRepositories) return
+        hasLoadedGithubRepositories = true
+        requestGithubRepositories(forceRefresh = true)
+    }
+
+    private fun requestGithubRepositories(forceRefresh: Boolean = false) {
+        _uiState.update { it.copy(isLoadingGithubRepositories = true, githubError = null) }
+        viewModelScope.launch {
+            try {
+                when (val result = githubRepositoryClient.repositories(forceRefresh)) {
+                    is VmResult.Success -> _uiState.update {
+                        it.copy(githubRepositories = result.value, isLoadingGithubRepositories = false)
+                    }
+                    is VmResult.Failure -> _uiState.update {
+                        it.copy(isLoadingGithubRepositories = false, githubError = result.error)
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoadingGithubRepositories = false,
+                        githubError = VmError.Network(
+                            summary = "Could not load GitHub repositories",
+                            reason = exception.message,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectGithubRepo(repo: GitHubRepository) {
+        if (_uiState.value.isRunning) return
+        viewModelScope.launch {
+            val virtualPath = "/github/${repo.fullName}"
+            val existing = projectRepository.observeAll().first().firstOrNull {
+                it.remotePath == virtualPath
+            }
+            if (existing != null) {
+                selectProject(existing)
+                return@launch
+            }
+            when (val created = projectRepository.create(
+                name = repo.fullName,
+                serverId = null,
+                remotePath = virtualPath,
+                branch = repo.defaultBranch,
+            )) {
+                is VmResult.Success -> projectRepository.get(created.value)?.let(::selectProject)
+                is VmResult.Failure -> {
+                    // Fallback to setting workingDirectory directly
+                    setWorkingDirectory(virtualPath)
+                }
+            }
+        }
+    }
+
+    fun loadGithubFileTree(repoFullName: String) {
+        _uiState.update { it.copy(isLoadingGithubFileTree = true) }
+        viewModelScope.launch {
+            try {
+                when (val result = githubRepositoryClient.getRepositoryTree(repoFullName)) {
+                    is VmResult.Success -> _uiState.update {
+                        it.copy(githubFileTree = result.value, isLoadingGithubFileTree = false)
+                    }
+                    is VmResult.Failure -> _uiState.update {
+                        it.copy(isLoadingGithubFileTree = false)
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isLoadingGithubFileTree = false) }
+            }
+        }
+    }
+
+    fun selectLocalFolder(folderUri: String, folderName: String) {
+        if (_uiState.value.isRunning) return
+        viewModelScope.launch {
+            val name = folderName.ifBlank { "Local workspace" }
+            val existing = projectRepository.observeAll().first().firstOrNull {
+                it.serverId == RemoteFileSystem.LOCAL_SERVER_ID && it.remotePath == folderUri
+            }
+            if (existing != null) {
+                selectProject(existing)
+                return@launch
+            }
+            when (val created = projectRepository.create(
+                name = name,
+                serverId = RemoteFileSystem.LOCAL_SERVER_ID,
+                remotePath = folderUri,
+                branch = null,
+            )) {
+                is VmResult.Success -> projectRepository.get(created.value)?.let(::selectProject)
+                is VmResult.Failure -> _uiState.update { it.copy(error = created.error) }
+            }
+        }
+    }
+
+    fun reportLocalFolderError(reason: String?) {
+        _uiState.update {
+            it.copy(
+                error = VmError.Validation(
+                    summary = "Could not keep access to the selected phone folder",
+                    reason = reason,
+                    suggestedAction = "Choose a folder from the system picker and allow access.",
+                ),
+            )
+        }
+    }
+
+    fun selectServerFolder(serverId: String, path: String) {
+        if (_uiState.value.isRunning) return
+        viewModelScope.launch {
+            val name = path.trimEnd('/').substringAfterLast('/').ifBlank { "VPS workspace" }
+            val existing = projectRepository.observeAll().first().firstOrNull {
+                it.serverId == serverId && it.remotePath == path
+            }
+            if (existing != null) {
+                selectProject(existing)
+                return@launch
+            }
+            when (val created = projectRepository.create(
+                name = name,
+                serverId = serverId,
+                remotePath = path,
+                branch = null,
+            )) {
+                is VmResult.Success -> {
+                    val project = projectRepository.get(created.value)
+                    if (project != null) {
+                        selectProject(project)
+                    } else {
+                        setServerWorkingDirectory(serverId, path)
+                    }
+                }
+                is VmResult.Failure -> _uiState.update { it.copy(error = created.error) }
+            }
+        }
+    }
+
+    private fun setServerWorkingDirectory(serverId: String, path: String) {
+        _uiState.update {
+            it.copy(
+                serverId = serverId,
+                workingDirectory = path,
+                conversationId = null,
+                providerSessionId = null,
+                transcript = emptyList(),
+                githubFileTree = emptyList(),
+            )
+        }
+        viewModelScope.launch { preferenceStore.setLastFolder(serverId, path) }
+        refreshBackgroundRuns()
+        checkHealth()
+    }
+
+    private fun shellQuote(value: String): String =
+        "'" + value.replace("'", "'\\''") + "'"
 
     fun checkHealth() {
         _uiState.update { it.copy(isCheckingHealth = true) }
@@ -429,19 +792,16 @@ class AgentChatViewModel @Inject constructor(
         // disabled the composer for a model that works.
         healthJob?.cancel()
         healthJob = viewModelScope.launch {
-            val provider = providers.forModel(_uiState.value.selectedModel)
+            val provider = providers.active()
             when (val result = providers.checkHealth(provider, _uiState.value.serverId)) {
-                is VmResult.Success -> _uiState.update {
-                    val checkedClaude = result.value.kind == AiProviderKind.CLAUDE_CODE_CLI
-                    it.copy(
-                        health = result.value,
-                        isCheckingHealth = false,
-                        isClaudeCodeMissing = if (checkedClaude) {
-                            !result.value.isAvailable
-                        } else {
-                            it.isClaudeCodeMissing
-                        },
-                    )
+                is VmResult.Success -> {
+                    val healthValue = result.value
+                    if (healthValue.availableModels.isNotEmpty()) {
+                        preferenceStore.setAiModels(healthValue.availableModels, healthValue.freeModels)
+                    }
+                    _uiState.update {
+                        it.copy(health = healthValue, isCheckingHealth = false)
+                    }
                 }
                 is VmResult.Failure -> _uiState.update {
                     it.copy(isCheckingHealth = false, error = result.error)
@@ -467,9 +827,10 @@ class AgentChatViewModel @Inject constructor(
                     conversationId = null,
                     providerSessionId = null,
                     transcript = emptyList(),
+                    githubFileTree = emptyList(),
                 )
             } else {
-                it.copy(workingDirectory = path)
+                it.copy(workingDirectory = path, githubFileTree = emptyList())
             }
         }
         current.serverId?.let { server ->
@@ -484,14 +845,24 @@ class AgentChatViewModel @Inject constructor(
      */
     fun selectProject(project: Project?) {
         if (_uiState.value.isRunning) return
+        gitDiscoveryJob?.cancel()
+        gitDiscoveryJob = null
         _uiState.update {
             it.copy(
-                serverId = if (project == null) null else project.serverId ?: it.serverId,
+                serverId = if (project == null) {
+                    null
+                } else {
+                    project.serverId ?: if (project.remotePath.startsWith("/github/")) null else (it.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID)
+                },
                 workingDirectory = project?.remotePath.orEmpty(),
                 conversationId = null,
                 providerSessionId = null,
                 transcript = emptyList(),
                 backgroundRuns = if (project == null) emptyList() else it.backgroundRuns,
+                discoveredGitRepos = emptyList(),
+                isDiscoveringGitRepos = false,
+                gitDiscoveryError = null,
+                githubFileTree = emptyList(),
             )
         }
         viewModelScope.launch {
@@ -500,24 +871,22 @@ class AgentChatViewModel @Inject constructor(
             if (project != null && server != null) preferenceStore.setLastFolder(server, project.remotePath)
         }
         refreshBackgroundRuns()
+        if (project?.serverId != null && !RemoteFileSystem.isLocalServer(project.serverId)) {
+            scanServerGitRepos()
+        }
         checkHealth()
     }
 
     /**
-     * Picks the model for the next message. Moving between Claude Code and the
-     * gateway changes backend, so the provider session is dropped (neither can
-     * resume the other's) and the new backend is checked.
+     * Picks the OmniRoute model for the next message.
      */
     fun selectModel(model: String) {
-        val before = _uiState.value.selectedModel
-        val switchesBackend = ClaudeCodeModels.isClaudeCode(before) != ClaudeCodeModels.isClaudeCode(model)
+        if (_uiState.value.isRunning) return
         _uiState.update {
             it.copy(
                 selectedModel = model,
-                providerSessionId = if (switchesBackend) null else it.providerSessionId,
             )
         }
-        if (switchesBackend) checkHealth()
         viewModelScope.launch { preferenceStore.setLastChatModel(model) }
     }
 
@@ -540,114 +909,238 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(permissionMode = mode) }
     }
 
+    fun queueMessage(prompt: String, attachments: List<Uri> = emptyList()) {
+        if (prompt.isBlank()) return
+        val item = QueuedMessage(id = nextId(), prompt = prompt, attachments = attachments)
+        _uiState.update { it.copy(queuedMessages = it.queuedMessages + item) }
+    }
+
+    fun removeQueuedMessage(id: String) {
+        _uiState.update { it.copy(queuedMessages = it.queuedMessages.filterNot { q -> q.id == id }) }
+    }
+
+    /** Antigravity-style 'Steer Now': aborts the current tool iteration gracefully and starts executing this queued prompt immediately. */
+    fun steerNow(queuedId: String) {
+        val target = _uiState.value.queuedMessages.firstOrNull { it.id == queuedId } ?: return
+        removeQueuedMessage(queuedId)
+        stop()
+        send(target.prompt, target.attachments)
+    }
+
+    private fun processNextQueuedMessage() {
+        val next = _uiState.value.queuedMessages.firstOrNull() ?: return
+        _uiState.update { it.copy(queuedMessages = it.queuedMessages.drop(1)) }
+        send(next.prompt, next.attachments)
+    }
+
     fun send(prompt: String, attachments: List<Uri> = emptyList()) {
         val state = _uiState.value
+        if (prompt.isBlank() || !state.canAcceptInput) return
+
+        if (prompt.trim().equals("/clear", ignoreCase = true) || prompt.trim().equals("/reset", ignoreCase = true)) {
+            startNewConversation()
+            return
+        }
+
+        if (state.isRunning) {
+            queueMessage(prompt, attachments)
+            return
+        }
+
         // Blank in a general chat: the gateway then answers without tools.
         val server = state.serverId.orEmpty()
-        if (prompt.isBlank() || !state.canRun) return
-
         append(TranscriptItem.UserPrompt(nextId(), prompt))
         _uiState.update { it.copy(isRunning = true, error = null) }
 
         runJob = viewModelScope.launch {
-            // Coroutine cancellation is cooperative: stop() flips isRunning to false
-            // and clears runJob immediately, but this coroutine's collect loop can
-            // still process one more buffered event before it reaches a cancellation
-            // checkpoint. Comparing against runJob on every event (rather than
-            // trusting cancellation alone) stops a cancelled run's tail events from
-            // landing in whatever new run replaced it if the user immediately
-            // re-sends. coroutineContext[Job] is this coroutine's own Job, fetched
-            // from inside itself rather than racing the external `runJob = ...`
-            // assignment below, which only completes after this block starts.
+            wakeLockManager.acquire()
             val selfJob = coroutineContext[Job]
-            val conversationId = state.conversationId ?: createConversation(server, state, prompt)
-            if (conversationId == null) {
-                _uiState.update { it.copy(isRunning = false) }
-                return@launch
-            }
-            val staged = if (attachments.isEmpty()) {
-                StagedAttachments(emptyList(), emptyList())
-            } else {
-                val result = attachmentStager.stage(server, state.workingDirectory.trim(), attachments)
-                when (result) {
-                    is VmResult.Failure -> {
-                        _uiState.update { it.copy(isRunning = false, error = result.error) }
-                        return@launch
+            try {
+                val conversationId = state.conversationId ?: createConversation(server, state, prompt)
+                if (conversationId == null) {
+                    _uiState.update { it.copy(isRunning = false) }
+                    return@launch
+                }
+                val staged = if (attachments.isEmpty()) {
+                    StagedAttachments(emptyList(), emptyList())
+                } else {
+                    val result = attachmentStager.stage(server, state.workingDirectory.trim(), attachments)
+                    when (result) {
+                        is VmResult.Failure -> {
+                            _uiState.update { it.copy(isRunning = false, error = result.error) }
+                            return@launch
+                        }
+                        is VmResult.Success -> result.value.also { files ->
+                            val names = files.remotePaths
+                                .map { it.substringAfterLast('/') }
+                                .ifEmpty { files.displayNames }
+                            if (names.isNotEmpty()) {
+                                append(
+                                    TranscriptItem.Diagnostic(
+                                        id = nextId(),
+                                        text = "Attached: " + names.joinToString(),
+                                        isStderr = false,
+                                    ),
+                                )
+                            }
+                        }
                     }
-                    is VmResult.Success -> result.value.also { files ->
+                }
+                // The agent finds attachments by path, so the prompt names them.
+                var resolvedPrompt = prompt
+                val workDir = state.workingDirectory.trim()
+                if (resolvedPrompt.contains("@git-diff") && server.isNotBlank() && workDir.isNotBlank()) {
+                    when (val diffRes = gitService.diffAll(server, workDir)) {
+                        is digital.vmstudio.code.core.git.GitResult.Success -> {
+                            val diffSnippet = diffRes.value.files.joinToString("\n") { file ->
+                                "--- ${file.displayPath} (+${file.additions} -${file.deletions})\n" +
+                                    file.lines.joinToString("\n") { it.text }
+                            }.take(10000)
+                            if (diffSnippet.isNotBlank()) {
+                                resolvedPrompt = resolvedPrompt.replace("@git-diff", "\n```diff\n$diffSnippet\n```\n")
+                            }
+                        }
+                        is digital.vmstudio.code.core.git.GitResult.Failure -> Unit
+                    }
+                }
+
+                // Expand @file: <path> mentions inserted by the file tree sheet
+                val fileMentions = Regex("""@file:\s*([^\s]+)""").findAll(resolvedPrompt).map { it.groupValues[1] }.distinct().toList()
+                if (fileMentions.isNotEmpty() && workDir.isNotBlank()) {
+                    val fileSnippets = mutableListOf<String>()
+                    val githubInfo = if (workDir.startsWith("/github/")) {
+                        val clean = workDir.removePrefix("/github/").trim('/')
+                        val parts = clean.split('/').filter { it.isNotEmpty() }
+                        if (parts.size >= 2) {
+                            val repo = "${parts[0]}/${parts[1]}"
+                            val subDir = if (parts.size > 2) parts.drop(2).joinToString("/") else ""
+                            repo to subDir
+                        } else null
+                    } else null
+
+                    for (relPath in fileMentions.take(5)) {
+                        val content = when {
+                            githubInfo != null -> {
+                                val (repo, subDir) = githubInfo
+                                val cleanRel = relPath.trimStart('/')
+                                val resolvedPath = if (subDir.isNotBlank() && !cleanRel.startsWith(subDir)) "$subDir/$cleanRel" else cleanRel
+                                (githubRepositoryClient.getFileContent(repo, resolvedPath) as? VmResult.Success)?.value
+                                    ?: (githubRepositoryClient.getFileContent(repo, cleanRel) as? VmResult.Success)?.value
+                            }
+                            server.isNotBlank() -> {
+                                val fullPath = if (relPath.startsWith("/")) relPath else "${workDir.trimEnd('/')}/$relPath"
+                                (remoteFileSystem.readText(server, fullPath) as? VmResult.Success)?.value
+                            }
+                            else -> null
+                        }
+                        if (!content.isNullOrBlank()) {
+                            fileSnippets += "--- $relPath ---\n${content.take(24_000)}"
+                        }
+                    }
+                    if (fileSnippets.isNotEmpty()) {
+                        resolvedPrompt += "\n\nReferenced files:\n" + fileSnippets.joinToString("\n\n")
+                    }
+                }
+
+                val fullPrompt = buildString {
+                    append(resolvedPrompt)
+                    if (staged.remotePaths.isNotEmpty()) {
+                        append("\n\nAttached files on the server:\n")
+                        append(staged.remotePaths.joinToString("\n") { "- $it" })
+                    }
+                    if (staged.inlinedTextFiles.isNotEmpty()) {
+                        append("\n\nAttached file contents:\n")
                         append(
-                            TranscriptItem.Diagnostic(
+                            staged.inlinedTextFiles.entries.joinToString("\n\n") { (name, content) ->
+                                "--- $name ---\n$content"
+                            },
+                        )
+                    }
+                }
+                conversations.appendUserPrompt(conversationId, fullPrompt)
+
+                val taskId = tasks.start(
+                    conversationId = conversationId,
+                    title = prompt,
+                    projectId = tasks.findProjectId(server, state.workingDirectory.trim()),
+                )
+
+                val config = AgentRunConfig(
+                    serverId = server,
+                    workingDirectory = state.workingDirectory.trim(),
+                    prompt = fullPrompt,
+                    images = staged.images,
+                    resumeSessionId = state.providerSessionId?.takeIf { it.startsWith(GATEWAY_SESSION_PREFIX) },
+                    permissionMode = state.permissionMode,
+                    model = state.selectedModel,
+                    history = state.transcript.toConversationTurns(),
+                    autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
+                    contextChars = preferences.contextChars(),
+                    webAccessEnabled = preferences.preferences.first().aiWebAccessEnabled,
+                    maxIterations = preferences.preferences.first().agentMaxIterations,
+                    maxCommandsPerRun = preferences.preferences.first().agentMaxCommandsPerRun,
+                )
+
+                try {
+                    providers.active().run(config).collect { event ->
+                        if (runJob !== selfJob && selfJob !in detachedJobs) return@collect
+                        conversations.record(conversationId, event)
+                        applyTaskEvent(taskId, event)
+                        if (runJob === selfJob) {
+                            applyEvent(event)
+                        } else if (event is AgentEvent.Completed || event is AgentEvent.Failed) {
+                            val statusMsg = when (event) {
+                                is AgentEvent.Completed -> if (event.isError) {
+                                    "Background task ended with error: ${event.resultText ?: prompt.take(50)}"
+                                } else {
+                                    "Background task completed: ${prompt.take(60)}"
+                                }
+                                is AgentEvent.Failed -> "Background task failed: ${event.error.summary}"
+                                else -> null
+                            }
+                            statusMsg?.let { msg ->
+                                append(
+                                    TranscriptItem.Diagnostic(
+                                        id = nextId(),
+                                        text = msg,
+                                        isStderr = event is AgentEvent.Failed ||
+                                            (event is AgentEvent.Completed && event.isError),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    withContext(NonCancellable) { taskId?.let { tasks.cancel(it) } }
+                    throw cancelled
+                } catch (failure: Throwable) {
+                    taskId?.let { tasks.fail(it, failure.message ?: "The run failed") }
+                    if (runJob === selfJob) {
+                        deltas.clear()
+                        _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                        append(
+                            TranscriptItem.Failure(
                                 id = nextId(),
-                                text = "Attached: " +
-                                    files.remotePaths.joinToString { it.substringAfterLast('/') },
-                                isStderr = false,
+                                error = VmError.Ai(
+                                    summary = "The run failed",
+                                    reason = failure.message,
+                                    cause = failure,
+                                ),
                             ),
                         )
                     }
                 }
-            }
-            // The agent finds attachments by path, so the prompt names them.
-            val fullPrompt = if (staged.remotePaths.isEmpty()) {
-                prompt
-            } else {
-                prompt + "\n\nAttached files on the server:\n" +
-                    staged.remotePaths.joinToString("\n") { "- $it" }
-            }
-            conversations.appendUserPrompt(conversationId, fullPrompt)
-
-            // The Tasks record (§28): one row per run when the agent works inside a
-            // project. A run opened straight from a server stays conversation-only.
-            val taskId = tasks.start(
-                conversationId = conversationId,
-                title = prompt,
-                projectId = tasks.findProjectId(server, state.workingDirectory.trim()),
-            )
-
-            val config = AgentRunConfig(
-                serverId = server,
-                workingDirectory = state.workingDirectory.trim(),
-                prompt = withCarriedContext(fullPrompt, state),
-                images = staged.images,
-                resumeSessionId = state.providerSessionId?.takeIf { fitsBackend(it, state.selectedModel) },
-                permissionMode = state.permissionMode,
-                model = state.selectedModel,
-                history = if (ClaudeCodeModels.isClaudeCode(state.selectedModel)) {
-                    emptyList()
-                } else {
-                    state.transcript.toConversationTurns()
-                },
-                autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
-                contextChars = preferences.contextChars(),
-            )
-
-            try {
-                providers.forModel(state.selectedModel).run(config).collect { event ->
-                    if (runJob !== selfJob) return@collect
-                    conversations.record(conversationId, event)
-                    applyTaskEvent(taskId, event)
-                    applyEvent(event)
+                if (runJob === selfJob) {
+                    _uiState.update { it.copy(isRunning = false) }
+                    processNextQueuedMessage()
                 }
-            } catch (cancelled: CancellationException) {
-                // stop() cancels this job; the task row must not outlive it as RUNNING.
-                // NonCancellable, or the write itself is cancelled before it starts.
-                withContext(NonCancellable) { taskId?.let { tasks.cancel(it) } }
-                throw cancelled
-            } catch (failure: Throwable) {
-                // A provider or storage bug ends this run with a visible error
-                // instead of crashing the whole app.
-                taskId?.let { tasks.fail(it, failure.message ?: "The run failed") }
-                append(
-                    TranscriptItem.Failure(
-                        id = nextId(),
-                        error = VmError.Ai(
-                            summary = "The run failed",
-                            reason = failure.message,
-                            cause = failure,
-                        ),
-                    ),
-                )
+            } finally {
+                selfJob?.let { detachedJobs.remove(it) }
+                wakeLockManager.release()
+                if (runJob === selfJob) {
+                    _uiState.update { it.copy(isRunning = false) }
+                }
             }
-            if (runJob === selfJob) _uiState.update { it.copy(isRunning = false) }
         }
     }
 
@@ -676,11 +1169,44 @@ class AgentChatViewModel @Inject constructor(
         }
     }
 
+    /** Detaches the current running task to the background, immediately freeing the chat. */
+    fun detachToBackground() {
+        val current = runJob ?: return
+        if (!_uiState.value.isRunning) return
+        deltas.flush()
+        detachedJobs.add(current)
+        runJob = null
+        _uiState.update { state ->
+            state.copy(
+                isRunning = false,
+                conversationId = null,
+                providerSessionId = null,
+                transcript = state.transcript.settleStreamingDraft(::nextId),
+            )
+        }
+        append(
+            TranscriptItem.Diagnostic(
+                id = nextId(),
+                text = "Task detached to background. Chat is now available for new tasks.",
+                isStderr = false,
+            ),
+        )
+        processNextQueuedMessage()
+    }
+
     /** Stops the run. Cancelling collection terminates the remote process too. */
     fun stop() {
+        deltas.clear()
         runJob?.cancel()
         runJob = null
-        _uiState.update { it.copy(isRunning = false) }
+        detachedJobs.forEach { it.cancel() }
+        detachedJobs.clear()
+        _uiState.update { state ->
+            state.copy(
+                isRunning = false,
+                transcript = state.transcript.settleStreamingDraft(::nextId),
+            )
+        }
         append(
             TranscriptItem.Diagnostic(
                 id = nextId(),
@@ -719,8 +1245,8 @@ class AgentChatViewModel @Inject constructor(
             val created = conversations.create(
                 // Named after what was asked, so Recents is not a list of folder names.
                 title = chatTitle(prompt),
-                providerId = providers.forModel(state.selectedModel).kind.name,
-                modelId = state.health?.version.orEmpty(),
+                providerId = providers.all().first().kind.name,
+                modelId = state.selectedModel.ifBlank { state.health?.version.orEmpty() },
                 serverId = server.ifBlank { null },
                 workingDirectory = state.workingDirectory.trim().ifBlank { null },
             )
@@ -778,18 +1304,24 @@ class AgentChatViewModel @Inject constructor(
                 )
             }
 
-            is AgentEvent.Completed -> append(
-                TranscriptItem.RunSummary(
-                    id = nextId(),
-                    durationMillis = event.durationMillis,
-                    costUsd = event.costUsd,
-                    inputTokens = event.inputTokens,
-                    outputTokens = event.outputTokens,
-                    isError = event.isError,
-                ),
-            )
+            is AgentEvent.Completed -> {
+                _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                append(
+                    TranscriptItem.RunSummary(
+                        id = nextId(),
+                        durationMillis = event.durationMillis,
+                        costUsd = event.costUsd,
+                        inputTokens = event.inputTokens,
+                        outputTokens = event.outputTokens,
+                        isError = event.isError,
+                    ),
+                )
+            }
 
-            is AgentEvent.Failed -> append(TranscriptItem.Failure(nextId(), event.error))
+            is AgentEvent.Failed -> {
+                _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                append(TranscriptItem.Failure(nextId(), event.error))
+            }
 
             is AgentEvent.Diagnostic -> {
                 val line = event.line.trim()
@@ -804,7 +1336,18 @@ class AgentChatViewModel @Inject constructor(
     }
 
     fun rollbackFile(toolCallId: String, filePath: String) {
-        val sId = _uiState.value.serverId ?: return
+        if (filePath.isBlank() || filePath.contains("..")) return
+        val sId = _uiState.value.serverId
+        if (sId.isNullOrBlank()) {
+            append(
+                TranscriptItem.Diagnostic(
+                    id = nextId(),
+                    text = "Reverting via Git is only supported on a connected server workspace with an active Git repository.",
+                    isStderr = true,
+                ),
+            )
+            return
+        }
         viewModelScope.launch {
             val repoPath = _uiState.value.workingDirectory.ifBlank {
                 val idx = filePath.lastIndexOf('/')
@@ -852,7 +1395,7 @@ class AgentChatViewModel @Inject constructor(
     private fun toolItemId(toolUseId: String): String =
         if (toolUseId.isBlank()) nextId() else "tool-$toolUseId"
 
-    private fun nextId(): String = "item-${itemCounter++}"
+    private fun nextId(): String = "item-${itemCounter.getAndIncrement()}"
 
     companion object {
         const val ARG_SERVER_ID = "serverId"
@@ -875,17 +1418,19 @@ private fun StoredEntry.toTranscriptItem(
 
     is StoredEntry.Reasoning -> TranscriptItem.Reasoning(nextId(), text)
 
-    is StoredEntry.Tool -> TranscriptItem.ToolCall(
-        id = "tool-$callId".takeIf(seen::add) ?: nextId(),
-        name = name,
-        // The human-readable summary is not persisted, so the tool name stands in.
-        summary = name,
-        affectedPath = null,
-        // Anything still in flight died with the process that ran it.
-        isRunning = false,
-        isError = isError,
-        output = output,
-    )
+    is StoredEntry.Tool -> {
+        val (restoredSummary, restoredPath) = restoreToolMeta(name, argumentsJson)
+        TranscriptItem.ToolCall(
+            id = "tool-$callId".takeIf(seen::add) ?: nextId(),
+            name = name,
+            summary = restoredSummary,
+            affectedPath = restoredPath,
+            // Anything still in flight died with the process that ran it.
+            isRunning = false,
+            isError = isError,
+            output = output,
+        )
+    }
 
     is StoredEntry.Failed -> TranscriptItem.Failure(
         id = nextId(),
@@ -893,16 +1438,38 @@ private fun StoredEntry.toTranscriptItem(
     )
 }
 
-/** Claude Code aliases run on the server's CLI; every other model goes to the gateway. */
-private fun AiProviderRegistry.forModel(model: String): AiProvider = forKind(
-    if (ClaudeCodeModels.isClaudeCode(model)) AiProviderKind.CLAUDE_CODE_CLI else AiProviderKind.OMNIROUTE,
-)
+private fun restoreToolMeta(name: String, argumentsJson: String): Pair<String, String?> {
+    val obj = runCatching { org.json.JSONObject(argumentsJson) }.getOrNull() ?: return name to null
+    val path = obj.optString("path").ifBlank { obj.optString("file_path") }.takeIf { it.isNotBlank() }
+    val command = obj.optString("command").takeIf { it.isNotBlank() }
+    val url = obj.optString("url").takeIf { it.isNotBlank() }
+    val summary = when (name) {
+        "read_file" -> path?.let { "Read $it" } ?: name
+        "write_file" -> path?.let { "Write $it" } ?: name
+        "edit_file" -> path?.let { "Edit $it" } ?: name
+        "list_files" -> "List ${path ?: "."}"
+        "run_command", "Bash" -> command?.take(80) ?: name
+        "fetch_url" -> url?.take(80) ?: name
+        else -> path ?: command?.take(80) ?: url?.take(80) ?: name
+    }
+    val affectedPath = if (name in setOf("write_file", "edit_file", "Write", "Edit", "MultiEdit")) path else null
+    return summary to affectedPath
+}
 
 /** The visible exchange, for a backend that has to be told what was said before. */
 private fun List<TranscriptItem>.toConversationTurns(): List<ConversationTurn> = mapNotNull { item ->
     when (item) {
         is TranscriptItem.UserPrompt -> ConversationTurn(fromUser = true, text = item.text)
         is TranscriptItem.AssistantText -> ConversationTurn(fromUser = false, text = item.text)
+        is TranscriptItem.StreamingText -> if (item.text.isNotBlank()) ConversationTurn(fromUser = false, text = item.text) else null
+        is TranscriptItem.ToolCall -> {
+            val desc = if (item.output.isNullOrBlank()) {
+                "Ran tool ${item.name} (${item.summary})"
+            } else {
+                "Ran tool ${item.name} (${item.summary}):\n${item.output.take(2000)}"
+            }
+            ConversationTurn(fromUser = false, text = desc)
+        }
         else -> null
     }
 }
@@ -912,27 +1479,7 @@ private fun List<TranscriptItem>.toConversationTurns(): List<ConversationTurn> =
  * with a gateway model and reopened while a Claude model is selected used to send
  * `claude --resume omniroute-…`, which failed on every message.
  */
-private fun fitsBackend(sessionId: String, model: String): Boolean =
-    sessionId.startsWith(GATEWAY_SESSION_PREFIX) != ClaudeCodeModels.isClaudeCode(model)
-
 private const val GATEWAY_SESSION_PREFIX = "omniroute-"
-
-/**
- * Claude Code cannot be handed earlier turns, only resume its own session. When a
- * chat moves to Claude with no session to resume, the visible conversation goes in
- * front of the prompt, so "fix the bug we found" still means something to it.
- */
-private fun withCarriedContext(prompt: String, state: AgentChatUiState): String {
-    val resumable = state.providerSessionId?.let { fitsBackend(it, state.selectedModel) } == true
-    if (!ClaudeCodeModels.isClaudeCode(state.selectedModel) || resumable) return prompt
-    val earlier = state.transcript.toConversationTurns()
-        .joinToString("\n\n") { (if (it.fromUser) "User: " else "Assistant: ") + it.text }
-        .takeLast(MAX_CARRIED_CONTEXT_CHARS)
-    if (earlier.isBlank()) return prompt
-    return "Earlier in this conversation:\n\n$earlier\n\n---\n\n$prompt"
-}
-
-private const val MAX_CARRIED_CONTEXT_CHARS = 12_000
 
 /** First line of the first message, shortened on a word boundary. */
 internal fun chatTitle(prompt: String): String {

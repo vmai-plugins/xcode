@@ -41,4 +41,49 @@ class StreamingDraftTest {
             .appendDelta("Answer", "draft", ::id)
         assertEquals(listOf("p", "draft"), list.map { it.id })
     }
+
+    @Test
+    fun `settleStreamingDraft turns partial draft into AssistantText`() {
+        val list = listOf<TranscriptItem>(
+            TranscriptItem.UserPrompt("p-1", "How are you?"),
+            TranscriptItem.StreamingText("draft", "I am doing well"),
+        ).settleStreamingDraft(::id)
+
+        assertEquals(
+            listOf(
+                TranscriptItem.UserPrompt("p-1", "How are you?"),
+                TranscriptItem.AssistantText("item-0", "I am doing well"),
+            ),
+            list,
+        )
+    }
+
+    @Test
+    fun `settleStreamingDraft drops blank draft`() {
+        val list = listOf<TranscriptItem>(
+            TranscriptItem.UserPrompt("p-1", "Hello"),
+            TranscriptItem.StreamingText("draft", "   \n\t  "),
+        ).settleStreamingDraft(::id)
+
+        assertEquals(
+            listOf(TranscriptItem.UserPrompt("p-1", "Hello")),
+            list,
+        )
+    }
+
+    @Test
+    fun `no seeded streaming item on new run after stop settles draft`() {
+        val stoppedTranscript = listOf<TranscriptItem>(
+            TranscriptItem.UserPrompt("p-1", "Run something"),
+            TranscriptItem.StreamingText("draft", "Starting work"),
+        ).settleStreamingDraft(::id) + TranscriptItem.Diagnostic("diag-1", "Stopped by you", false)
+
+        // On new run, next prompt is added and new deltas start with clean draft
+        val newRunTranscript = (stoppedTranscript + TranscriptItem.UserPrompt("p-2", "Try again"))
+            .appendDelta("Fresh output", "draft", ::id)
+
+        assertEquals(1, newRunTranscript.count { it is TranscriptItem.StreamingText })
+        val currentDraft = newRunTranscript.filterIsInstance<TranscriptItem.StreamingText>().single()
+        assertEquals("Fresh output", currentDraft.text)
+    }
 }

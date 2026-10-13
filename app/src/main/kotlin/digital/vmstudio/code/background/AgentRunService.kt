@@ -95,6 +95,7 @@ class AgentRunService : Service() {
         var idleRounds = 0
         // A lost signal is not "nothing running": keep asking for a while.
         val failedPolls = mutableMapOf<String, Int>()
+        val serverIdlePolls = mutableMapOf<String, Int>()
 
         while (true) {
             var running = 0
@@ -124,9 +125,17 @@ class AgentRunService : Service() {
                 )
 
                 running += result.stillRunning.size
-                // Nothing left on this server, so stop asking it.
+                // A newly started background run takes a moment to write its status file;
+                // wait MAX_IDLE_ROUNDS before dropping the server from watchedServers.
                 if (!result.hasWork && !result.hasAnnouncements) {
-                    synchronized(watchedServersLock) { watchedServers -= serverId }
+                    val emptyCount = (serverIdlePolls[serverId] ?: 0) + 1
+                    serverIdlePolls[serverId] = emptyCount
+                    if (emptyCount >= MAX_IDLE_ROUNDS) {
+                        synchronized(watchedServersLock) { watchedServers -= serverId }
+                        serverIdlePolls -= serverId
+                    }
+                } else {
+                    serverIdlePolls -= serverId
                 }
             }
             persistWatchedServers()
@@ -219,6 +228,9 @@ class AgentRunService : Service() {
 
         /** Starts watching [serverId]; safe to call for a server already watched. */
         fun start(context: Context, serverId: String) {
+            if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub") {
+                return
+            }
             val intent = Intent(context, AgentRunService::class.java)
                 .putExtra(EXTRA_SERVER_ID, serverId)
             runCatching { context.startForegroundService(intent) }

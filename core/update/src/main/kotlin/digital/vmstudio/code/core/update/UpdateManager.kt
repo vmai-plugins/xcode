@@ -3,6 +3,7 @@ package digital.vmstudio.code.core.update
 import digital.vmstudio.code.core.common.dispatcher.ApplicationScope
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +44,19 @@ class UpdateManager @Inject constructor(
                         ?: UpdateState.UpToDate
                     is VmResult.Failure -> UpdateState.Failed(result.error)
                 }
+            } catch (cancellation: CancellationException) {
+                if (_state.value == UpdateState.Checking) {
+                    _state.value = UpdateState.Idle
+                }
+                throw cancellation
+            } catch (exception: Exception) {
+                _state.value = UpdateState.Failed(
+                    VmError.Unexpected(
+                        summary = "Could not check for updates",
+                        reason = exception.message,
+                        cause = exception,
+                    ),
+                )
             } finally {
                 checkMutex.unlock()
             }
@@ -56,33 +70,48 @@ class UpdateManager @Inject constructor(
         // two downloads into one file produced a corrupt APK.
         _state.value = UpdateState.Downloading(info, progress = 0f)
         scope.launch {
-            when (
-                val result = downloader.download(info.apkDownloadUrl, info.apkAssetName) { progress ->
-                    _state.value = UpdateState.Downloading(info, progress)
-                }
-            ) {
-                is VmResult.Success -> {
-                    val apkFile = result.value
-                    // A signature mismatch means a tampered or substituted release
-                    // asset - refusing here gives a clear reason instead of letting
-                    // the system installer fail silently after the user has already
-                    // been prompted to install.
-                    if (!installer.signatureMatchesInstalledApp(apkFile)) {
-                        apkFile.delete()
-                        _state.value = UpdateState.Failed(
-                            VmError.Security(
-                                summary = "Update could not be verified",
-                                reason = "The downloaded update's signature does not match this app's.",
-                                suggestedAction = "Do not install it. Try again later, or download " +
-                                    "the release directly from the project's GitHub page.",
-                            ),
-                        )
-                        return@launch
+            try {
+                when (
+                    val result = downloader.download(info.apkDownloadUrl, info.apkAssetName) { progress ->
+                        _state.value = UpdateState.Downloading(info, progress)
                     }
-                    _state.value = UpdateState.ReadyToInstall(info, apkFile)
-                    launchInstaller(apkFile)
+                ) {
+                    is VmResult.Success -> {
+                        val apkFile = result.value
+                        // A signature mismatch means a tampered or substituted release
+                        // asset - refusing here gives a clear reason instead of letting
+                        // the system installer fail silently after the user has already
+                        // been prompted to install.
+                        if (!installer.signatureMatchesInstalledApp(apkFile)) {
+                            apkFile.delete()
+                            _state.value = UpdateState.Failed(
+                                VmError.Security(
+                                    summary = "Update could not be verified",
+                                    reason = "The downloaded update's signature does not match this app's.",
+                                    suggestedAction = "Do not install it. Try again later, or download " +
+                                        "the release directly from the project's GitHub page.",
+                                ),
+                            )
+                            return@launch
+                        }
+                        _state.value = UpdateState.ReadyToInstall(info, apkFile)
+                        launchInstaller(apkFile)
+                    }
+                    is VmResult.Failure -> _state.value = UpdateState.Failed(result.error)
                 }
-                is VmResult.Failure -> _state.value = UpdateState.Failed(result.error)
+            } catch (cancellation: CancellationException) {
+                if ((_state.value as? UpdateState.Downloading)?.info == info) {
+                    _state.value = UpdateState.Available(info)
+                }
+                throw cancellation
+            } catch (exception: Exception) {
+                _state.value = UpdateState.Failed(
+                    VmError.Unexpected(
+                        summary = "Could not download the update",
+                        reason = exception.message,
+                        cause = exception,
+                    ),
+                )
             }
         }
     }

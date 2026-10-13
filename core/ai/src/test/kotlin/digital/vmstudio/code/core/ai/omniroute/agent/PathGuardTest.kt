@@ -30,6 +30,7 @@ class PathGuardTest {
         assertNotNull(PathGuard.problem(wd, ".env"))
         assertNotNull(PathGuard.problem(wd, "config/.env.production"))
         assertNotNull(PathGuard.problem(wd, ".ssh/id_rsa"))
+        assertNotNull(PathGuard.problem(wd, ".SSH/config"))
         assertNotNull(PathGuard.problem(wd, "certs/server.pem"))
         assertNull(PathGuard.problem(wd, ".env.example"))
     }
@@ -38,5 +39,37 @@ class PathGuardTest {
     fun `normalize collapses dots`() {
         assertEquals("/a/c", PathGuard.normalize("/a/b/../c/./"))
         assertEquals("/", PathGuard.normalize("/.."))
+    }
+
+    @Test
+    fun `SAF folders resolve child paths and reject escaping or other trees`() {
+        val root = "content://com.android.externalstorage.documents/tree/primary%3AWorkspace!/"
+        assertNull(PathGuard.problem(root, "src/Main.kt"))
+        assertEquals(root + "src/Main.kt", PathGuard.resolve(root, "src/Main.kt"))
+        assertNotNull(PathGuard.problem(root, "../outside.txt"))
+        assertNotNull(PathGuard.problem(root, "/etc/passwd"))
+        assertNotNull(
+            PathGuard.problem(
+                root,
+                "content://com.android.externalstorage.documents/tree/primary%3AOther!/secret.txt",
+            ),
+        )
+    }
+
+    @Test
+    fun `SAF paths keep secret-file restrictions`() {
+        val root = "content://com.android.externalstorage.documents/tree/primary%3AWorkspace!/"
+        assertNotNull(PathGuard.problem(root, ".env"))
+        assertNotNull(PathGuard.problem(root, "keys/id_ed25519"))
+        assertNull(PathGuard.problem(root, ".env.example"))
+    }
+
+    @Test
+    fun `SAF absolute paths stay inside a nested project folder`() {
+        val tree = "content://com.android.externalstorage.documents/tree/primary%3AWorkspace!/"
+        val root = tree + "projects/app/"
+        assertNull(PathGuard.problem(root, tree + "projects/app/src/Main.kt"))
+        assertNotNull(PathGuard.problem(root, tree + "projects/other/README.md"))
+        assertNotNull(PathGuard.problem(root, tree + "projects/app/../../outside.txt"))
     }
 }

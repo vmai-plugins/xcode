@@ -6,12 +6,15 @@ import digital.vmstudio.code.core.common.result.vmCatching
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,25 +34,40 @@ class GoogleDriveClient @Inject constructor(
         query: String? = null,
         pageSize: Int = 30,
     ): VmResult<List<GoogleDriveFile>> {
-        val qParam = query?.let { "&q=" + URLEncoder.encode(it, "UTF-8") } ?: ""
-        val fields = "files(id,name,mimeType,size,modifiedTime)"
-        val url = "$DRIVE_API_BASE/files?pageSize=$pageSize&fields=$fields$qParam"
+        val files = mutableListOf<GoogleDriveFile>()
+        var pageToken: String? = null
 
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("Authorization", "Bearer $accessToken")
-            .get()
-            .build()
+        do {
+            val queryParams = buildList {
+                add("pageSize=$pageSize")
+                add("fields=nextPageToken,files(id,name,mimeType,size,modifiedTime)")
+                query?.let { add("q=${URLEncoder.encode(it, "UTF-8")}") }
+                pageToken?.let { add("pageToken=${URLEncoder.encode(it, "UTF-8")}") }
+            }.joinToString("&")
+            val request = Request.Builder()
+                .url("$DRIVE_API_BASE/files?$queryParams")
+                .header("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
 
-        return httpClient.execute(request, RetryPolicy())
-            .flatMap { body ->
-                vmCatching {
-                    val response = json.decodeFromString<GoogleDriveFileListResponse>(body)
-                    response.files
+            when (val result = httpClient.execute(request, RetryPolicy())) {
+                is VmResult.Failure -> return result
+                is VmResult.Success -> {
+                    when (val parsed = vmCatching {
+                        json.decodeFromString<GoogleDriveFileListResponse>(result.value)
+                    }) {
+                        is VmResult.Failure -> return parsed
+                        is VmResult.Success -> {
+                            files += parsed.value.files
+                            pageToken = parsed.value.nextPageToken
+                        }
+                    }
                 }
             }
-    }
+        } while (pageToken != null)
 
+        return VmResult.Success(files)
+    }
     suspend fun uploadFile(
         accessToken: String,
         filename: String,
@@ -57,12 +75,36 @@ class GoogleDriveClient @Inject constructor(
         content: ByteArray,
         parentFolderId: String? = null,
     ): VmResult<GoogleDriveFile> {
+        return uploadFile(
+            accessToken,
+            filename,
+            mimeType,
+            content.toRequestBody(mimeType.toMediaType()),
+            parentFolderId,
+        )
+    }
+
+    suspend fun uploadFile(
+        accessToken: String,
+        filename: String,
+        mimeType: String,
+        file: java.io.File,
+        parentFolderId: String? = null,
+    ): VmResult<GoogleDriveFile> {
+        return uploadFile(accessToken, filename, mimeType, file.asRequestBody(mimeType.toMediaType()), parentFolderId)
+    }
+
+    private suspend fun uploadFile(
+        accessToken: String,
+        filename: String,
+        mimeType: String,
+        fileBody: okhttp3.RequestBody,
+        parentFolderId: String? = null,
+    ): VmResult<GoogleDriveFile> {
         val metadataJson = buildJsonObject {
             put("name", filename)
             put("mimeType", mimeType)
-            if (parentFolderId != null) {
-                // If specifying parents in Google Drive v3, it accepts a JSON array of folder IDs
-            }
+            parentFolderId?.let { parent -> put("parents", buildJsonArray { add(parent) }) }
         }.toString()
 
         val requestBody = MultipartBody.Builder()
@@ -75,7 +117,7 @@ class GoogleDriveClient @Inject constructor(
             .addFormDataPart(
                 "file",
                 filename,
-                content.toRequestBody(mimeType.toMediaType()),
+                fileBody,
             )
             .build()
 
@@ -112,3 +154,6 @@ class GoogleDriveClient @Inject constructor(
         private const val DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3"
     }
 }
+
+
+

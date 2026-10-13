@@ -79,9 +79,20 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.CONFIRM_DESTRUCTIVE] = enabled
     }
 
-    suspend fun setAiProvider(providerId: String, baseUrl: String) = edit {
-        it[Keys.AI_PROVIDER] = providerId
-        it[Keys.AI_BASE_URL] = baseUrl
+    suspend fun setAgentMaxIterations(iterations: Int) = edit {
+        it[Keys.AGENT_MAX_ITERATIONS] = iterations.coerceIn(5, 100)
+    }
+
+    suspend fun setAgentMaxCommandsPerRun(commands: Int) = edit {
+        it[Keys.AGENT_MAX_COMMANDS_PER_RUN] = commands.coerceIn(5, 200)
+    }
+
+    suspend fun setCompletedOnboarding(completed: Boolean = true) = edit {
+        it[Keys.HAS_COMPLETED_ONBOARDING] = completed
+    }
+
+    suspend fun setHasSignedIn(signedIn: Boolean = true) = edit {
+        it[Keys.HAS_SIGNED_IN] = signedIn
     }
 
     suspend fun setAiApiKeyCredentialId(credentialId: String?) = edit {
@@ -89,6 +100,16 @@ class UserPreferencesRepository @Inject constructor(
             it.remove(Keys.AI_API_KEY_CREDENTIAL)
         } else {
             it[Keys.AI_API_KEY_CREDENTIAL] = credentialId
+        }
+    }
+
+    suspend fun setGithubConnection(credentialId: String?, username: String?) = edit {
+        if (credentialId == null) {
+            it.remove(Keys.GITHUB_TOKEN_CREDENTIAL)
+            it.remove(Keys.GITHUB_USERNAME)
+        } else {
+            it[Keys.GITHUB_TOKEN_CREDENTIAL] = credentialId
+            if (username != null) it[Keys.GITHUB_USERNAME] = username else it.remove(Keys.GITHUB_USERNAME)
         }
     }
 
@@ -142,6 +163,10 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.AI_TOOLS_ENABLED] = enabled
     }
 
+    suspend fun setAiWebAccessEnabled(enabled: Boolean) = edit {
+        it[Keys.AI_WEB_ACCESS_ENABLED] = enabled
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         store.edit(block)
     }
@@ -155,21 +180,41 @@ class UserPreferencesRepository @Inject constructor(
             terminalScrollbackLines = this[Keys.TERMINAL_SCROLLBACK] ?: defaults.terminalScrollbackLines,
             agentAutonomyLevel = this[Keys.AGENT_AUTONOMY].toEnum(defaults.agentAutonomyLevel),
             agentMaxContextTokens = this[Keys.AGENT_MAX_CONTEXT_TOKENS] ?: defaults.agentMaxContextTokens,
+            agentMaxIterations = this[Keys.AGENT_MAX_ITERATIONS] ?: defaults.agentMaxIterations,
+            agentMaxCommandsPerRun = this[Keys.AGENT_MAX_COMMANDS_PER_RUN] ?: defaults.agentMaxCommandsPerRun,
+            hasCompletedOnboarding = this[Keys.HAS_COMPLETED_ONBOARDING] ?: defaults.hasCompletedOnboarding,
+            hasSignedIn = this[Keys.HAS_SIGNED_IN] ?: defaults.hasSignedIn,
             confirmDestructiveCommands = this[Keys.CONFIRM_DESTRUCTIVE] ?: defaults.confirmDestructiveCommands,
-            aiProviderId = this[Keys.AI_PROVIDER] ?: defaults.aiProviderId,
-            aiBaseUrl = this[Keys.AI_BASE_URL] ?: defaults.aiBaseUrl,
+            aiProviderId = UserPreferences.PROVIDER_OMNIROUTE,
+            aiBaseUrl = UserPreferences.DEFAULT_AI_BASE_URL,
             aiApiKeyCredentialId = this[Keys.AI_API_KEY_CREDENTIAL],
-            aiSelectedModelId = this[Keys.AI_MODEL],
-            aiAvailableModelIds = parseModelIds(this[Keys.AI_MODELS]),
+            aiSelectedModelId = this[Keys.AI_MODEL] ?: defaults.aiSelectedModelId,
+            aiAvailableModelIds = parseModelIds(this[Keys.AI_MODELS]).ifEmpty { defaults.aiAvailableModelIds },
             aiFreeModelIds = parseModelIds(this[Keys.AI_FREE_MODELS]).toSet(),
             aiModelsSyncedAtMillis = this[Keys.AI_MODELS_SYNCED_AT] ?: defaults.aiModelsSyncedAtMillis,
             aiModelPreset = this[Keys.AI_MODEL_PRESET] ?: defaults.aiModelPreset,
             aiToolsEnabled = this[Keys.AI_TOOLS_ENABLED] ?: defaults.aiToolsEnabled,
+            aiWebAccessEnabled = this[Keys.AI_WEB_ACCESS_ENABLED] ?: defaults.aiWebAccessEnabled,
             aiContextSize = this[Keys.AI_CONTEXT_SIZE] ?: defaults.aiContextSize,
             lastChatModel = this[Keys.LAST_CHAT_MODEL],
             lastChatGeneral = this[Keys.LAST_CHAT_GENERAL] ?: false,
             lastFolders = parseFolders(this[Keys.LAST_FOLDERS]),
+            githubTokenCredentialId = this[Keys.GITHUB_TOKEN_CREDENTIAL],
+            githubUsername = this[Keys.GITHUB_USERNAME],
+            userEmail = this[Keys.USER_EMAIL],
+            userName = this[Keys.USER_NAME],
         )
+    }
+
+    suspend fun setUserProfile(email: String?, name: String?) = edit {
+        if (email != null) it[Keys.USER_EMAIL] = email else it.remove(Keys.USER_EMAIL)
+        if (name != null) it[Keys.USER_NAME] = name else it.remove(Keys.USER_NAME)
+    }
+
+    suspend fun signOutUser() = edit {
+        it[Keys.HAS_SIGNED_IN] = false
+        it.remove(Keys.USER_EMAIL)
+        it.remove(Keys.USER_NAME)
     }
 
     /** Unknown stored names fall back to the default rather than throwing. */
@@ -183,6 +228,10 @@ class UserPreferencesRepository @Inject constructor(
         val TERMINAL_SCROLLBACK = intPreferencesKey("terminal_scrollback")
         val AGENT_AUTONOMY = stringPreferencesKey("agent_autonomy")
         val AGENT_MAX_CONTEXT_TOKENS = intPreferencesKey("agent_max_context_tokens")
+        val AGENT_MAX_ITERATIONS = intPreferencesKey("agent_max_iterations")
+        val AGENT_MAX_COMMANDS_PER_RUN = intPreferencesKey("agent_max_commands_per_run")
+        val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
+        val HAS_SIGNED_IN = booleanPreferencesKey("has_signed_in")
         val CONFIRM_DESTRUCTIVE = booleanPreferencesKey("confirm_destructive")
         val AI_PROVIDER = stringPreferencesKey("ai_provider")
         val AI_BASE_URL = stringPreferencesKey("ai_base_url")
@@ -193,10 +242,15 @@ class UserPreferencesRepository @Inject constructor(
         val AI_MODELS_SYNCED_AT = longPreferencesKey("ai_models_synced_at")
         val AI_MODEL_PRESET = stringPreferencesKey("ai_model_preset")
         val AI_TOOLS_ENABLED = booleanPreferencesKey("ai_tools_enabled")
+        val AI_WEB_ACCESS_ENABLED = booleanPreferencesKey("ai_web_access_enabled")
         val AI_CONTEXT_SIZE = stringPreferencesKey("ai_context_size")
         val LAST_CHAT_MODEL = stringPreferencesKey("last_chat_model")
         val LAST_CHAT_GENERAL = booleanPreferencesKey("last_chat_general")
         val LAST_FOLDERS = stringPreferencesKey("last_folders")
+        val GITHUB_TOKEN_CREDENTIAL = stringPreferencesKey("github_token_credential")
+        val GITHUB_USERNAME = stringPreferencesKey("github_username")
+        val USER_EMAIL = stringPreferencesKey("user_email")
+        val USER_NAME = stringPreferencesKey("user_name")
     }
 
     private companion object {
@@ -235,3 +289,5 @@ internal fun parseFolders(raw: String?): Map<String, String> =
     raw.orEmpty().lineSequence()
         .mapNotNull { line -> line.split('\t', limit = 2).takeIf { it.size == 2 && it[1].isNotBlank() } }
         .associate { (id, path) -> id to path }
+
+

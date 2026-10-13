@@ -24,14 +24,18 @@ import javax.inject.Inject
 data class StagedAttachments(
     val remotePaths: List<String>,
     val images: List<ImageAttachment>,
+    val displayNames: List<String> = emptyList(),
+    val inlinedTextFiles: Map<String, String> = emptyMap(),
 )
 
 /**
  * Puts files the user attached where the agent can reach them.
  *
- * Every file is uploaded to `.xcodes/attachments` in the working directory, so
- * Claude Code and the gateway's file tools can both open it by path. Images small
- * enough to inline are also returned as base64 for vision-capable gateway models.
+ * Every file is uploaded to `.xcodes/attachments` in the working directory when a
+ * server/local folder is active, so file tools can open it by path. Images small
+ * enough to inline are also returned as base64 for vision-capable gateway models,
+ * and text files attached in General Chat or Zero-Clone GitHub workspaces are
+ * inlined into the prompt.
  */
 class AttachmentStager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -45,27 +49,60 @@ class AttachmentStager @Inject constructor(
         uris: List<Uri>,
     ): VmResult<StagedAttachments> {
         val root = workingDirectory.trimEnd('/')
+        val effectiveServerId = when {
+            root.startsWith("/vmhub/") -> digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.LOCAL_SERVER_ID
+            serverId.isNotBlank() -> serverId
+            else -> ""
+        }
+        val canUploadToWorkspace = effectiveServerId.isNotBlank() &&
+            root.isNotBlank() &&
+            !root.startsWith("/github/")
         val remoteDir = "$root/$ATTACHMENT_DIR"
-        ensureDirectory(serverId, remoteDir)?.let { return VmResult.Failure(it) }
-        keepOutOfGit(serverId, root)
+        if (canUploadToWorkspace) {
+            ensureDirectory(effectiveServerId, remoteDir)?.let { return VmResult.Failure(it) }
+            keepOutOfGit(effectiveServerId, root)
+        }
 
         val paths = mutableListOf<String>()
         val images = mutableListOf<ImageAttachment>()
+        val names = mutableListOf<String>()
+        val inlinedTexts = linkedMapOf<String, String>()
         for (uri in uris) {
             val local = when (val copied = copyToCache(uri)) {
                 is VmResult.Success -> copied.value
                 is VmResult.Failure -> return copied
             }
             try {
-                val remotePath = "$remoteDir/${System.currentTimeMillis()}-${local.name}"
-                upload(serverId, local, remotePath)?.let { return VmResult.Failure(it) }
-                paths += remotePath
-                inlineImage(uri, local)?.let(images::add)
+                names += local.name
+                val image = inlineImage(uri, local)
+                if (image != null) {
+                    images += image
+                }
+                if (canUploadToWorkspace) {
+                    val remotePath = "$remoteDir/${System.currentTimeMillis()}-${local.name}"
+                    upload(effectiveServerId, local, remotePath)?.let { return VmResult.Failure(it) }
+                    paths += remotePath
+                } else if (image == null) {
+                    val textSnippet = runCatching {
+                        if (local.length() <= MAX_INLINE_TEXT_BYTES) {
+                            local.readText(Charsets.UTF_8)
+                        } else {
+                            local.inputStream().bufferedReader(Charsets.UTF_8).use { reader ->
+                                val buf = CharArray(MAX_INLINE_TEXT_BYTES.toInt())
+                                val read = reader.read(buf)
+                                if (read > 0) String(buf, 0, read) + "\n...[truncated]..." else ""
+                            }
+                        }
+                    }.getOrNull()
+                    if (!textSnippet.isNullOrBlank()) {
+                        inlinedTexts[local.name] = textSnippet
+                    }
+                }
             } finally {
                 local.delete()
             }
         }
-        return VmResult.Success(StagedAttachments(paths, images))
+        return VmResult.Success(StagedAttachments(paths, images, names, inlinedTexts))
     }
 
     private suspend fun ensureDirectory(serverId: String, path: String): VmError? {
@@ -154,6 +191,7 @@ class AttachmentStager @Inject constructor(
         const val GIT_EXCLUDE_LINE = ".xcodes/"
         const val MAX_ATTACHMENT_BYTES = 20L * 1024 * 1024
         const val MAX_INLINE_IMAGE_BYTES = 4L * 1024 * 1024
+        const val MAX_INLINE_TEXT_BYTES = 64L * 1024
         val UNSAFE_NAME_CHARS = Regex("[^A-Za-z0-9._-]")
     }
 }

@@ -37,9 +37,12 @@ class MainActivity : ComponentActivity() {
                 if (ready != null) {
                     VmApp(
                         isOnline = ready.isOnline,
+                        hasSignedIn = ready.preferences.hasSignedIn,
+                        hasCompletedOnboarding = ready.preferences.hasCompletedOnboarding,
                     )
                 }
             }
         }
     }
 }
+

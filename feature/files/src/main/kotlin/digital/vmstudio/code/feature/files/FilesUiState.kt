@@ -38,6 +38,7 @@ data class FilesUiState(
     val options: RemoteListingOptions = RemoteListingOptions(),
     val isLoading: Boolean = true,
     val error: VmError? = null,
+    val warning: VmError? = null,
     val selectedPaths: Set<String> = emptySet(),
     /** Non-null while a create/rename dialog or the file sheet is open. */
     val pendingAction: FileAction? = null,

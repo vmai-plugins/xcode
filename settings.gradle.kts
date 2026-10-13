@@ -39,8 +39,8 @@ include(":core:terminal")
 include(":core:editor")
 include(":core:git")
 include(":core:project")
-include(":core:ai")
 include(":core:connectors")
+include(":core:ai")
 include(":core:update")
 
 // Feature layer — flat; features never depend on each other.

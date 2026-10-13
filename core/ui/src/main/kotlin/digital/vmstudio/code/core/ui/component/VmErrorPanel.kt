@@ -83,7 +83,7 @@ fun VmErrorPanel(
                 )
                 error.reason?.let { reason ->
                     Text(
-                        text = reason,
+                        text = cleanErrorMessage(reason),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                     )
@@ -169,9 +169,21 @@ fun VmInlineError(
             modifier = Modifier.size(14.dp),
         )
         Text(
-            text = error.reason ?: error.summary,
+            text = cleanErrorMessage(error.reason ?: error.summary),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
     }
+}
+
+internal fun cleanErrorMessage(text: String): String {
+    val trimmed = text.trim()
+    if (!trimmed.startsWith("{")) return trimmed
+    return runCatching {
+        val obj = org.json.JSONObject(trimmed)
+        val errObj = obj.optJSONObject("error")
+        errObj?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: obj.optString("message").takeIf { it.isNotBlank() }
+            ?: trimmed
+    }.getOrDefault(trimmed)
 }

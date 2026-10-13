@@ -26,6 +26,8 @@ data class ServerEditUiState(
     val isEditing: Boolean = false,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
+    val isTesting: Boolean = false,
+    val testSuccessMessage: String? = null,
     /** Populated only after the first save attempt, so the form is not hostile. */
     val validation: ServerValidation = ServerValidation(),
     val showValidation: Boolean = false,
@@ -126,6 +128,53 @@ class ServerEditViewModel @Inject constructor(
 
     fun setKeepAlive(value: String) = updateDraft {
         it.copy(keepAliveSeconds = value.filter(Char::isDigit))
+    }
+
+    fun testConnection() {
+        val current = _uiState.value
+        val validation = ServerValidator.validate(current.draft)
+        if (!validation.isValid) {
+            _uiState.update { it.copy(validation = validation, showValidation = true, testSuccessMessage = null) }
+            return
+        }
+
+        _uiState.update { it.copy(isTesting = true, saveError = null, testSuccessMessage = null) }
+        viewModelScope.launch {
+            when (val saveResult = serverRepository.save(current.draft)) {
+                is VmResult.Failure -> {
+                    _uiState.update { it.copy(isTesting = false, saveError = saveResult.error) }
+                }
+                is VmResult.Success -> {
+                    val server = saveResult.value
+                    when (val sessionResult = connectionManager.reconnect(server.id)) {
+                        is VmResult.Success -> {
+                            val info = sessionResult.value.serverInfo
+                            val details = listOfNotNull(
+                                info.operatingSystem,
+                                info.architecture,
+                                info.shell.takeIf { it.isNotBlank() }?.let { "shell: $it" },
+                            ).joinToString(", ")
+                            _uiState.update {
+                                it.copy(
+                                    isTesting = false,
+                                    testSuccessMessage = "Connection successful! " + if (details.isNotBlank()) "($details)" else "",
+                                    draft = it.draft.copy(id = server.id),
+                                )
+                            }
+                        }
+                        is VmResult.Failure -> {
+                            _uiState.update {
+                                it.copy(
+                                    isTesting = false,
+                                    saveError = sessionResult.error,
+                                    draft = it.draft.copy(id = server.id),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun save() {
