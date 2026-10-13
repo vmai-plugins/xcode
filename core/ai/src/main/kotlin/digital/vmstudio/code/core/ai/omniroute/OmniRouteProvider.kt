@@ -712,10 +712,12 @@ class OmniRouteProvider @Inject constructor(
         val VALID_DIALECT_STATUSES = setOf(200, 400, 401, 403, 422, 429)
         const val HTTP_TOO_MANY_REQUESTS = 429
         const val HTTP_BAD_GATEWAY = 502
+        const val HTTP_PAYLOAD_TOO_LARGE = 413
         const val HTTP_GATEWAY_TIMEOUT = 504
 
         fun isRecoverableStatus(status: Int?): Boolean =
             status == HTTP_TOO_MANY_REQUESTS ||
+                status == HTTP_PAYLOAD_TOO_LARGE ||
                 (status != null && status in 500..HTTP_GATEWAY_TIMEOUT)
 
         fun isRecoverableFailure(status: Int?, error: VmError?): Boolean {
@@ -727,6 +729,9 @@ class OmniRouteProvider @Inject constructor(
                 reason.contains("model not found") ||
                 reason.contains("rate limit") ||
                 reason.contains("quota") ||
+                reason.contains("tokens per minute") ||
+                reason.contains("tpm") ||
+                reason.contains("reduce your message size") ||
                 reason.contains("overloaded") ||
                 reason.contains("unavailable") ||
                 reason.contains("capability_mismatch") ||

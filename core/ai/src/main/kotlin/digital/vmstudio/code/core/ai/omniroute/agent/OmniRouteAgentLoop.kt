@@ -521,6 +521,8 @@ class OmniRouteAgentLoop @Inject constructor(
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
         }
+    }
+
     private suspend fun googleSheetRead(call: OmniRouteToolCall): ToolOutcome {
         val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
             ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
@@ -1276,18 +1278,21 @@ internal fun capToolOutput(output: String, limit: Int = MAX_TOOL_OUTPUT_CHARS): 
 private fun VmError.isFinalForTurn(): Boolean =
     this is VmError.Authentication || (this as? VmError.Network)?.statusCode in FINAL_STATUSES
 
-private val FINAL_STATUSES = setOf(401, 403, 404, 429)
+private val FINAL_STATUSES = setOf(401, 403, 404, 413, 429)
 
 internal fun isFailoverCandidate(error: VmError): Boolean {
     val status = (error as? VmError.Network)?.statusCode
     val text = listOfNotNull(error.summary, error.reason).joinToString(" ").lowercase()
-    return status == 429 || (status != null && status in 500..504) ||
+    return status == 413 || status == 429 || (status != null && status in 500..504) ||
         text.contains("capability_mismatch") ||
         text.contains("supports tool calling") ||
         text.contains("capability mismatch") ||
         text.contains("tool calling") ||
         text.contains("quota") ||
         text.contains("rate limit") ||
+        text.contains("tokens per minute") ||
+        text.contains("tpm") ||
+        text.contains("reduce your message") ||
         text.contains("overloaded") ||
         text.contains("unavailable") ||
         text.contains("not available in the active live catalog")
