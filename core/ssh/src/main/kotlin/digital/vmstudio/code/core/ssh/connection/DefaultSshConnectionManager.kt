@@ -90,6 +90,7 @@ class DefaultSshConnectionManager @Inject constructor(
 
     override fun rejectPendingHostKey(serverId: String) {
         _pendingHostKeys.value = _pendingHostKeys.value - serverId
+        updateState(serverId, SshConnectionState.Disconnected)
     }
 
     override fun state(serverId: String): Flow<SshConnectionState> =
@@ -118,6 +119,7 @@ class DefaultSshConnectionManager @Inject constructor(
                 withContext(ioDispatcher) { runCatching { session.close() } }
                 VmLog.i(LogCategory.SSH, TAG, "Disconnected from ${session.server.name}")
             }
+            _pendingHostKeys.value = _pendingHostKeys.value - serverId
             updateState(serverId, SshConnectionState.Disconnected)
         }
     }

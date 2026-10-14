@@ -245,7 +245,7 @@ internal class LocalFileSystemDelegate(
                         }
                         output.write(buffer, 0, count)
                     }
-                    VmResult.Success(output.toByteArray().decodeToString())
+                    VmResult.Success(decodeTextStrictly(output.toByteArray()))
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -270,7 +270,7 @@ internal class LocalFileSystemDelegate(
         }
         try {
             val bytes = file.readBytes()
-            VmResult.Success(bytes.decodeToString())
+            VmResult.Success(decodeTextStrictly(bytes))
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
             VmResult.Failure(
                 VmError.Storage(summary = "Failed to decode text: ${e.message}", reason = path),

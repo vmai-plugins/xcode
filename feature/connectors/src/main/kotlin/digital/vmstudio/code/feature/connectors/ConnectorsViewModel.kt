@@ -112,26 +112,31 @@ class ConnectorsViewModel @Inject constructor(
         if (extraState.value.isSyncingHub) return
         extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Syncing universal workspaces from VM Project Hub…") }
         viewModelScope.launch {
-            when (val res = projectHubClient.syncUniversalProjects()) {
-                is VmResult.Success -> {
-                    val tCount = (projectHubClient.fetchTasks() as? VmResult.Success)?.value?.size ?: 0
-                    extraState.update {
-                        it.copy(
-                            isSyncingHub = false,
-                            hubProjectCount = res.value,
-                            hubTaskCount = tCount,
-                            hubStatusMessage = "Synced ${res.value} universal workspaces & $tCount tasks (GitHub / Local / VPS-ready)",
-                        )
+            try {
+                when (val res = projectHubClient.syncUniversalProjects()) {
+                    is VmResult.Success -> {
+                        val tCount = (projectHubClient.fetchTasks() as? VmResult.Success)?.value?.size ?: 0
+                        extraState.update {
+                            it.copy(
+                                hubProjectCount = res.value,
+                                hubTaskCount = tCount,
+                                hubStatusMessage = "Synced ${res.value} universal workspaces & $tCount tasks (GitHub / Local / VPS-ready)",
+                            )
+                        }
+                    }
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                hubStatusMessage = "Sync error: ${res.error.summary}",
+                            )
+                        }
                     }
                 }
-                is VmResult.Failure -> {
-                    extraState.update {
-                        it.copy(
-                            isSyncingHub = false,
-                            hubStatusMessage = "Sync error: ${res.error.summary}",
-                        )
-                    }
-                }
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                extraState.update { it.copy(hubStatusMessage = "Sync failed: ${t.message ?: "Unknown error"}") }
+            } finally {
+                extraState.update { it.copy(isSyncingHub = false) }
             }
         }
     }
@@ -168,25 +173,30 @@ class ConnectorsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             extraState.update { it.copy(isTestingSheet = true, sheetStatusMessage = "Testing Sheets API v4...") }
-            val cleanRange = range.ifBlank { "A1:E5" }
-            when (val result = googleSheetsClient.getValues(token, spreadsheetId, cleanRange)) {
-                is VmResult.Success -> {
-                    val rowsCount = result.value.values.size
-                    extraState.update {
-                        it.copy(
-                            isTestingSheet = false,
-                            sheetStatusMessage = "Success! Read $rowsCount rows from ${result.value.range}.",
-                        )
+            try {
+                val cleanRange = range.ifBlank { "A1:E5" }
+                when (val result = googleSheetsClient.getValues(token, spreadsheetId, cleanRange)) {
+                    is VmResult.Success -> {
+                        val rowsCount = result.value.values.size
+                        extraState.update {
+                            it.copy(
+                                sheetStatusMessage = "Success! Read $rowsCount rows from ${result.value.range}.",
+                            )
+                        }
+                    }
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                sheetStatusMessage = "Failed: ${result.error.summary}",
+                            )
+                        }
                     }
                 }
-                is VmResult.Failure -> {
-                    extraState.update {
-                        it.copy(
-                            isTestingSheet = false,
-                            sheetStatusMessage = "Failed: ${result.error.summary}",
-                        )
-                    }
-                }
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                extraState.update { it.copy(sheetStatusMessage = "Failed: ${t.message ?: "Unknown error"}") }
+            } finally {
+                extraState.update { it.copy(isTestingSheet = false) }
             }
         }
     }
@@ -228,25 +238,30 @@ class ConnectorsViewModel @Inject constructor(
                     driveStatusMessage = "Archiving $projectName on VPS and uploading to Google Drive...",
                 )
             }
-            when (val result = googleDriveManager.backupProject(serverId, remotePath, projectName, token)) {
-                is VmResult.Success -> {
-                    extraState.update {
-                        it.copy(
-                            isBackingUpDrive = false,
-                            driveStatusMessage = "Backup created: ${result.value.name} " +
-                                "(${result.value.sizeBytes / 1024} KB)",
-                        )
+            try {
+                when (val result = googleDriveManager.backupProject(serverId, remotePath, projectName, token)) {
+                    is VmResult.Success -> {
+                        extraState.update {
+                            it.copy(
+                                driveStatusMessage = "Backup created: ${result.value.name} " +
+                                    "(${result.value.sizeBytes / 1024} KB)",
+                            )
+                        }
+                        refreshDriveBackups(token)
                     }
-                    refreshDriveBackups(token)
-                }
-                is VmResult.Failure -> {
-                    extraState.update {
-                        it.copy(
-                            isBackingUpDrive = false,
-                            driveStatusMessage = "Backup failed: ${result.error.summary}",
-                        )
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                driveStatusMessage = "Backup failed: ${result.error.summary}",
+                            )
+                        }
                     }
                 }
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                extraState.update { it.copy(driveStatusMessage = "Backup error: ${t.message ?: "Unknown error"}") }
+            } finally {
+                extraState.update { it.copy(isBackingUpDrive = false) }
             }
         }
     }

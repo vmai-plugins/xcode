@@ -12,6 +12,7 @@ internal object GitParsers {
         var aheadCount = 0
         var behindCount = 0
         var upstream: String? = null
+        var currentBranch = branch
 
         for (line in output.lines()) {
             if (line.isBlank()) continue
@@ -27,6 +28,12 @@ internal object GitParsers {
                     branchInfo.substringAfter("...").substringBefore(" [").ifBlank { null }
                 } else {
                     null
+                }
+                if (currentBranch.isBlank() || currentBranch == "HEAD") {
+                    val candidate = branchInfo.substringBefore("...").substringBefore(" [").trim()
+                    if (candidate.isNotBlank() && !candidate.startsWith("HEAD (no branch)")) {
+                        currentBranch = candidate
+                    }
                 }
                 continue
             }
@@ -58,6 +65,15 @@ internal object GitParsers {
             val path = unquote(rawDest)
             val originalPath = rawOriginal?.let(unquote)
 
+            val isConflict = indexStatus == 'U' || workTreeStatus == 'U' ||
+                (indexStatus == 'A' && workTreeStatus == 'A') ||
+                (indexStatus == 'D' && workTreeStatus == 'D')
+
+            if (isConflict) {
+                unstaged += GitFileStatusEntry(path, GitFileStatus.CONFLICTED)
+                continue
+            }
+
             // Staged changes (index)
             when (indexStatus) {
                 'A' -> staged += GitFileStatusEntry(path, GitFileStatus.ADDED)
@@ -65,7 +81,6 @@ internal object GitParsers {
                 'D' -> staged += GitFileStatusEntry(path, GitFileStatus.DELETED)
                 'R' -> staged += GitFileStatusEntry(path, GitFileStatus.RENAMED, originalPath = originalPath)
                 'C' -> staged += GitFileStatusEntry(path, GitFileStatus.COPIED, originalPath = originalPath)
-                'U' -> staged += GitFileStatusEntry(path, GitFileStatus.CONFLICTED)
             }
 
             // Unstaged changes (working tree)
@@ -75,12 +90,11 @@ internal object GitParsers {
                 'M' -> unstaged += GitFileStatusEntry(path, GitFileStatus.MODIFIED)
                 'D' -> unstaged += GitFileStatusEntry(path, GitFileStatus.DELETED)
                 'A' -> unstaged += GitFileStatusEntry(path, GitFileStatus.ADDED)
-                'U' -> if (indexStatus != 'U') unstaged += GitFileStatusEntry(path, GitFileStatus.CONFLICTED)
             }
         }
 
         return GitStatus(
-            branch = branch,
+            branch = currentBranch,
             upstream = upstream,
             aheadCount = aheadCount,
             behindCount = behindCount,

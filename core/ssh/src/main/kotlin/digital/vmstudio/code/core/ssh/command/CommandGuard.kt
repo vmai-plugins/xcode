@@ -64,7 +64,7 @@ class DefaultCommandGuard @Inject constructor(
         serverId: String,
         command: String,
         requestedByAgent: Boolean,
-    ): VmResult<CommandAssessment> = serverRepository.get(serverId).flatMap { server ->
+    ): VmResult<CommandAssessment> = resolveServer(serverId).flatMap { server ->
         VmResult.Success(CommandSafety.assess(command, contextFor(server, requestedByAgent)))
     }
 
@@ -72,7 +72,7 @@ class DefaultCommandGuard @Inject constructor(
         serverId: String,
         command: String,
         requestedByAgent: Boolean,
-    ): VmResult<CommandAssessment> = serverRepository.get(serverId).flatMap { server ->
+    ): VmResult<CommandAssessment> = resolveServer(serverId).flatMap { server ->
         val assessment = CommandSafety.assess(command, contextFor(server, requestedByAgent))
 
         // Blocked commands are refused outright and never prompted for. Offering a
@@ -138,6 +138,23 @@ class DefaultCommandGuard @Inject constructor(
         connectionManager.withSession(serverId) { session ->
             session.execute(command, limits)
         }
+    }
+
+    private suspend fun resolveServer(serverId: String): VmResult<Server> {
+        if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub") {
+            return VmResult.Success(
+                Server(
+                    id = serverId.ifBlank { "local" },
+                    name = "This Device",
+                    host = "127.0.0.1",
+                    port = 22,
+                    username = "local",
+                    authMethod = digital.vmstudio.code.core.database.entity.SshAuthMethod.PASSWORD,
+                    environment = digital.vmstudio.code.core.database.entity.ServerEnvironment.DEVELOPMENT,
+                ),
+            )
+        }
+        return serverRepository.get(serverId)
     }
 
     /**

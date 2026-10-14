@@ -313,74 +313,84 @@ class ProjectCreateViewModel @Inject constructor(
             )
         }
 
-        if (state.source == ProjectSource.GITHUB) {
-            val cloneResult = cloneProject(serverId, normalizedRepoUrl, state.branch, state.remotePath)
-            if (cloneResult is VmResult.Failure) {
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        statusMessage = null,
-                        error = cloneResult.error,
-                    )
+        try {
+            if (state.source == ProjectSource.GITHUB) {
+                val cloneResult = cloneProject(serverId, normalizedRepoUrl, state.branch, state.remotePath)
+                if (cloneResult is VmResult.Failure) {
+                    _uiState.update {
+                        it.copy(
+                            statusMessage = null,
+                            error = cloneResult.error,
+                        )
+                    }
+                    return
                 }
-                return
-            }
-        } else if (state.source == ProjectSource.EMPTY || state.source == ProjectSource.LOCAL || state.source == ProjectSource.VPS || state.source == ProjectSource.GDRIVE) {
-            val mkdirResult = createDirectory(serverId, state.remotePath)
-            if (mkdirResult is VmResult.Failure && !isLocal) {
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        statusMessage = null,
-                        error = mkdirResult.error,
-                    )
+            } else if (state.source == ProjectSource.EMPTY || state.source == ProjectSource.LOCAL || state.source == ProjectSource.VPS || state.source == ProjectSource.GDRIVE) {
+                val mkdirResult = createDirectory(serverId, state.remotePath)
+                if (mkdirResult is VmResult.Failure && !isLocal) {
+                    _uiState.update {
+                        it.copy(
+                            statusMessage = null,
+                            error = mkdirResult.error,
+                        )
+                    }
+                    return
                 }
-                return
             }
-        }
 
-        if (state.runSetup && state.setupCommand.isNotBlank() && !isLocal) {
-            _uiState.update { it.copy(statusMessage = "Running ${state.setupCommand}...") }
-            commandGuard.run(
+            if (state.runSetup && state.setupCommand.isNotBlank() && !isLocal) {
+                _uiState.update { it.copy(statusMessage = "Running ${state.setupCommand}...") }
+                commandGuard.run(
+                    serverId = serverId,
+                    command = "cd ${escapePath(state.remotePath)} && ${state.setupCommand}",
+                    limits = CommandLimits.LONG_RUNNING,
+                )
+            }
+
+            _uiState.update { it.copy(statusMessage = "Saving workspace configuration...") }
+            when (val result = projects.create(
+                name = state.name.trim(),
                 serverId = serverId,
-                command = "cd ${escapePath(state.remotePath)} && ${state.setupCommand}",
-                limits = CommandLimits.LONG_RUNNING,
-            )
-        }
-
-        _uiState.update { it.copy(statusMessage = "Saving workspace configuration...") }
-        when (val result = projects.create(
-            name = state.name.trim(),
-            serverId = serverId,
-            remotePath = state.remotePath.trim(),
-            branch = state.branch.takeIf { it.isNotBlank() },
-            environment = state.environment,
-            runtime = state.runtime,
-            packageManager = state.packageManager,
-        )) {
-            is VmResult.Success -> {
-                val createdId = result.value
-                if (state.colorHex.isNotBlank()) {
-                    projects.updateColor(createdId, state.colorHex)
+                remotePath = state.remotePath.trim(),
+                branch = state.branch.takeIf { it.isNotBlank() },
+                environment = state.environment,
+                runtime = state.runtime,
+                packageManager = state.packageManager,
+            )) {
+                is VmResult.Success -> {
+                    val createdId = result.value
+                    if (state.colorHex.isNotBlank()) {
+                        projects.updateColor(createdId, state.colorHex)
+                    }
+                    if (state.source == ProjectSource.GITHUB && state.githubUrl.isNotBlank()) {
+                        gitRepositoryDao.upsert(
+                            GitRepositoryEntity(
+                                id = UUID.randomUUID().toString(),
+                                projectId = createdId,
+                                workingTreePath = state.remotePath.trim(),
+                                remoteName = "origin",
+                                remoteUrl = normalizedRepoUrl,
+                                defaultBranch = state.branch,
+                                currentBranch = state.branch,
+                            ),
+                        )
+                    }
+                    _uiState.update { it.copy(statusMessage = null, createdProjectId = createdId) }
                 }
-                if (state.source == ProjectSource.GITHUB && state.githubUrl.isNotBlank()) {
-                    gitRepositoryDao.upsert(
-                        GitRepositoryEntity(
-                            id = UUID.randomUUID().toString(),
-                            projectId = createdId,
-                            workingTreePath = state.remotePath.trim(),
-                            remoteName = "origin",
-                            remoteUrl = normalizedRepoUrl,
-                            defaultBranch = state.branch,
-                            currentBranch = state.branch,
-                        ),
-                    )
+                is VmResult.Failure -> {
+                    _uiState.update { it.copy(statusMessage = null, error = result.error) }
                 }
-                _uiState.update { it.copy(isSaving = false, statusMessage = null, createdProjectId = createdId) }
             }
-            is VmResult.Failure -> {
-                _uiState.update { it.copy(isSaving = false, statusMessage = null, error = result.error) }
+        } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) throw t
+            _uiState.update {
+                it.copy(
+                    statusMessage = null,
+                    error = VmError.Unexpected(summary = "Failed to create project: ${t.message ?: "Unknown error"}"),
+                )
             }
+        } finally {
+            _uiState.update { it.copy(isSaving = false) }
         }
     }
 

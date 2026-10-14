@@ -639,6 +639,66 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: In `loadFile()` and `save()`, `isLoading` and `isSaving` were set to `true` without `try ... finally` blocks. If an unhandled network error or coroutine cancellation occurred, spinners remained permanently active.
 - **Fix**: Enclosed `loadFile()` and `save()` in `try ... finally` blocks to ensure `isLoading` and `isSaving` reset reliably under all conditions.
 
+### Bug 79: DefaultSshConnectionManager Stale Host Key Verdict on Disconnect & Rejection State Stuck
+- **Severity**: MEDIUM (SSH Connection State Machine & Host Key Confirmation Dialog Leak)
+- **File**: [`DefaultSshConnectionManager.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/connection/DefaultSshConnectionManager.kt)
+- **Root Cause**: `disconnect()` did not clear `_pendingHostKeys.value - serverId`. If a connection attempt was aborted or disconnected while awaiting TOFU key confirmation, the pending host key verdict remained in memory indefinitely. Furthermore, `rejectPendingHostKey()` cleared the verdict without transitioning the connection state from `Failed` to `Disconnected`.
+- **Fix**: Cleared `_pendingHostKeys.value - serverId` on `disconnect()` and explicitly transitioned connection state to `Disconnected` on `rejectPendingHostKey()`.
+
+### Bug 80: CommandGuard Crash on Local Workspaces & LOCAL_SERVER_ID NotFound Exception
+- **Severity**: HIGH (Command Safety & Local Phone Terminal/Workspace Execution Refusal)
+- **File**: [`CommandGuard.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/command/CommandGuard.kt)
+- **Root Cause**: `assess()` and `authorize()` queried `serverRepository.get(serverId)`. For local workspaces, terminal sessions, or virtual repositories (`LOCAL_SERVER_ID`, `"device"`, `"github"`, `"vmhub"`, or blank), `serverRepository.get()` failed with `VmError.NotFound("Server not found")`, blocking command assessment and authorization.
+- **Fix**: Implemented `resolveServer(serverId)` providing a synthetic `Server` representing the local device, enabling uniform command safety assessment without database lookups for non-SSH workspaces.
+
+### Bug 81: GoogleDriveClient Binary-Safe Download & Query Parameter Handling
+- **Severity**: HIGH (Binary File Corruption & Cloud Archive Integrity)
+- **File**: [`GoogleDriveClient.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/drive/GoogleDriveClient.kt)
+- **Root Cause**: `downloadFile()` decoded HTTP response bodies as UTF-8 strings (`VmResult<String>`), causing binary project archives (`.tar.gz`, `.zip`) and APKs to be permanently corrupted by replacement characters (`\uFFFD`).
+- **Fix**: Added binary-safe streaming download `downloadFileTo(accessToken, fileId, destination)` leveraging `httpClient.download` to write chunks directly to disk via atomic temporary files.
+
+### Bug 82: ConnectorsViewModel Indefinite Lockup on Drive Backup & Hub Sync Failures
+- **Severity**: MEDIUM (UI Locking & Infinite Spinners on Network Drops)
+- **File**: [`ConnectorsViewModel.kt`](file:///d:/Dev/x-codes/feature/connectors/src/main/kotlin/digital/vmstudio/code/feature/connectors/ConnectorsViewModel.kt)
+- **Root Cause**: `syncUniversalHubProjects()`, `testGoogleSheets()`, and `backupProjectToDrive()` mutated `isSyncingHub`, `isTestingSheet`, and `isBackingUpDrive` to `true` without `try ... finally` blocks. Any unhandled exception or coroutine cancellation locked these flags in `true` indefinitely.
+- **Fix**: Enclosed all three asynchronous routines in `try ... catch ... finally` blocks, ensuring flags always reset cleanly to `false`.
+
+### Bug 83: FileSecureCredentialStore Non-Transactional Deletion File & Index Desynchronization
+- **Severity**: HIGH (Storage Desynchronization & Security Inconsistency)
+- **File**: [`FileSecureCredentialStore.kt`](file:///d:/Dev/x-codes/core/security/src/main/kotlin/digital/vmstudio/code/core/security/store/FileSecureCredentialStore.kt)
+- **Root Cause**: `delete(id)` deleted the encrypted ciphertext file before writing the updated index. If index persistence failed, the secret file was deleted while the index still referenced it, causing subsequent reads to fail with `FileNotFoundException`. Furthermore, calling `delete` on an already-deleted or absent ID attempted to write an unchanged index to disk.
+- **Fix**: Made `delete(id)` idempotent when `id !in index`, and added transactional rollback restoring secret bytes if index persistence fails.
+
+### Bug 84: AndroidKeystoreCrypto destroyMasterKey hardwareBacked Stale State
+- **Severity**: LOW (Keystore Cryptographic State Inaccuracy)
+- **File**: [`KeystoreCrypto.kt`](file:///d:/Dev/x-codes/core/security/src/main/kotlin/digital/vmstudio/code/core/security/crypto/KeystoreCrypto.kt)
+- **Root Cause**: `destroyMasterKey()` removed the master key entry from Android Keystore but failed to reset the instance variable `hardwareBacked = false`, causing `isHardwareBacked()` to report stale hardware state until next application cold restart.
+- **Fix**: Explicitly set `hardwareBacked = false` in `destroyMasterKey()`.
+
+### Bug 85: OmniRouteAgentLoop Google Sheets Tool Missing Authentication & Missing Implementation
+- **Severity**: HIGH (Agentic Tool Execution Failure & Stub Implementation)
+- **File**: [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Root Cause**: `googleSheetRead` invoked `webFetcher.fetch(url)` without authentication headers, failing on private spreadsheets with HTTP 401/403. `googleSheetAppend` was a dummy stub returning a fake formatted string without appending anything to Google Sheets API v4.
+- **Fix**: Added OAuth token and API key support in `googleSheetRead` using `httpClient`, and fully implemented `googleSheetAppend` dispatching structured JSON row data to `values.append` with `USER_ENTERED` input option.
+
+### Bug 86: LocalFileSystemDelegate Silent Character Replacement Corruption on Binary & Non-UTF-8 Files
+- **Severity**: HIGH (Silent Data Corruption on Local & Android SAF Storage)
+- **File**: [`LocalFileSystemDelegate.kt`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/LocalFileSystemDelegate.kt)
+- **Root Cause**: `readText()` on local storage and Android Storage Access Framework (SAF) used standard `bytes.decodeToString()`, silently converting non-UTF-8 bytes to replacement characters (`\uFFFD`) and permitting binary files with null bytes to be loaded into the editor. Saving back destroyed the original binary or legacy-encoded files.
+- **Fix**: Replaced loose decoding with `decodeTextStrictly(bytes)`, detecting binary null bytes and reporting character coding errors to prevent data corruption.
+
+### Bug 87: GitParsers parseStatus Misclassifies Unmerged Conflicts AA and DD as Normal Additions/Deletions
+- **Severity**: HIGH (Git Conflict Resolution Inaccuracy)
+- **Files**: [`GitParsers.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitParsers.kt), [`GitParsersTest.kt`](file:///d:/Dev/x-codes/core/git/src/test/kotlin/digital/vmstudio/code/core/git/GitParsersTest.kt)
+- **Root Cause**: Git porcelain v1 unmerged states `AA` (both added) and `DD` (both deleted) do not contain character 'U'. `parseStatus` classified `AA` as simultaneously staged ADDED and unstaged ADDED, and `DD` as staged DELETED and unstaged DELETED, hiding merge conflicts from the user. Also, branch was not extracted from the `##` header if the caller passed `HEAD` or blank.
+- **Fix**: Added conflict detection for unmerged states `AA`, `DD`, `UU`, `AU`, `UD`, `UA`, `DU` as `GitFileStatus.CONFLICTED`, and extracted branch name fallback from `##` status header.
+
+### Bug 88: ProjectCreateViewModel Frozen Saving State on Clone or Setup Exceptions
+- **Severity**: MEDIUM (UI Freeze on Project Creation Failure)
+- **File**: [`ProjectCreateViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectCreateViewModel.kt)
+- **Root Cause**: `executeProjectCreation(serverId)` set `isSaving = true` but lacked a `try ... finally` block around cloning, directory creation, setup execution, and database insertion. Any unhandled exception or coroutine cancellation permanently locked the "Create Workspace" button in a spinning state.
+- **Fix**: Wrapped `executeProjectCreation(serverId)` in `try ... catch ... finally`, guaranteeing `isSaving = false` under all failure scenarios.
+
 ### UI Enhancement: Smart Auto-Hiding Headers & Fluid Full-Screen Antigravity Chat
 - **Files**: [`AgentChatScreen.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatScreen.kt), [`ChatTopBar.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/ChatTopBar.kt)
 - **Enhancement**:

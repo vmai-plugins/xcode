@@ -97,6 +97,7 @@ class AndroidKeystoreCrypto @Inject constructor() : KeystoreCrypto {
 
     override fun destroyMasterKey(): VmResult<Unit> = vmCatching(::mapCryptoError) {
         if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
+        hardwareBacked = false
         VmLog.w(LogCategory.SECURITY, TAG, "Master key destroyed; stored secrets are now unreadable")
     }
 

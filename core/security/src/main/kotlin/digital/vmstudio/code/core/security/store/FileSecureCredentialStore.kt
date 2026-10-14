@@ -142,8 +142,14 @@ class FileSecureCredentialStore @Inject constructor(
     override suspend fun delete(id: String): VmResult<Unit> = withContext(ioDispatcher) {
         mutex.withLock {
             loadIndexLocked().flatMap { index ->
+                if (id !in index) {
+                    val orphan = secretFileOrNull(id)
+                    if (orphan?.exists() == true) orphan.delete()
+                    return@flatMap VmResult.Success(Unit)
+                }
                 val file = secretFileOrNull(id)
                     ?: return@flatMap VmResult.Failure(rejectedId())
+                val backupBytes = if (file.exists()) runCatching { file.readBytes() }.getOrNull() else null
                 if (file.exists() && !file.delete()) {
                     return@flatMap VmResult.Failure(
                         VmError.Storage(
@@ -154,7 +160,13 @@ class FileSecureCredentialStore @Inject constructor(
                     )
                 }
                 val updated = index - id
-                persistIndexLocked(updated).map { }
+                val persistResult = persistIndexLocked(updated)
+                if (persistResult is VmResult.Failure) {
+                    backupBytes?.let { bytes -> runCatching { file.writeBytes(bytes) } }
+                    persistResult.map { }
+                } else {
+                    VmResult.Success(Unit)
+                }
             }
         }
     }

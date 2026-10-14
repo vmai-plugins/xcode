@@ -31,6 +31,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -545,11 +549,26 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
         val range = argument(call.argumentsJson, "range")
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
+        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token")
+        val apiKey = argument(call.argumentsJson, "api_key")
         val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
-        val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange"
-        return when (val result = webFetcher.fetch(url)) {
+        val url = if (!apiKey.isNullOrBlank()) {
+            "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange?key=$apiKey"
+        } else {
+            "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange"
+        }
+        val requestBuilder = Request.Builder().url(url).get()
+        if (!token.isNullOrBlank()) {
+            requestBuilder.addHeader("Authorization", "Bearer $token")
+        }
+        return when (val result = httpClient.execute(requestBuilder.build())) {
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
-            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Failure -> {
+                when (val fetchResult = webFetcher.fetch(url)) {
+                    is VmResult.Success -> ToolOutcome(fetchResult.value, isError = false)
+                    is VmResult.Failure -> ToolOutcome("Failed to read Google Sheet: ${result.error.summaryWithReason()}", isError = true)
+                }
+            }
         }
     }
 
@@ -560,10 +579,40 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
         val values = argument(call.argumentsJson, "values")
             ?: return ToolOutcome("Missing required argument \"values\".", isError = true)
-        return ToolOutcome(
-            output = "Appended row to Google Sheet $spreadsheetId at $range with values: $values",
-            isError = false,
-        )
+        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token")
+        if (token.isNullOrBlank()) {
+            return ToolOutcome(
+                output = "Google Sheets append requires an OAuth 'token' or 'access_token' in tool arguments.",
+                isError = true,
+            )
+        }
+        val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
+        val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange:append?valueInputOption=USER_ENTERED"
+        val rowsArray = try {
+            val element = json.parseToJsonElement(values)
+            if (element is JsonArray) {
+                if (element.firstOrNull() is JsonArray) element else buildJsonArray { add(element) }
+            } else {
+                buildJsonArray { add(buildJsonArray { add(values) }) }
+            }
+        } catch (_: Exception) {
+            val items = values.split(",").map { it.trim() }
+            buildJsonArray { add(buildJsonArray { items.forEach { add(it) } }) }
+        }
+        val bodyObj = buildJsonObject {
+            put("range", range)
+            put("majorDimension", "ROWS")
+            put("values", rowsArray)
+        }
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $token")
+            .post(bodyObj.toString().toRequestBody("application/json; charset=UTF-8".toMediaType()))
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome("Appended row(s) to Google Sheet $spreadsheetId: ${result.value}", isError = false)
+            is VmResult.Failure -> ToolOutcome("Failed to append to Google Sheet: ${result.error.summaryWithReason()}", isError = true)
+        }
     }
 
     private suspend fun readFile(
