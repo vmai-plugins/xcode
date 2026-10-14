@@ -699,6 +699,78 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: `executeProjectCreation(serverId)` set `isSaving = true` but lacked a `try ... finally` block around cloning, directory creation, setup execution, and database insertion. Any unhandled exception or coroutine cancellation permanently locked the "Create Workspace" button in a spinning state.
 - **Fix**: Wrapped `executeProjectCreation(serverId)` in `try ... catch ... finally`, guaranteeing `isSaving = false` under all failure scenarios.
 
+### Bug 89: Multi-Connection Foreign Key Enforcement Failure in WAL Mode
+- **Severity**: HIGH (SQLite Foreign Key Constraint Bypassing & Cascade Deletion Failures)
+- **File**: [`DatabaseModule.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/di/DatabaseModule.kt)
+- **Root Cause**: `PRAGMA foreign_keys = ON` was called once inside `RoomDatabase.Callback.onOpen()`. Under SQLite WAL mode, pooled reader connections do not execute `onOpen()`, silently running with foreign keys disabled.
+- **Fix**: Replaced single-connection `execSQL("PRAGMA foreign_keys = ON")` with `db.setForeignKeyConstraintsEnabled(true)` ensuring foreign key constraints and cascade deletions apply across all pooled connections.
+
+### Bug 90: Global Project Instructions Permanently Unreachable in Observe Query
+- **Severity**: MEDIUM (Workspace Rule Ignored & Global Instruction Shadowing)
+- **File**: [`ProjectDao.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/dao/ProjectDao.kt)
+- **Root Cause**: `ProjectInstructionEntity` allows `projectId: String?` (null for global workspace instructions). However, `ProjectInstructionDao.observeForProject()` strictly filtered `WHERE projectId = :projectId`. In SQL, `NULL = :projectId` is false, making all global instructions permanently invisible to project workflows.
+- **Fix**: Updated query to `WHERE projectId = :projectId OR projectId IS NULL ORDER BY scope ASC`.
+
+### Bug 91: Non-Atomic Multi-DAO Startup Reconciliation
+- **Severity**: MEDIUM (Startup State Inconsistency & Zombie Running Tasks)
+- **File**: [`StartupReconciler.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/StartupReconciler.kt)
+- **Root Cause**: `StartupReconciler.reconcile()` ran updates across 4 separate DAOs (`messageDao`, `toolExecutionDao`, `agentTaskDao`, `transferDao`) sequentially without an enclosing transaction. Process death or unhandled database errors left tasks `RUNNING` while associated messages were marked `FAILED`.
+- **Fix**: Injected `VmDatabase` and wrapped all DAO reconciliation routines inside `database.withTransaction { ... }`.
+
+### Bug 92: Duplicate & Unchecked Autocompact Flags in Claude Code Command Builder
+- **Severity**: HIGH (CLI Invocation Rejection on Out-of-Range Preferences)
+- **File**: [`ClaudeCodeCommandBuilder.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/claudecode/ClaudeCodeCommandBuilder.kt)
+- **Root Cause**: Appended `--auto-compact-tokens` unconditionally without boundary checks, followed by `--autocompact` with range validation. When set, both conflicting flags were passed, and out-of-range values caused the Claude Code CLI to terminate with an argument error.
+- **Fix**: Removed the unvalidated duplicate `--auto-compact-tokens` flag and retained the validated `--autocompact` argument.
+
+### Bug 93: NullPointerException in DefaultSshConnectionManager Pre-Connect KeepAlive
+- **Severity**: LOW (Spurious Exception Logging & Premature KeepAlive Setup)
+- **File**: [`DefaultSshConnectionManager.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/connection/DefaultSshConnectionManager.kt)
+- **Root Cause**: In `buildClient()`, `.also { configureKeepAlive(it, server) }` attempted to access `client.connection.keepAlive` before `client.connect()` was invoked. Since `client.connection` is null before connection, this threw a NullPointerException on every client build.
+- **Fix**: Removed the pre-connect `configureKeepAlive` call from `buildClient`, relying solely on the post-connection invocation.
+
+### Bug 94: Save Button in Unsaved Changes Dialog Fails to Navigate Back
+- **Severity**: MEDIUM (Editor Exit Trap)
+- **Files**: [`EditorScreen.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorScreen.kt), [`EditorViewModel.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: When users tapped "Save" in the "Save your changes before leaving?" confirmation dialog, `viewModel.save()` was triggered without `onNavigateBack()`. The dialog dismissed but the user remained trapped in the editor.
+- **Fix**: Added `onSuccess: (() -> Unit)? = null` to `EditorViewModel.save()` and passed `onSuccess = onNavigateBack` from the confirmation dialog.
+
+### Bug 95: NavigateUp Directory Traversal Broken by Historical Back Stack
+- **Severity**: MEDIUM (Filesystem Navigation Hierarchy Disruption)
+- **File**: [`FilesViewModel.kt`](file:///d:/Dev/x-codes/feature/files/src/main/kotlin/digital/vmstudio/code/feature/files/FilesViewModel.kt)
+- **Root Cause**: `navigateUp()` checked `history.removeLastOrNull()` before `RemotePath.parent()`. Jumps to deep directories caused tapping "Up" to jump backward in navigation history rather than ascending the directory hierarchy.
+- **Fix**: Prioritized ascending to `RemotePath.parent(path)` before falling back to browser history.
+
+### Bug 96: Terminal Scrollback History Pollution from Full-Screen Applications
+- **Severity**: MEDIUM (Terminal History Clutter from vim/htop)
+- **Files**: [`TerminalBuffer.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/emulator/TerminalBuffer.kt), [`TerminalEmulator.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/emulator/TerminalEmulator.kt)
+- **Root Cause**: In `TerminalBuffer.scrollUp()`, any full-screen scroll (`top == 0 && bottom == rows - 1`) pushed rows into scrollback history unconditionally. Full-screen applications (`vim`, `nano`, `htop`, `less`) scrolling in the alternate screen polluted the main terminal scrollback with hundreds of lines of redraw garbage.
+- **Fix**: Added `retainScrollback` parameter to `scrollUp()`, passing `!alternateScreenActive` so alternate screen scrolls are never dumped into scrollback history.
+
+### Bug 97: ANSI CSI Scroll Sequences Ignore DECSTBM Margins & Erase Color
+- **Severity**: MEDIUM (Split-Screen Terminal Formatting & Background Color Erase Corruption)
+- **Files**: [`AnsiParser.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/emulator/AnsiParser.kt), [`TerminalEmulator.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/emulator/TerminalEmulator.kt)
+- **Root Cause**: In `AnsiParser`, CSI S (Scroll Up) and CSI T (Scroll Down) hardcoded `0` and `rows - 1`, ignoring active DECSTBM scroll margins (`scrollTop`/`scrollBottom`). Furthermore, new lines were cleared with `TerminalStyle.DEFAULT` instead of active `emulator.style` (violating BCE).
+- **Fix**: Added `emulator.scrollUp()` and `scrollDown()` honoring margins, BCE rendition styles, and alternate screen status, and delegated CSI S/T to them.
+
+### Bug 98: Silent Text Loss in Non-Streaming Multi-Modal Turns
+- **Severity**: HIGH (Lost AI Explanations in Non-Streaming & Fallback Turns)
+- **Files**: [`OmniRouteToolCodec.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteToolCodec.kt), [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Root Cause**: `OmniRouteTurn.ToolCalls` lacked a `text` field, and `OmniRouteAgentLoop.nextTurn()` returned `""` whenever non-streaming responses carried tool calls. Any explanatory text produced by the model alongside tool calls was discarded and lost from history.
+- **Fix**: Added `text: String?` to `OmniRouteTurn.ToolCalls`, populated it in OpenAI and Anthropic codecs, and returned `parsed.text.orEmpty()` in `nextTurn()`.
+
+### Bug 99: Concurrent Socket Channel Output Corruption in TerminalSession
+- **Severity**: HIGH (Interleaved Terminal Keystroke Packets & SSH Connection Drops)
+- **File**: [`TerminalSession.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/session/TerminalSession.kt)
+- **Root Cause**: `TerminalSession.send()` launched unconfined coroutines on multi-threaded `readerDispatcher` calling `channel.output.write()`. Rapid typing or pasted scripts resulted in concurrent unsynchronized writes, corrupting SSH channel packets.
+- **Fix**: Synchronized all socket channel writes using a dedicated `writeMutex`.
+
+### Bug 100: Terminal CommandGuard Bypass via Arrow Keys
+- **Severity**: CRITICAL (Command Safety Bypass in Terminal Emulation)
+- **File**: [`TerminalViewModel.kt`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalViewModel.kt)
+- **Root Cause**: Navigating with arrow keys reset `pendingLine` to empty. When Enter was pressed, `line.isEmpty()` bypassed `commandGuard.authorize()`, executing potentially destructive commands (`rm -rf /`) unchecked.
+- **Fix**: Added screen buffer row inspection fallback in `submitLineInternal()` to extract and authorize the command on the active cursor line when `pendingLine` is empty.
+
 ### UI Enhancement: Smart Auto-Hiding Headers & Fluid Full-Screen Antigravity Chat
 - **Files**: [`AgentChatScreen.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatScreen.kt), [`ChatTopBar.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/ChatTopBar.kt)
 - **Enhancement**:

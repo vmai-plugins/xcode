@@ -397,8 +397,15 @@ class OmniRouteAgentLoop @Inject constructor(
         val request = buildRequest(target, workingDirectory, allowedTools, history, stream = false)
         return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
             is VmResult.Failure -> result
-            is VmResult.Success ->
-                VmResult.Success(OmniRouteToolCodec.parseResponse(target.dialect, result.value) to "")
+            is VmResult.Success -> {
+                val parsed = OmniRouteToolCodec.parseResponse(target.dialect, result.value)
+                val text = when (parsed) {
+                    is OmniRouteTurn.Text -> parsed.text
+                    is OmniRouteTurn.ToolCalls -> parsed.text.orEmpty()
+                    else -> ""
+                }
+                VmResult.Success(parsed to text)
+            }
         }
     }
 

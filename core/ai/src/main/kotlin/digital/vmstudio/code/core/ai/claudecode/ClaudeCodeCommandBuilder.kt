@@ -63,11 +63,6 @@ internal object ClaudeCodeCommandBuilder {
             parts += shellQuote(it)
         }
 
-        config.autoCompactTokens?.let {
-            parts += "--auto-compact-tokens"
-            parts += it.toString()
-        }
-
         config.autoCompactTokens?.takeIf { it in AUTOCOMPACT_MIN..AUTOCOMPACT_MAX }?.let {
             // The CLI accepts 100k-1M; anything outside is rejected, so an
             // out-of-range preference is dropped rather than failing the run.

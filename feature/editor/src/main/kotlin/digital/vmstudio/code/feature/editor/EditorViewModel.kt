@@ -259,7 +259,7 @@ class EditorViewModel @Inject constructor(
     }
 
     /** [overwrite] saves even though the file changed on the server since it was loaded. */
-    fun save(overwrite: Boolean = false) {
+    fun save(overwrite: Boolean = false, onSuccess: (() -> Unit)? = null) {
         val state = editor ?: return
         viewModelScope.launch {
             isSaving.value = true
@@ -303,6 +303,7 @@ class EditorViewModel @Inject constructor(
                                         serverId = serverId,
                                     )
                                 }
+                                onSuccess?.invoke()
                                 return@launch
                             }
                             is VmResult.Failure -> {
@@ -331,6 +332,7 @@ class EditorViewModel @Inject constructor(
                                 serverId = serverId,
                             )
                         }
+                        onSuccess?.invoke()
                     }
                     is VmResult.Failure -> {
                         saveError.value = result.error

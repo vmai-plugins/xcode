@@ -26,8 +26,11 @@ import javax.inject.Singleton
  * Transfers are the exception: they carry a resume offset, so they are re-queued
  * rather than failed.
  */
+import androidx.room.withTransaction
+
 @Singleton
 class StartupReconciler @Inject constructor(
+    private val database: VmDatabase,
     private val messageDao: MessageDao,
     private val toolExecutionDao: ToolExecutionDao,
     private val agentTaskDao: AgentTaskDao,
@@ -47,10 +50,12 @@ class StartupReconciler @Inject constructor(
                 )
             },
         ) {
-            messageDao.failInterrupted()
-            toolExecutionDao.cancelInterrupted()
-            agentTaskDao.reconcileInterrupted(System.currentTimeMillis())
-            transferDao.requeueInterrupted()
+            database.withTransaction {
+                messageDao.failInterrupted()
+                toolExecutionDao.cancelInterrupted()
+                agentTaskDao.reconcileInterrupted(System.currentTimeMillis())
+                transferDao.requeueInterrupted()
+            }
             VmLog.i(LogCategory.DATABASE, TAG, "Reconciled interrupted work from previous session")
         }
     }

@@ -240,12 +240,24 @@ class TerminalViewModel @Inject constructor(
     private suspend fun submitLineInternal(): Boolean {
         val session = activeSession() ?: return false
         val server = session.serverId
-        val line = pendingLine.toString().trim()
+        val rawLine = pendingLine.toString().trim()
         pendingLine.setLength(0)
+
+        val screen = _uiState.value.screen
+        val line = if (rawLine.isNotEmpty()) {
+            rawLine
+        } else if (!screen.alternateScreenActive && screen.cursorRow in screen.lines.indices) {
+            val row = screen.lines[screen.cursorRow]
+            val rowText = String(row.chars, 0, row.length).trim()
+            val promptIndex = maxOf(rowText.lastIndexOf("$ "), rowText.lastIndexOf("# "), rowText.lastIndexOf("> "))
+            if (promptIndex >= 0) rowText.substring(promptIndex + 2).trim() else rowText
+        } else {
+            ""
+        }
 
         val checkable = server.isNotBlank() &&
             line.isNotEmpty() &&
-            !_uiState.value.screen.alternateScreenActive
+            !screen.alternateScreenActive
 
         if (!checkable) {
             session.sendKey(TerminalKey.ENTER)

@@ -116,10 +116,10 @@ class TerminalBuffer(
      * Scrolls the region `[top, bottom]` up by [count], pushing lines that leave
      * the top of a full-screen region into scrollback.
      */
-    fun scrollUp(top: Int, bottom: Int, count: Int, style: Long) {
+    fun scrollUp(top: Int, bottom: Int, count: Int, style: Long, retainScrollback: Boolean = true) {
         if (count <= 0 || top !in 0 until rows || bottom !in 0 until rows || top > bottom) return
         val effective = count.coerceAtMost(bottom - top + 1)
-        val retainToScrollback = top == 0 && bottom == rows - 1
+        val retainToScrollback = retainScrollback && top == 0 && bottom == rows - 1
 
         repeat(effective) {
             val removed = screen.removeAt(top)

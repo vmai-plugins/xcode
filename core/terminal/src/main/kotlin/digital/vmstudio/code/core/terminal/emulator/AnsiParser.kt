@@ -204,8 +204,8 @@ internal class AnsiParser(private val emulator: TerminalEmulator) {
             'P' -> emulator.deleteCharacters(param(0, 1))
             'X' -> emulator.eraseCharacters(param(0, 1))
             '@' -> emulator.insertCharacters(param(0, 1))
-            'S' -> emulator.buffer.scrollUp(0, emulator.rows - 1, param(0, 1), TerminalStyle.DEFAULT)
-            'T' -> emulator.buffer.scrollDown(0, emulator.rows - 1, param(0, 1), TerminalStyle.DEFAULT)
+            'S' -> emulator.scrollUp(param(0, 1))
+            'T' -> emulator.scrollDown(param(0, 1))
             'm' -> emulator.applyGraphicRendition(
                 if (params.isEmpty()) IntArray(0) else params.map { if (it == NO_PARAM) 0 else it }.toIntArray(),
             )

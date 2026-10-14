@@ -160,7 +160,7 @@ class TerminalEmulator(
     internal fun lineFeed() {
         wrapPending = false
         if (cursorRow == scrollBottom) {
-            buffer.scrollUp(scrollTop, scrollBottom, 1, style)
+            buffer.scrollUp(scrollTop, scrollBottom, 1, style, retainScrollback = !alternateScreenActive)
         } else if (cursorRow < rows - 1) {
             cursorRow++
         }
@@ -237,6 +237,14 @@ class TerminalEmulator(
         scrollBottom = newBottom
         // DECSTBM homes the cursor.
         moveCursor(0, 0)
+    }
+
+    internal fun scrollUp(count: Int) {
+        buffer.scrollUp(scrollTop, scrollBottom, count.coerceAtLeast(1), style, retainScrollback = !alternateScreenActive)
+    }
+
+    internal fun scrollDown(count: Int) {
+        buffer.scrollDown(scrollTop, scrollBottom, count.coerceAtLeast(1), style)
     }
 
     // --- erasing ------------------------------------------------------------------

@@ -94,7 +94,7 @@ fun EditorScreen(
                     enabled = state.canSave,
                     onClick = {
                         confirmDiscard = false
-                        viewModel.save()
+                        viewModel.save(onSuccess = onNavigateBack)
                     },
                 ) { Text("Save") }
             },

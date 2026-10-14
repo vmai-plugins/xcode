@@ -107,14 +107,17 @@ class FilesViewModel @Inject constructor(
 
     /** Returns false when there is nowhere left to go, so the caller can pop the screen. */
     fun navigateUp(): Boolean {
+        val parent = RemotePath.parent(_uiState.value.path)
+        if (parent != null && parent != _uiState.value.path) {
+            navigateTo(parent, recordHistory = false)
+            return true
+        }
         val previous = history.removeLastOrNull()
         if (previous != null) {
             navigateTo(previous, recordHistory = false)
             return true
         }
-        val parent = RemotePath.parent(_uiState.value.path) ?: return false
-        navigateTo(parent, recordHistory = false)
-        return true
+        return false
     }
 
     /**

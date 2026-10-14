@@ -75,7 +75,7 @@ interface ProjectCommandDao {
 @Dao
 interface ProjectInstructionDao {
 
-    @Query("SELECT * FROM project_instruction WHERE projectId = :projectId ORDER BY scope ASC")
+    @Query("SELECT * FROM project_instruction WHERE projectId = :projectId OR projectId IS NULL ORDER BY scope ASC")
     fun observeForProject(projectId: String): Flow<List<ProjectInstructionEntity>>
 
     @Upsert

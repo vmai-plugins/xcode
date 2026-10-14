@@ -240,7 +240,7 @@ class DefaultSshConnectionManager @Inject constructor(
             } else {
                 0
             }
-        }.also { configureKeepAlive(it, server) }
+        }
     }
 
     /**

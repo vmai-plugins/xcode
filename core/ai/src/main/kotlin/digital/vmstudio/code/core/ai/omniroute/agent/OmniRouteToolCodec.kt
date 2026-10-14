@@ -42,6 +42,7 @@ sealed interface OmniRouteTurn {
         val calls: List<OmniRouteToolCall>,
         val usage: Pair<Long, Long>?,
         val truncated: Boolean = false,
+        val text: String? = null,
     ) : OmniRouteTurn
 
     data class ParseFailed(val reason: String) : OmniRouteTurn
@@ -218,9 +219,9 @@ object OmniRouteToolCodec {
         }.orEmpty()
 
         val truncated = isLengthStop(choice.stringOrNull("finish_reason"))
-        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated)
-
         val text = message.stringOrNull("content").orEmpty()
+        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated, text = text.takeIf { it.isNotBlank() })
+
         if (text.isBlank()) {
             return OmniRouteTurn.ParseFailed("The gateway response carried neither text nor tool calls.")
         }
@@ -373,11 +374,12 @@ object OmniRouteToolCodec {
         }
 
         val truncated = isLengthStop(root.stringOrNull("stop_reason"))
-        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated)
-        if (text.isBlank()) {
+        val contentText = text.toString()
+        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated, text = contentText.takeIf { it.isNotBlank() })
+        if (contentText.isBlank()) {
             return OmniRouteTurn.ParseFailed("The gateway response carried neither text nor tool calls.")
         }
-        return OmniRouteTurn.Text(text.toString(), usage, truncated)
+        return OmniRouteTurn.Text(contentText, usage, truncated)
     }
 
     // --- shared ----------------------------------------------------------------------

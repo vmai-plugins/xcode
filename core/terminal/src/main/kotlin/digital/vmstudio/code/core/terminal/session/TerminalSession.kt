@@ -107,6 +107,8 @@ class TerminalSession internal constructor(
     private val _state = MutableStateFlow<TerminalSessionState>(TerminalSessionState.Starting)
     val state: StateFlow<TerminalSessionState> = _state.asStateFlow()
 
+    private val writeMutex = kotlinx.coroutines.sync.Mutex()
+
     private val _screen = MutableStateFlow(TerminalScreen.EMPTY)
     val screen: StateFlow<TerminalScreen> = _screen.asStateFlow()
 
@@ -189,13 +191,18 @@ class TerminalSession internal constructor(
         // is not, and users expect typing to return them to the prompt.
         _scrollOffset.value = 0
         scope.launch(readerDispatcher) {
-            runCatching {
-                runInterruptible {
-                    channel.output.write(text.toByteArray(Charsets.UTF_8))
-                    channel.output.flush()
+            writeMutex.lock()
+            try {
+                runCatching {
+                    runInterruptible {
+                        channel.output.write(text.toByteArray(Charsets.UTF_8))
+                        channel.output.flush()
+                    }
+                }.onFailure {
+                    VmLog.w(LogCategory.TERMINAL, TAG, "Write to session $id failed", it)
                 }
-            }.onFailure {
-                VmLog.w(LogCategory.TERMINAL, TAG, "Write to session $id failed", it)
+            } finally {
+                writeMutex.unlock()
             }
         }
     }
