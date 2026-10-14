@@ -34,86 +34,87 @@ else
 fi
 
 echo "==> [2/2] Refreshing Apps Hub index at https://apps.vmstudio.digital/..."
-ssh "$DEPLOY_HOST" bash -c "'
-python3 - << \"PYEOF\"
+
+UPDATE_SCRIPT='
+python3 - << "PYEOF"
 import os, re, glob
 
-apps_dir = \"/home/vmstudio.digital/public_html/apps\"
-index_file = os.path.join(apps_dir, \"index.html\")
+apps_dir = "/home/vmstudio-apps/htdocs/apps.vmstudio.digital"
+index_file = os.path.join(apps_dir, "index.html")
 
 apps = [
     {
-        \"slug\": \"x-codes\",
-        \"name\": \"Project X-Codes\",
-        \"desc\": \"Mobile AI Cloud IDE with live SFTP server file manager, persistent chat memory, and direct OmniRoute AI integration.\",
-        \"apk\": \"x-codes/xcodes-latest.apk\",
-        \"badge\": \"Active Build\",
-        \"version\": \"v3.18\"
+        "slug": "x-codes",
+        "name": "Project X-Codes",
+        "desc": "Mobile AI Cloud IDE with live SFTP server file manager, persistent chat memory, and direct OmniRoute AI integration.",
+        "apk": "x-codes/xcodes-latest.apk",
+        "badge": "Active Build",
+        "version": "v3.18"
     },
     {
-        \"slug\": \"mynearby-shop\",
-        \"name\": \"MyNearby Shop\",
-        \"desc\": \"Multi-vendor local marketplace & ecommerce mobile app for customers.\",
-        \"apk\": \"mynearby-shop/mynearby-shop-latest.apk\",
-        \"badge\": \"Production\",
-        \"version\": \"v2.4\"
+        "slug": "mynearby-shop",
+        "name": "MyNearby Shop",
+        "desc": "Multi-vendor local marketplace & ecommerce mobile app for customers.",
+        "apk": "mynearby-shop/mynearby-shop-latest.apk",
+        "badge": "Production",
+        "version": "v2.4"
     },
     {
-        \"slug\": \"mynearby-vendor\",
-        \"name\": \"MyNearby Vendor\",
-        \"desc\": \"Store management, real-time orders, catalog and inventory management for shop owners.\",
-        \"apk\": \"mynearby-vendor/mynearby-vendor-latest.apk\",
-        \"badge\": \"Production\",
-        \"version\": \"v2.1\"
+        "slug": "mynearby-vendor",
+        "name": "MyNearby Vendor",
+        "desc": "Store management, real-time orders, catalog and inventory management for shop owners.",
+        "apk": "mynearby-vendor/mynearby-vendor-latest.apk",
+        "badge": "Production",
+        "version": "v2.1"
     },
     {
-        \"slug\": \"mynearby-deliveryman\",
-        \"name\": \"MyNearby Delivery\",
-        \"desc\": \"Delivery partner mobile app with live GPS tracking and order route fulfillment.\",
-        \"apk\": \"mynearby-deliveryman/mynearby-deliveryman-latest.apk\",
-        \"badge\": \"Active\",
-        \"version\": \"v1.9\"
+        "slug": "mynearby-deliveryman",
+        "name": "MyNearby Delivery",
+        "desc": "Delivery partner mobile app with live GPS tracking and order route fulfillment.",
+        "apk": "mynearby-deliveryman/mynearby-deliveryman-latest.apk",
+        "badge": "Active",
+        "version": "v1.9"
     }
 ]
 
-cards_html = \"\"
+cards_html = ""
 for app in apps:
-    apk_rel_path = app[\"apk\"]
+    apk_rel_path = app["apk"]
     apk_full_path = os.path.join(apps_dir, apk_rel_path)
     if os.path.exists(apk_full_path):
         size_mb = os.path.getsize(apk_full_path) / (1024 * 1024)
-        btn_text = f\"Download APK ({size_mb:.1f} MB)\"
+        btn_text = f"Download APK ({size_mb:.1f} MB)"
     else:
-        btn_text = \"Download APK (Latest)\"
+        btn_text = "Download APK (Latest)"
 
-    cards_html += f\"\"\"
-    <div class=\"app-card\">
-      <div class=\"app-header\">
-        <div class=\"icon\">
-          <svg viewBox=\"0 0 24 24\"><path d=\"M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4zM14.5 4.2l-5 15.6 1.9.6 5-15.6-1.9-.6z\"/></svg>
+    cards_html += f"""
+    <div class="app-card">
+      <div class="app-header">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4zM14.5 4.2l-5 15.6 1.9.6 5-15.6-1.9-.6z"/></svg>
         </div>
         <div>
-          <div class=\"app-title\">{app['name']}</div>
-          <span style=\"font-size: 0.8rem; color: #10b981; font-weight: 600;\">● {app['badge']}</span>
+          <div class="app-title">{app["name"]}</div>
+          <span style="font-size: 0.8rem; color: #10b981; font-weight: 600;">● {app["badge"]}</span>
         </div>
       </div>
-      <p class=\"app-desc\">{app['desc']}</p>
-      <div class=\"app-footer\">
-        <a href=\"{app['apk']}\" download class=\"btn-dl\">{btn_text}</a>
-        <a href=\"./{app['slug']}/\" class=\"btn-details\">Details →</a>
+      <p class="app-desc">{app["desc"]}</p>
+      <div class="app-footer">
+        <a href="{app["apk"]}" download class="btn-dl">{btn_text}</a>
+        <a href="./{app["slug"]}/" class="btn-details">Details →</a>
       </div>
     </div>
-    \"\"\"
+    """
 
-html = f\"\"\"<!DOCTYPE html>
-<html lang=\"en\">
+html = f"""<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset=\"UTF-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VM Studio Apps Hub</title>
-  <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
-  <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\">
-  <link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap\" rel=\"stylesheet\">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {{
       --bg: #090d16;
@@ -206,23 +207,29 @@ html = f\"\"\"<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <div class=\"header\">
-    <div class=\"badge\">VM Studio Ecosystem</div>
+  <div class="header">
+    <div class="badge">VM Studio Ecosystem</div>
     <h1>Applications Hub</h1>
-    <p class=\"sub\">Central repository of software and mobile platforms developed by VM Studio.</p>
+    <p class="sub">Central repository of software and mobile platforms developed by VM Studio.</p>
   </div>
-  <div class=\"grid\">
+  <div class="grid">
     {cards_html}
   </div>
 </body>
-</html>\"\"\"
+</html>"""
 
-with open(index_file, \"w\") as f:
+os.makedirs(apps_dir, exist_ok=True)
+with open(index_file, "w") as f:
     f.write(html)
-chown_cmd = f\"chown -R vmstu1627:vmstu1627 {index_file} && chmod 644 {index_file}\"
-os.system(chown_cmd)
-print(\"Apps Hub updated successfully.\")
+os.chmod(index_file, 0o644)
+print("Apps Hub index updated successfully.")
 PYEOF
-'\"
+'
 
-echo \"===> ALL APKS ARE NOW LIVE AT: https://vmstudio.digital/apps/\"
+if [ -d "$LOCAL_APPS_DIR" ]; then
+    bash -c "$UPDATE_SCRIPT"
+else
+    ssh "$DEPLOY_HOST" bash -c "'$UPDATE_SCRIPT'"
+fi
+
+echo "===> ALL APKS ARE NOW LIVE AT: https://apps.vmstudio.digital/"
