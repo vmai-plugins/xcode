@@ -15,7 +15,7 @@ class RegexSyntaxHighlighter(
     private val lineCommentPrefix: String? = "//",
     private val blockCommentStart: String? = "/*",
     private val blockCommentEnd: String? = "*/",
-    private val numberPattern: Regex = Regex("""\b\d+(\.\d+)?([eE][+-]?\d+)?\b"""),
+    private val numberPattern: Regex = Regex("""\b(0[xX][0-9a-fA-F]+|0[bB][01]+|\d+(\.\d+)?([eE][+-]?\d+)?)[fFlL]?\b"""),
     private val functionCallPattern: Regex = Regex("""\b([A-Za-z_]\w*)\s*\("""),
     private val typePattern: Regex = Regex("""\b[A-Z][A-Za-z0-9_]*\b"""),
 ) : SyntaxHighlighter {
@@ -62,7 +62,7 @@ class RegexSyntaxHighlighter(
                 continue
             }
 
-            // Word (keyword, type, or plain)
+            // Word (keyword, type, function call, or plain)
             if (source[i].isLetter() || source[i] == '_') {
                 // Scan forward from i only: indexOfFirst without a start offset
                 // searches the whole source, returning an index *before* the
@@ -72,8 +72,16 @@ class RegexSyntaxHighlighter(
                     .firstOrNull { !source[it].isLetterOrDigit() && source[it] != '_' }
                     ?: source.length
                 val word = source.substring(i, wordEnd)
+                val isFunction = run {
+                    var next = wordEnd
+                    while (next < source.length && source[next].isWhitespace() && source[next] != '\n') {
+                        next++
+                    }
+                    next < source.length && source[next] == '('
+                }
                 val style = when {
                     word in keywords -> SpanStyle(color = scheme.keyword, fontWeight = FontWeight.Bold)
+                    isFunction && !typePattern.matches(word) -> SpanStyle(color = scheme.function)
                     typePattern.matches(word) -> SpanStyle(color = scheme.type)
                     else -> null
                 }
@@ -81,16 +89,6 @@ class RegexSyntaxHighlighter(
                     tokens += SyntaxToken(i, wordEnd, style)
                 }
                 i = wordEnd
-                continue
-            }
-
-            // Function call
-            val funcMatch = functionCallPattern.matchAt(source, i)
-            if (funcMatch != null && funcMatch.range.first == i) {
-                val nameStart = source.indexOf(funcMatch.groupValues[1], i)
-                val nameEnd = nameStart + funcMatch.groupValues[1].length
-                tokens += SyntaxToken(nameStart, nameEnd, SpanStyle(color = scheme.function))
-                i = nameEnd
                 continue
             }
 

@@ -17,16 +17,31 @@ import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+
 @Serializable
 data class SheetValueRange(
-    val range: String,
+    val range: String? = null,
     val majorDimension: String = "ROWS",
-    val values: List<List<String>> = emptyList(),
-)
+    val values: List<List<JsonElement>> = emptyList(),
+) {
+    val stringValues: List<List<String>>
+        get() = values.map { row ->
+            row.map { cell ->
+                if (cell is JsonPrimitive) {
+                    cell.contentOrNull ?: cell.toString()
+                } else {
+                    cell.toString()
+                }
+            }
+        }
+}
 
 @Serializable
 data class AppendValuesResponse(
-    val spreadsheetId: String,
+    val spreadsheetId: String? = null,
     val tableRange: String? = null,
     val updates: SheetUpdates? = null,
 )

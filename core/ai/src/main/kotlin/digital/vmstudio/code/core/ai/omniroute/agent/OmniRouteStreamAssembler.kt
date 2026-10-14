@@ -65,8 +65,7 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
         gatewayError?.let { return it }
         return when {
             calls.isNotEmpty() -> OmniRouteTurn.ToolCalls(calls, usage, lengthStop)
-            text.isNotEmpty() -> OmniRouteTurn.Text(text.toString(), usage, lengthStop)
-            sawAnything -> OmniRouteTurn.Text("", usage, lengthStop)
+            text.isNotBlank() -> OmniRouteTurn.Text(text.toString(), usage, lengthStop)
             else -> OmniRouteTurn.ParseFailed("The stream carried no model output.")
         }
     }

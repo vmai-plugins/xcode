@@ -270,25 +270,35 @@ class ProjectDetailViewModel @Inject constructor(
     fun downloadAndInstallApk(artifact: ApkArtifact) {
         val proj = project.value ?: return
         val srvId = proj.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+        val safeName = try {
+            safeApkDisplayName(artifact.name)
+        } catch (e: IllegalArgumentException) {
+            error.value = VmError.Validation(summary = "Invalid APK filename", reason = e.message)
+            return
+        }
         viewModelScope.launch {
             isDownloadingApk.value = true
-            notificationMessage.value = "Preparing ${artifact.name}..."
+            notificationMessage.value = "Preparing $safeName..."
             val downloadsDir = File(context.cacheDir, "downloads").apply { mkdirs() }
-            val localApkFile = File(downloadsDir, artifact.name)
+            val localApkFile = File(downloadsDir, safeName)
 
             if (proj.isRemote) {
                 notificationMessage.value = "Downloading APK from server..."
-                var downloadSuccess = false
+                var lastEvent: TransferEvent? = null
                 remoteFileSystem.download(srvId, artifact.path, localApkFile, resume = false)
                     .collect { event ->
+                        lastEvent = event
                         when (event) {
-                            is TransferEvent.Completed -> downloadSuccess = true
+                            is TransferEvent.Completed -> Unit
                             is TransferEvent.Failed -> error.value = event.error
                             else -> Unit
                         }
                     }
-                if (downloadSuccess && localApkFile.exists()) {
-                    notificationMessage.value = "Installing ${artifact.name}..."
+                val failure = apkTransferFailure(lastEvent)
+                if (failure != null) {
+                    error.value = failure
+                } else if (localApkFile.exists()) {
+                    notificationMessage.value = "Installing $safeName..."
                     val installResult = apkInstaller.install(localApkFile)
                     if (installResult is VmResult.Failure) {
                         error.value = installResult.error
@@ -299,7 +309,7 @@ class ProjectDetailViewModel @Inject constructor(
                 if (file.exists()) {
                     try {
                         file.copyTo(localApkFile, overwrite = true)
-                        notificationMessage.value = "Installing ${artifact.name}..."
+                        notificationMessage.value = "Installing $safeName..."
                         val installResult = apkInstaller.install(localApkFile)
                         if (installResult is VmResult.Failure) {
                             error.value = installResult.error
@@ -488,4 +498,21 @@ private data class GitCombinedState(
     val loading: Boolean,
     val error: VmError?,
 )
+
+internal fun safeApkDisplayName(name: String): String {
+    if (!name.lowercase().endsWith(".apk") || name.contains('/') || name.contains('\\') || name.contains("..")) {
+        throw IllegalArgumentException("Invalid APK filename: $name")
+    }
+    return name
+}
+
+internal fun apkTransferFailure(event: TransferEvent?): VmError? = when (event) {
+    is TransferEvent.Completed -> null
+    is TransferEvent.Failed -> event.error
+    else -> VmError.FileSystem(
+        summary = "Transfer did not complete successfully",
+        reason = "The APK download stream was interrupted before completion.",
+    )
+}
+
 

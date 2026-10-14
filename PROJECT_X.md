@@ -1,4 +1,4 @@
-﻿# PROJECT X: THE DEFINITIVE ARCHITECTURE, DEVELOPMENT & GAP SPECIFICATION
+# PROJECT X: THE DEFINITIVE ARCHITECTURE, DEVELOPMENT & GAP SPECIFICATION
 
 > **System**: X-Codes (Mobile Cloud IDE & Autonomous Agent for Android)  
 > **Repository**: `https://github.com/vmai-plugins/xcode.git`  
@@ -410,6 +410,55 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Files**: [DiffParser.kt:8, 26](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/DiffParser.kt), [GitParsers.kt:38](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitParsers.kt)
 - **Root Cause**: FILE_HEADER_OLD and FILE_HEADER_NEW in DiffParser required a/ or b/ with a mandatory /, failing to match diffs formatted without prefixes (diff.noprefix = true) for repo-root files. Furthermore, new file mode, deleted file mode, and rename from occur before --- / +++ in git diff format, but were checked after, making mode detection unreachable dead code. Additionally, porcelain status parser in GitParsers retained surrounding quotes for paths containing spaces.
 - **Fix**: Updated FILE_HEADER_OLD and FILE_HEADER_NEW to support optional prefixes and strip tab-separated metadata, tracked mode and rename headers from the git diff block, and stripped quotes and unescaped porcelain paths.
+
+### Bug 41: Zip Slip Path Traversal, Silent Download Failures, & Directory Flattening in GitHub Archive Unpacking
+- **Severity**: HIGH (Security & Project Creation Failure)
+- **Files**: [`ProjectCreateViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectCreateViewModel.kt), [`ProjectDetailViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt)
+- **Root Cause**: Unpacking downloaded zip archives during GitHub project import did not validate canonical child paths against destination directories, allowing arbitrary file overwrites via malicious zip slip traversal paths (`../../`). Furthermore, HTTP errors on archive downloads silently returned empty files instead of failing, and root folder stripping stripped all internal folder structure.
+- **Fix**: Added `safeZipEntryFile()`, `isTrustedGithubArchiveRedirect()`, safe filename sanitizers, and proper `VmResult.Failure` propagation on HTTP errors, ensuring path containment and directory structure preservation.
+
+### Bug 42: Editor Syntax Highlighter Suppressing All Function Calls & Corrupting Hex/Binary Numbers
+- **Severity**: MEDIUM (Editor Visual & Usability Bug)
+- **Files**: [`RegexSyntaxHighlighter.kt`](file:///d:/Dev/x-codes/core/editor/src/main/kotlin/digital/vmstudio/code/core/editor/RegexSyntaxHighlighter.kt), [`RegexSyntaxHighlighterTest.kt`](file:///d:/Dev/x-codes/core/editor/src/test/kotlin/digital/vmstudio/code/core/editor/RegexSyntaxHighlighterTest.kt)
+- **Root Cause**: Syntax highlighter regex for numbers matched `\b\d+\b`, which corrupted hexadecimal numbers (`0x1F` had only `0` highlighted while `x1F` was treated as an identifier) and binary numbers (`0b101`). Furthermore, function calls followed by parentheses were consumed as general identifiers before lookahead, leaving function calls uncolored.
+- **Fix**: Updated number regex to support hex (`0x...`), binary (`0b...`), and float suffixes. Implemented immediate function invocation detection during word boundary scanning.
+
+### Bug 43: Empty Stream / Ping Chunk Silently Terminating Agent with 0 Tokens & Suppressing Failover
+- **Severity**: HIGH (Agent Silent Early Termination / Empty Chat Screen)
+- **Files**: [`OmniRouteStreamAssembler.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteStreamAssembler.kt), [`OmniRouteToolCodec.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteToolCodec.kt), [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Root Cause**: When an SSE stream opened and received only ping/framing chunks without text deltas or tool calls, `sawAnything` became true and `finish()` returned `OmniRouteTurn.Text("", usage, lengthStop)`. In `OmniRouteAgentLoop`, this was treated as a complete response. The agent never retried non-streaming, never triggered fallback model failover, and immediately emitted `AgentEvent.Completed(durationMillis = 1000, inputTokens = 0, outputTokens = 0, isError = false)`. The UI rendered `[✔] 1s 0 tokens` with an empty transcript.
+- **Fix**: Modified `finish()` to return `OmniRouteTurn.ParseFailed("The stream carried no model output.")` when text is blank and tool calls are empty. Updated `OmniRouteToolCodec` for OpenAI and Anthropic to do the same. Added `ParseFailed` to `shouldFailover = true` in `OmniRouteAgentLoop` to force failover and non-streaming fallback, and guarded `OmniRouteTurn.Text` to emit `AgentEvent.Failed` if blank text is ever encountered.
+
+### Bug 44: GitParsers Porcelain Status Discards Original Path on Renames/Copies & Drops Commits with Empty Subjects
+- **Severity**: MEDIUM (Git Status & History Corrupted)
+- **Files**: [`GitParsers.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitParsers.kt)
+- **Root Cause**: Porcelain status lines with `R  old -> new` or `C  old -> new` parsed only `new` and left `originalPath` null, losing track of the file's original name. Source paths with quotes were also unhandled. In `parseLog`, commits with empty subjects or whitespace were discarded because `lines.size >= 7` check failed on trimmed blocks.
+- **Fix**: Captured and unquoted `rawOriginal`, populated `originalPath = originalPath` in `GitFileStatusEntry`, and adjusted `parseLog` to handle commits with empty subjects when `lines.size >= 6`.
+
+### Bug 45: GoogleSheetsClient SerializationException on Heterogeneous Spreadsheet Cells
+- **Severity**: MEDIUM (Google Sheets API Connector Failure)
+- **Files**: [`GoogleSheetsClient.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/sheets/GoogleSheetsClient.kt)
+- **Root Cause**: `SheetValueRange` typed `values` as `List<List<String>>`. Google Sheets API returns unquoted numbers (`123`), booleans (`true`), and nulls in cell arrays. `json.decodeFromString<SheetValueRange>` threw `SerializationException` whenever a spreadsheet contained non-string cells.
+- **Fix**: Changed `values` to `List<List<JsonElement>>` with dynamic `stringValues: List<List<String>>` accessor, and made response fields nullable.
+
+### Bug 46: SseDecoder Never Cleared Accumulated Event Data or Event Name Upon Dispatch
+- **Severity**: HIGH (SSE Stream Memory Leak & Payload Corruption)
+- **Files**: [`StreamDecoding.kt`](file:///d:/Dev/x-codes/core/network/src/main/kotlin/digital/vmstudio/code/core/network/http/StreamDecoding.kt)
+- **Root Cause**: `SseDecoder.dispatch()` extracted `data.toString()` and `eventName` but never cleared `data.setLength(0)` or reset `eventName = null` when dispatching an event. Every subsequent event in the stream appended onto all previous events, resulting in exponential payload growth, malformed JSON, and 5 unit test failures in `:core:network`.
+- **Fix**: Added `data.setLength(0)` and `eventName = null` directly in `dispatch()`. All 13 unit tests now pass.
+
+### Bug 47: CommandSafety Fails to Block Deletion of Home Directory (`rm -rf ~`, `rm -rf $HOME`) and Multi-Slash Roots
+- **Severity**: HIGH (Catastrophic Data Loss Protection Bypass)
+- **Files**: [`CommandSafety.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/command/CommandSafety.kt)
+- **Root Cause**: `analyseRemove` checked only `it == "/" || it == "/*"`. Commands targeting `rm -rf ~`, `rm -rf $HOME`, `rm -rf ~/`, or `rm -rf //` bypassed the root deletion blocker and were allowed or only flagged as general destructive.
+- **Fix**: Added `targetsHome` check covering `~`, `~/`, `~/*`, `$HOME`, and added multi-slash detection (`clean.all { it == '/' }`). Added `rm-rf-home` rule categorized as `CommandRisk.BLOCKED`.
+
+### UI Enhancement: Smart Auto-Hiding Headers & Fluid Full-Screen Antigravity Chat
+- **Files**: [`AgentChatScreen.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatScreen.kt), [`ChatTopBar.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/ChatTopBar.kt)
+- **Enhancement**:
+  1. **Scroll-Driven Auto-Hide**: Top navigation bar, environment context bar, and health banner automatically collapse/hide with smooth transitions on downward scroll, maximizing screen estate for code and conversation. Scrolling up or reaching the top automatically restores them.
+  2. **Smart Full Screen Focus Mode**: Dedicated button in the top bar (`Icons.Default.AutoAwesome`) toggles an immersive, distraction-free Antigravity canvas. When active, top bar collapses, padding becomes 0.dp, and a sleek floating pill allows quick exit.
+  3. **Scroll-To-Bottom FAB**: An intuitive floating circle button appears when scrolled away from the live tail to immediately jump back to model output.
 
 ---
 ## 6. Developer Runbook & Operations

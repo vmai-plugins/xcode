@@ -37,29 +37,34 @@ internal object GitParsers {
             val workTreeStatus = line[1]
             val pathPart = line.substring(2).trimStart()
 
-            val rawPath = if (pathPart.contains(" -> ")) {
-                pathPart.substringAfter(" -> ")
+            val (rawOriginal, rawDest) = if (pathPart.contains(" -> ")) {
+                pathPart.substringBefore(" -> ").trim() to pathPart.substringAfter(" -> ").trim()
             } else {
-                pathPart
-            }.trim()
-
-            val path = if (rawPath.startsWith("\"") && rawPath.endsWith("\"") && rawPath.length >= 2) {
-                rawPath.substring(1, rawPath.length - 1)
-                    .replace("\\\"", "\"")
-                    .replace("\\\\", "\\")
-                    .replace("\\t", "\t")
-                    .replace("\\n", "\n")
-            } else {
-                rawPath
+                null to pathPart.trim()
             }
+
+            val unquote: (String) -> String = { raw ->
+                if (raw.startsWith("\"") && raw.endsWith("\"") && raw.length >= 2) {
+                    raw.substring(1, raw.length - 1)
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\")
+                        .replace("\\t", "\t")
+                        .replace("\\n", "\n")
+                } else {
+                    raw
+                }
+            }
+
+            val path = unquote(rawDest)
+            val originalPath = rawOriginal?.let(unquote)
 
             // Staged changes (index)
             when (indexStatus) {
                 'A' -> staged += GitFileStatusEntry(path, GitFileStatus.ADDED)
                 'M' -> staged += GitFileStatusEntry(path, GitFileStatus.MODIFIED)
                 'D' -> staged += GitFileStatusEntry(path, GitFileStatus.DELETED)
-                'R' -> staged += GitFileStatusEntry(path, GitFileStatus.RENAMED)
-                'C' -> staged += GitFileStatusEntry(path, GitFileStatus.COPIED)
+                'R' -> staged += GitFileStatusEntry(path, GitFileStatus.RENAMED, originalPath = originalPath)
+                'C' -> staged += GitFileStatusEntry(path, GitFileStatus.COPIED, originalPath = originalPath)
                 'U' -> staged += GitFileStatusEntry(path, GitFileStatus.CONFLICTED)
             }
 
@@ -91,15 +96,15 @@ internal object GitParsers {
 
         for (block in blocks) {
             val lines = block.trim().lines()
-            if (lines.size >= 7) {
+            if (lines.size >= 6 && lines[0].isNotBlank()) {
                 commits += GitCommit(
                     hash = lines[0].trim(),
-                    shortHash = lines[1].trim(),
-                    author = lines[2].trim(),
-                    authorEmail = lines[3].trim(),
-                    timestamp = lines[4].trim().toLongOrNull() ?: 0L,
-                    parentHashes = lines[5].trim().split(" ").filter { it.isNotBlank() },
-                    message = lines.drop(6).joinToString("\n").trim(),
+                    shortHash = lines.getOrNull(1)?.trim().orEmpty(),
+                    author = lines.getOrNull(2)?.trim().orEmpty(),
+                    authorEmail = lines.getOrNull(3)?.trim().orEmpty(),
+                    timestamp = lines.getOrNull(4)?.trim()?.toLongOrNull() ?: 0L,
+                    parentHashes = lines.getOrNull(5)?.trim()?.split(" ")?.filter { it.isNotBlank() }.orEmpty(),
+                    message = if (lines.size > 6) lines.drop(6).joinToString("\n").trim() else "",
                 )
             }
         }

@@ -371,7 +371,14 @@ object CommandSafety {
             }
         }
 
-        val targetsRoot = operands.any { it == "/" || it == "/*" }
+        val targetsRoot = operands.any { operand ->
+            val clean = operand.trim()
+            clean == "/" || clean == "/*" || (clean.isNotEmpty() && clean.all { it == '/' })
+        }
+        val targetsHome = operands.any { operand ->
+            val clean = operand.trim()
+            clean == "~" || clean == "~/" || clean == "~/*" || clean == "\$HOME" || clean == "\$HOME/" || clean == "\${HOME}"
+        }
         return when {
             targetsRoot && recursive -> listOf(
                 CommandFinding(
@@ -383,6 +390,15 @@ object CommandSafety {
                     } else {
                         "Deletes the entire filesystem from the root directory."
                     },
+                ),
+            )
+
+            targetsHome && recursive -> listOf(
+                CommandFinding(
+                    rule = "rm-rf-home",
+                    risk = CommandRisk.BLOCKED,
+                    matchedText = segment.take(120),
+                    explanation = "Deletes the entire user home directory.",
                 ),
             )
 

@@ -134,13 +134,18 @@ class OmniRouteAgentLoop @Inject constructor(
                         val gw = nextTurnResult.value.first as OmniRouteTurn.GatewayError
                         gw.retryable || isFailoverCandidate(gw.failure())
                     }
+                    nextTurnResult is VmResult.Success && nextTurnResult.value.first is OmniRouteTurn.ParseFailed -> true
                     else -> false
                 }
 
                 if (shouldFailover && fallbackModel != null && currentModel != fallbackModel) {
                     val errMsg = when (nextTurnResult) {
                         is VmResult.Failure -> nextTurnResult.error.summary
-                        is VmResult.Success -> (nextTurnResult.value.first as? OmniRouteTurn.GatewayError)?.message.orEmpty()
+                        is VmResult.Success -> when (val t = nextTurnResult.value.first) {
+                            is OmniRouteTurn.GatewayError -> t.message
+                            is OmniRouteTurn.ParseFailed -> t.reason
+                            else -> ""
+                        }
                     }
                     VmLog.i(LogCategory.AI, TAG, "Turn failed on $currentModel ($errMsg). Failing over to $fallbackModel")
                     emit(
@@ -175,17 +180,28 @@ class OmniRouteAgentLoop @Inject constructor(
                             outputTokensTotal += output
                         }
                         val shown = if (turn.truncated) turn.text + TRUNCATED_NOTE else turn.text
-                        if (shown.isNotBlank()) emit(AgentEvent.AssistantMessage(shown))
-                        // An assistant turn with no content is rejected by the
-                        // Anthropic dialect, so a blank reply is stored as a marker.
+                        if (shown.isBlank()) {
+                            emit(
+                                AgentEvent.Failed(
+                                    VmError.Ai(
+                                        summary = "Empty model response",
+                                        reason = "The model produced an empty response without generating content or tool calls.",
+                                        provider = "omniroute",
+                                        retryable = true,
+                                    ),
+                                ),
+                            )
+                            return@flow
+                        }
+                        emit(AgentEvent.AssistantMessage(shown))
                         history += OmniRouteMessage.Assistant(
-                            text = turn.text.ifBlank { "(no reply)" },
+                            text = turn.text,
                             toolCalls = emptyList(),
                         )
                         emit(
                             AgentEvent.Completed(
                                 sessionId = sessionId,
-                                resultText = turn.text.takeIf { it.isNotBlank() },
+                                resultText = turn.text,
                                 durationMillis = System.currentTimeMillis() - startedAt,
                                 costUsd = 0.0,
                                 inputTokens = inputTokensTotal,

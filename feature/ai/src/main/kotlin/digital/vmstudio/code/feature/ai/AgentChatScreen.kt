@@ -1,4 +1,4 @@
-﻿package digital.vmstudio.code.feature.ai
+package digital.vmstudio.code.feature.ai
 
 import android.content.Intent
 import android.content.ActivityNotFoundException
@@ -38,7 +38,32 @@ import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ui.component.VmErrorAction
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.theme.VmTheme
-import digital.vmstudio.code.core.git.codespacesUrl
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +114,30 @@ fun AgentChatScreen(
     }
     // Slides the header away while reading and back on the first scroll up.
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+
+    var isFullScreen by remember { mutableStateOf(false) }
+    var isHeaderVisible by remember { mutableStateOf(true) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val chatScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta < -12f && isHeaderVisible) {
+                    isHeaderVisible = false
+                } else if (delta > 12f && !isHeaderVisible) {
+                    isHeaderVisible = true
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
+            isHeaderVisible = true
+        }
+    }
 
     ConversationActionDialogs(
         pending = pendingChatAction,
@@ -168,95 +217,145 @@ fun AgentChatScreen(
     Scaffold(
         modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            ChatTopBar(
-                title = chatTitle ?: currentProjectName,
-                isConnecting = state.isCheckingHealth,
-                projects = state.availableProjects,
-                workingDirectory = state.workingDirectory,
-                canSwitchProject = canSwitchProject,
-                hasConversation = currentChat != null,
-                hasTranscript = state.transcript.isNotEmpty(),
-                scrollBehavior = scrollBehavior,
-                onOpenMenu = onOpenMenu,
-                onNavigateBack = onNavigateBack,
-                onSelectProject = viewModel::selectProject,
-                onOpenCodespace = viewModel::selectGithubRepo,
-                githubRepositories = state.githubRepositories,
-                isLoadingGithubRepositories = state.isLoadingGithubRepositories,
-                githubError = state.githubError,
-                availableServers = state.availableServers,
-                onOpenGithubPicker = viewModel::loadGithubRepositories,
-                onRefreshGithubRepositories = viewModel::refreshGithubRepositories,
-                onChooseDirectory = {
-                    directoryServerId = null
-                    showDirectoryDialog = true
-                },
-                onChooseLocalFolder = { localFolderPicker.launch(null) },
-                onBrowseServer = { serverId ->
-                    if (RemoteFileSystem.isLocalServer(serverId)) {
-                        localFolderPicker.launch(null)
-                    } else {
-                        directoryServerId = serverId
+            if (!isFullScreen) {
+                ChatTopBar(
+                    title = chatTitle ?: currentProjectName,
+                    isConnecting = state.isCheckingHealth,
+                    projects = state.availableProjects,
+                    workingDirectory = state.workingDirectory,
+                    canSwitchProject = canSwitchProject,
+                    hasConversation = currentChat != null,
+                    hasTranscript = state.transcript.isNotEmpty(),
+                    scrollBehavior = scrollBehavior,
+                    onOpenMenu = onOpenMenu,
+                    onNavigateBack = onNavigateBack,
+                    onSelectProject = viewModel::selectProject,
+                    onOpenCodespace = viewModel::selectGithubRepo,
+                    githubRepositories = state.githubRepositories,
+                    isLoadingGithubRepositories = state.isLoadingGithubRepositories,
+                    githubError = state.githubError,
+                    availableServers = state.availableServers,
+                    onOpenGithubPicker = viewModel::loadGithubRepositories,
+                    onRefreshGithubRepositories = viewModel::refreshGithubRepositories,
+                    onChooseDirectory = {
+                        directoryServerId = null
                         showDirectoryDialog = true
-                    }
-                },
-                discoveredGitRepos = state.discoveredGitRepos,
-                onSelectDiscoveredRepo = viewModel::selectDiscoveredGitRepo,
-                onOpenPreview = if (previewTarget != null && state.workingDirectory.isNotBlank()) {
-                    { previewTarget(state.workingDirectory) }
-                } else null,
-                onNewChat = viewModel::startNewConversation,
-                onOpenFiles = if (githubRepoFullName != null) {
-                    { showGithubTreeSheet = true }
-                } else {
-                    { state.serverId?.let { onOpenFiles(it, state.workingDirectory.trim()) } }
-                },
-                onConversationAction = { action -> currentChat?.let { pendingChatAction = it to action } },
-            )
+                    },
+                    onChooseLocalFolder = { localFolderPicker.launch(null) },
+                    onBrowseServer = { serverId ->
+                        if (RemoteFileSystem.isLocalServer(serverId)) {
+                            localFolderPicker.launch(null)
+                        } else {
+                            directoryServerId = serverId
+                            showDirectoryDialog = true
+                        }
+                    },
+                    discoveredGitRepos = state.discoveredGitRepos,
+                    onSelectDiscoveredRepo = viewModel::selectDiscoveredGitRepo,
+                    onOpenPreview = if (previewTarget != null && state.workingDirectory.isNotBlank()) {
+                        { previewTarget(state.workingDirectory) }
+                    } else null,
+                    onNewChat = viewModel::startNewConversation,
+                    onOpenFiles = if (githubRepoFullName != null) {
+                        { showGithubTreeSheet = true }
+                    } else {
+                        { state.serverId?.let { onOpenFiles(it, state.workingDirectory.trim()) } }
+                    },
+                    onConversationAction = { action -> currentChat?.let { pendingChatAction = it to action } },
+                    isFullScreen = isFullScreen,
+                    onToggleFullScreen = { isFullScreen = !isFullScreen },
+                )
+            }
         },
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(if (isFullScreen) PaddingValues(0.dp) else padding)
                 .imePadding(),
         ) {
-            // Dynamic Environment Context Bar (GitHub, VPS, Google Connectors)
-            EnvironmentContextBar(
-                workingDirectory = state.workingDirectory,
-                serverName = state.availableServers.firstOrNull { it.id == state.serverId }?.name,
-                githubRepoName = when {
-                    state.workingDirectory.startsWith("/github/") -> state.workingDirectory.removePrefix("/github/")
-                    else -> state.githubRepositories.firstOrNull { repo ->
-                        repo.fullName.equals(state.workingDirectory.trimEnd('/').substringAfterLast('/'), ignoreCase = true)
-                    }?.fullName
-                },
-                onOpenProjectPicker = {
-                    viewModel.loadGithubRepositories()
-                    directoryServerId = null
-                    showDirectoryDialog = true
-                },
-                onOpenServerPicker = {
-                    val firstRemoteServer = state.availableServers
-                        .firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }
-                        ?.id
-                    if (firstRemoteServer != null) {
-                        directoryServerId = firstRemoteServer
-                        showDirectoryDialog = true
-                    } else {
-                        onOpenSettings()
+            // Fullscreen focus floating indicator
+            AnimatedVisibility(
+                visible = isFullScreen,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xCC1E1F22),
+                        border = BorderStroke(1.dp, Color(0xFF2E3036)),
+                        modifier = Modifier.clickable { isFullScreen = false },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Exit Focus Mode",
+                                modifier = Modifier.size(14.dp),
+                                tint = Color(0xFF8E919A),
+                            )
+                            Text(
+                                text = "Full Screen Focus • Tap to exit",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFE2E2E5),
+                            )
+                        }
                     }
-                },
-                onOpenConnectors = onOpenSettings,
-            )
+                }
+            }
 
-            // Sleek collapsible health banner
-            HealthBanner(
-                state = state,
-                onRetry = viewModel::checkHealth,
-                onOpenSettings = onOpenSettings,
-                onPickModel = viewModel::selectModel,
-            )
+            // Smooth auto-hiding environment context bar and health banner
+            AnimatedVisibility(
+                visible = !isFullScreen && isHeaderVisible,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                Column {
+                    EnvironmentContextBar(
+                        workingDirectory = state.workingDirectory,
+                        serverName = state.availableServers.firstOrNull { it.id == state.serverId }?.name,
+                        githubRepoName = when {
+                            state.workingDirectory.startsWith("/github/") -> state.workingDirectory.removePrefix("/github/")
+                            else -> state.githubRepositories.firstOrNull { repo ->
+                                repo.fullName.equals(state.workingDirectory.trimEnd('/').substringAfterLast('/'), ignoreCase = true)
+                            }?.fullName
+                        },
+                        onOpenProjectPicker = {
+                            viewModel.loadGithubRepositories()
+                            directoryServerId = null
+                            showDirectoryDialog = true
+                        },
+                        onOpenServerPicker = {
+                            val firstRemoteServer = state.availableServers
+                                .firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }
+                                ?.id
+                            if (firstRemoteServer != null) {
+                                directoryServerId = firstRemoteServer
+                                showDirectoryDialog = true
+                            } else {
+                                onOpenSettings()
+                            }
+                        },
+                        onOpenConnectors = onOpenSettings,
+                    )
+
+                    HealthBanner(
+                        state = state,
+                        onRetry = viewModel::checkHealth,
+                        onOpenSettings = onOpenSettings,
+                        onPickModel = viewModel::selectModel,
+                    )
+                }
+            }
 
             state.error?.let { error ->
                 VmErrorPanel(
@@ -291,31 +390,70 @@ fun AgentChatScreen(
                     )
                 }
             } else {
-                LazyColumn(
-                    state = listState,
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.xs),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    items(groupedTranscript, key = { it.id }, contentType = { it::class }) { rowItem ->
-                        when (rowItem) {
-                            is TranscriptRowItem.Single -> TranscriptRow(
-                                item = rowItem.item,
-                                onOpenDiff = openDiff,
-                                onRollback = viewModel::rollbackFile,
-                                onPreview = previewTarget,
-                            )
-                            is TranscriptRowItem.ToolBatch -> ToolBatchRow(
-                                batch = rowItem,
-                                onOpenDiff = openDiff,
-                                onRollback = viewModel::rollbackFile,
-                                onPreview = previewTarget,
-                            )
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(chatScrollConnection),
+                        contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(groupedTranscript, key = { it.id }, contentType = { it::class }) { rowItem ->
+                            when (rowItem) {
+                                is TranscriptRowItem.Single -> TranscriptRow(
+                                    item = rowItem.item,
+                                    onOpenDiff = openDiff,
+                                    onRollback = viewModel::rollbackFile,
+                                    onPreview = previewTarget,
+                                )
+                                is TranscriptRowItem.ToolBatch -> ToolBatchRow(
+                                    batch = rowItem,
+                                    onOpenDiff = openDiff,
+                                    onRollback = viewModel::rollbackFile,
+                                    onPreview = previewTarget,
+                                )
+                            }
+                        }
+                        runStatus(state.isRunning, state.transcript)
+                    }
+
+                    val showScrollToBottom by remember {
+                        derivedStateOf {
+                            listState.firstVisibleItemIndex > 1 || listState.firstVisibleItemScrollOffset > 200
                         }
                     }
-                    runStatus(state.isRunning, state.transcript)
+                    if (showScrollToBottom) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF2E3036),
+                            border = BorderStroke(1.dp, Color(0xFF3E4046)),
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(spacing.md)
+                                .size(36.dp),
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(groupedTranscript.size)
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Scroll to bottom",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

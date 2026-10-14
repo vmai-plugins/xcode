@@ -62,6 +62,8 @@ class SseDecoder {
         }
         val payload = data.toString()
         val name = eventName
+        data.setLength(0)
+        eventName = null
         val isDone = payload.trim() == DONE_SENTINEL ||
             name == "message_stop" ||
             payload.contains("\"type\":\"message_stop\"")

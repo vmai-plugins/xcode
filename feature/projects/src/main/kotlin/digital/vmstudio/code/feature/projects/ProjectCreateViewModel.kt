@@ -449,11 +449,16 @@ class ProjectCreateViewModel @Inject constructor(
             if (conn.responseCode in 300..399) {
                 val redirectUrl = conn.getHeaderField("Location")
                 if (redirectUrl != null) {
-                    val conn2 = URL(redirectUrl).openConnection() as HttpURLConnection
-                    conn2.connectTimeout = 15000
-                    conn2.readTimeout = 60000
-                    conn2.setRequestProperty("User-Agent", "x-codes-mobile")
-                    finalStream = conn2.inputStream
+                    val redirectUri = runCatching { java.net.URI(redirectUrl) }.getOrNull()
+                    if (redirectUri != null && isTrustedGithubArchiveRedirect(redirectUri)) {
+                        val conn2 = URL(redirectUrl).openConnection() as HttpURLConnection
+                        conn2.connectTimeout = 15000
+                        conn2.readTimeout = 60000
+                        conn2.setRequestProperty("User-Agent", "x-codes-mobile")
+                        if (conn2.responseCode == 200) {
+                            finalStream = conn2.inputStream
+                        }
+                    }
                 }
             } else if (conn.responseCode == 200) {
                 finalStream = conn.inputStream
@@ -461,11 +466,25 @@ class ProjectCreateViewModel @Inject constructor(
 
             if (finalStream != null) {
                 extractZip(finalStream, targetDir)
+                VmResult.Success(Unit)
+            } else {
+                VmResult.Failure(
+                    VmError.Network(
+                        summary = "Failed to download repository archive",
+                        reason = "GitHub returned HTTP ${conn.responseCode}. The repository may be private or the branch does not exist.",
+                        suggestedAction = "Ensure the repository is public and the branch exists.",
+                    ),
+                )
             }
-            VmResult.Success(Unit)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             targetDir.mkdirs()
-            VmResult.Success(Unit)
+            VmResult.Failure(
+                VmError.Network(
+                    summary = "Failed to download repository from GitHub",
+                    reason = e.message,
+                    cause = e,
+                ),
+            )
         }
     }
 
@@ -474,17 +493,24 @@ class ProjectCreateViewModel @Inject constructor(
             var entry = zis.nextEntry
             var rootDirPrefix: String? = null
             while (entry != null) {
-                val name = entry.name
-                if (rootDirPrefix == null && entry.isDirectory) {
-                    rootDirPrefix = name
-                } else {
-                    val relativePath = if (rootDirPrefix != null && name.startsWith(rootDirPrefix)) {
-                        name.removePrefix(rootDirPrefix)
-                    } else {
+                val name = entry.name.replace('\\', '/')
+                if (rootDirPrefix == null) {
+                    rootDirPrefix = if (entry.isDirectory) {
                         name
+                    } else if ('/' in name) {
+                        name.substringBefore('/') + '/'
+                    } else {
+                        null
                     }
-                    if (relativePath.isNotEmpty()) {
-                        val outFile = File(targetDir, relativePath)
+                }
+                val relativePath = if (rootDirPrefix != null && name.startsWith(rootDirPrefix)) {
+                    name.removePrefix(rootDirPrefix)
+                } else {
+                    name
+                }
+                if (relativePath.isNotEmpty()) {
+                    val outFile = safeZipEntryFile(targetDir, relativePath)
+                    if (outFile != null) {
                         if (entry.isDirectory) {
                             outFile.mkdirs()
                         } else {
@@ -588,6 +614,31 @@ class ProjectCreateViewModel @Inject constructor(
         const val MODE_LINK = "link"
     }
 }
+
+internal fun safeZipEntryFile(targetDir: File, entryPath: String): File? {
+    if (entryPath.startsWith("/") || entryPath.contains("\\") || entryPath.contains(":")) {
+        return null
+    }
+    val canonicalTarget = targetDir.canonicalFile
+    val candidate = File(targetDir, entryPath).canonicalFile
+    val targetPath = canonicalTarget.path
+    val expectedPrefix = if (targetPath.endsWith(File.separator)) targetPath else targetPath + File.separator
+    return if (candidate.path.startsWith(expectedPrefix) || candidate == canonicalTarget) {
+        candidate
+    } else {
+        null
+    }
+}
+
+internal fun isTrustedGithubArchiveRedirect(uri: java.net.URI): Boolean {
+    if (uri.scheme != "https") return false
+    val host = uri.host ?: return false
+    if (!host.equals("codeload.github.com", ignoreCase = true)) return false
+    if (uri.userInfo != null) return false
+    val port = uri.port
+    return port == -1 || port == 443
+}
+
 
 
 

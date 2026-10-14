@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.ui.graphics.Color
@@ -100,6 +101,8 @@ internal fun ChatTopBar(
     onNewChat: () -> Unit,
     onOpenFiles: () -> Unit,
     onConversationAction: (ConversationAction) -> Unit,
+    isFullScreen: Boolean = false,
+    onToggleFullScreen: (() -> Unit)? = null,
 ) {
     var showProjects by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
@@ -206,6 +209,15 @@ internal fun ChatTopBar(
             }
             if (hasTranscript) {
                 IconButton(onClick = onNewChat) { Icon(Icons.Default.Add, contentDescription = "New chat") }
+            }
+            if (onToggleFullScreen != null) {
+                IconButton(onClick = onToggleFullScreen) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = if (isFullScreen) "Exit Focus" else "Smart Focus",
+                        tint = if (isFullScreen) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
+                    )
+                }
             }
             Box {
                 IconButton(onClick = { showMore = true }) {
