@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # VMStudio Autopilot APK Builder & Deployer
-# Runs on VPS 2 (200.234.41.231) to compile Android APKs and publish to vmstudio.digital/apps/
+# Runs on VPS 2 (200.234.41.231) to compile Android APKs and publish to https://apps.vmstudio.digital/
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-DEPLOY_HOST="${DEPLOY_HOST:-root@31.97.63.239}"
-APPS_DIR="/home/vmstudio.digital/public_html/apps"
-TARGET_DIR="${APPS_DIR}/x-codes"
+LOCAL_APPS_DIR="/home/vmstudio-apps/htdocs/apps.vmstudio.digital"
+TARGET_DIR="${LOCAL_APPS_DIR}/x-codes"
 BUILD_CACHE="/opt/vmstudio/builds/apk"
+DEPLOY_HOST="${DEPLOY_HOST:-root@200.234.41.231}"
 
 # Resolve JDK 17 / 21
 if [ -z "${JAVA_HOME:-}" ]; then
