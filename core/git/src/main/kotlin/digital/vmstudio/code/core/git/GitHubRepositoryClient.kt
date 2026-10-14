@@ -144,7 +144,7 @@ class GitHubRepositoryClient @Inject constructor(
             val repositories = mutableListOf<GitHubRepository>()
             var page = 1
             var hasMore = true
-            while (hasMore) {
+            while (hasMore && page <= MAX_PAGES) {
                     val request = Request.Builder()
                         .url("$REPOSITORIES_URL&page=$page")
                         .header("Authorization", "Bearer $token")
@@ -433,6 +433,7 @@ class GitHubRepositoryClient @Inject constructor(
 
     private companion object {
         const val PAGE_SIZE = 100
+        const val MAX_PAGES = 10
         const val REPOSITORIES_URL =
             "https://api.github.com/user/repos?sort=updated&per_page=$PAGE_SIZE&affiliation=owner,collaborator,organization_member"
     }

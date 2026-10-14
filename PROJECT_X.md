@@ -942,6 +942,48 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: The remote backup command `tar -czf ... -C <path> ... .` treats any non-zero exit code as a hard failure (`!tarResult.value.isSuccess`). In GNU `tar`, exit code 1 indicates non-fatal warnings (such as files modified or sockets skipped during archiving). This causes complete backups to be discarded as failures.
 - **Fix**: Accept exit code 1 as successful when the archive file is non-empty, or pass `--warning=no-file-changed`.
 
+### Bug 126: POSIX Workspace Path Traversal Bypass via Android SAF URIs
+- **File**: [`PathGuard.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/PathGuard.kt)
+- **Severity**: HIGH (Remote File Execution & Path Injection)
+- **Root Cause**: In `PathGuard.problem()` and `resolve()`, when `workingDirectory` was a remote or POSIX path (e.g. `/home/ubuntu/app`) and an incoming tool path began with `content://`, `isTreeUri(workingDirectory)` evaluated to false. The subsequent POSIX concatenation appended `content://` as a relative path (`/home/ubuntu/app/content://...`), which `target.startsWith("$root/")` accepted as valid, bypassing path containment.
+- **Fix**: Explicitly check `if (!isTreeUri(workingDirectory) && cleanPath.startsWith("content://")) return "Cannot use content:// URIs in a remote or POSIX workspace."` in `problem()` and return null in `resolve()`. Added regression unit test in `PathGuardTest.kt`.
+
+### Bug 127: GitHub SSH Clone URL Parsing Malformed in Zip Downloader
+- **File**: [`ProjectCreateViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectCreateViewModel.kt)
+- **Severity**: MEDIUM (Project Creation HTTP 404 Failure)
+- **Root Cause**: In `downloadAndExtractGitHubRepo`, repo URLs were split by `/`. For SSH git clone URLs (`git@github.com:owner/repo.git`), `cleanUrl.split("/").takeLast(2)` extracted owner as `git@github.com:owner` instead of `owner`. This generated invalid archive download URLs (`https://github.com/git@github.com:owner/repo/archive/...zip`), causing archive downloads to fail.
+- **Fix**: Implemented `extractGitHubRepoCoordinates(repoUrl)` using `parts[0].substringAfterLast(":")` to correctly extract the repository owner across both HTTPS and SSH URLs. Added unit test in `ProjectCreateZipPathTest.kt`.
+
+### Bug 128: Git Porcelain Status Parser Stripping Leading Whitespace from File Paths
+- **File**: [`GitParsers.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitParsers.kt)
+- **Severity**: LOW (Path Truncation for Filenames with Spaces)
+- **Root Cause**: `GitParsers.parseStatus` extracted the path using `line.substring(2).trimStart()`. In git porcelain v1 format, column 0 is index status, column 1 is worktree status, and column 2 is a single space separator. Applying `.trimStart()` stripped all intentional leading spaces from filenames (e.g., `??  spaced path.txt` became `spaced path.txt`), corrupting file tracking.
+- **Fix**: Sliced strictly at column 3 (`line.substring(3)`) when `line[2] == ' '`, preserving original whitespace. Added unit test in `GitParsersTest.kt`.
+
+### Bug 129: Unbounded Organization Repository Pagination in GitHubRepositoryClient
+- **File**: [`GitHubRepositoryClient.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitHubRepositoryClient.kt)
+- **Severity**: MEDIUM (API Rate Limiting & Secondary Quota Lockout)
+- **Root Cause**: `fetchRepositories()` looped with `while (hasMore)` without an upper bound on `page`. For users with thousands of organizational repositories, this triggered dozens of sequential API calls, exhausting GitHub rate limits.
+- **Fix**: Enforced a pagination ceiling `while (hasMore && page <= MAX_PAGES)` with `MAX_PAGES = 10` (up to 1,000 repositories).
+
+### Bug 130: Model Selector Gateway Catalog Unsorted Secondary Ordering
+- **File**: [`OmniRouteModelCatalog.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/OmniRouteModelCatalog.kt)
+- **Severity**: LOW (UI Jitter / Non-Deterministic Model Ordering)
+- **Root Cause**: `prioritizeSmartModels()` sorted prioritized models by index, but non-priority gateway models had equal sort keys, retaining arbitrary upstream API order that shifted between fetches.
+- **Fix**: Added `.thenBy { it.lowercase() }` to `sortedWith` for deterministic alphabetical ordering of non-priority models.
+
+### Bug 131: CommandGuard Running Remote Commands on Local/Virtual Workspaces
+- **File**: [`CommandGuard.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/command/CommandGuard.kt)
+- **Severity**: HIGH (Crash / Erroneous Localhost SSH Connection Attempts)
+- **Root Cause**: `CommandGuard.resolveServer` returned a synthetic mock server for `"local"`, `"device"`, `"github"`, `"vmhub"`. When `run()` was called, it passed the fake serverId to `connectionManager.withSession(serverId)`, which failed or attempted to connect to `127.0.0.1:22` on the user's mobile device.
+- **Fix**: Guarded `run()` to immediately return a clean `VmResult.Failure` when `serverId` is blank, `"local"`, `"device"`, `"github"`, or `"vmhub"`.
+
+### Bug 132: Physical Cache Files Leaked on Project Deletion
+- **File**: [`ProjectRepository.kt`](file:///d:/Dev/x-codes/core/project/src/main/kotlin/digital/vmstudio/code/core/project/ProjectRepository.kt)
+- **Severity**: MEDIUM (Disk Storage Leak on Internal Storage)
+- **Root Cause**: Room's foreign key cascade deleted rows in `file_cache` when a project was removed from the database, but physical cached files on the Android filesystem (`FileCacheEntity.localPath`) were never deleted, permanently leaking disk space.
+- **Fix**: Injected `FileCacheDao` into `DefaultProjectRepository` and physically deleted all associated disk files before invoking `projectDao.deleteById(id)`.
+
 ---
 
 ## 6. Developer Runbook & Operations

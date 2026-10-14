@@ -22,4 +22,14 @@ class ProjectCreateZipPathTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun `extractGitHubRepoCoordinates handles https and ssh urls`() {
+        assertEquals(Pair("torvalds", "linux"), extractGitHubRepoCoordinates("https://github.com/torvalds/linux.git"))
+        assertEquals(Pair("torvalds", "linux"), extractGitHubRepoCoordinates("https://github.com/torvalds/linux"))
+        assertEquals(Pair("torvalds", "linux"), extractGitHubRepoCoordinates("git@github.com:torvalds/linux.git"))
+        assertEquals(Pair("torvalds", "linux"), extractGitHubRepoCoordinates("git@github.com:torvalds/linux"))
+        assertEquals(Pair("torvalds", "linux"), extractGitHubRepoCoordinates("ssh://git@github.com/torvalds/linux.git"))
+        assertNull(extractGitHubRepoCoordinates("invalid-url"))
+    }
 }

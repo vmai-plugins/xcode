@@ -33,11 +33,14 @@ class GoogleDriveClient @Inject constructor(
         accessToken: String,
         query: String? = null,
         pageSize: Int = 30,
+        maxFiles: Int = 100,
     ): VmResult<List<GoogleDriveFile>> {
         val files = mutableListOf<GoogleDriveFile>()
         var pageToken: String? = null
+        var pageCount = 0
 
         do {
+            pageCount++
             val queryParams = buildList {
                 add("pageSize=$pageSize")
                 add("fields=nextPageToken,files(id,name,mimeType,size,modifiedTime)")
@@ -64,9 +67,9 @@ class GoogleDriveClient @Inject constructor(
                     }
                 }
             }
-        } while (pageToken != null)
+        } while (pageToken != null && files.size < maxFiles && pageCount < 10)
 
-        return VmResult.Success(files)
+        return VmResult.Success(if (files.size > maxFiles) files.take(maxFiles) else files)
     }
     suspend fun uploadFile(
         accessToken: String,

@@ -37,10 +37,14 @@ class TasksViewModel @Inject constructor(
         hubTasks,
         isSyncingHub,
     ) { list, hubList, syncing ->
-        val rows = coroutineScope {
-            list.map { task ->
-                async { TaskRowUi(task = task, serverId = tasks.serverIdFor(task.projectId)) }
-            }.awaitAll()
+        val projectIds = list.map { it.projectId }.distinct()
+        val serverMap = coroutineScope {
+            projectIds.associateWith { pid ->
+                tasks.serverIdFor(pid)
+            }
+        }
+        val rows = list.map { task ->
+            TaskRowUi(task = task, serverId = serverMap[task.projectId])
         }
         TasksUiState(
             isLoading = false,

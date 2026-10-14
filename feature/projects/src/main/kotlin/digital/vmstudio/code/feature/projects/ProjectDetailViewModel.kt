@@ -351,12 +351,16 @@ class ProjectDetailViewModel @Inject constructor(
                 val publicDownloads = Environment.getExternalStoragePublicDirectory(
                     Environment.DIRECTORY_DOWNLOADS,
                 )
+                val appDownloads = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                 val destDir = if (publicDownloads != null && publicDownloads.exists() && publicDownloads.canWrite()) {
                     publicDownloads
+                } else if (appDownloads != null && appDownloads.exists() && appDownloads.canWrite()) {
+                    appDownloads
                 } else {
                     File(context.cacheDir, "downloads").apply { mkdirs() }
                 }
                 val destFile = File(destDir, safeName)
+                val locationName = if (destDir == publicDownloads) "Downloads" else "App Downloads"
 
                 if (proj.isRemote) {
                     var lastEvent: TransferEvent? = null
@@ -371,13 +375,13 @@ class ProjectDetailViewModel @Inject constructor(
                     if (failure != null) {
                         error.value = failure
                     } else {
-                        notificationMessage.value = "Saved $safeName to Downloads"
+                        notificationMessage.value = "Saved $safeName to $locationName"
                     }
                 } else {
                     val file = File(artifact.path)
                     if (file.exists()) {
                         file.copyTo(destFile, overwrite = true)
-                        notificationMessage.value = "Saved $safeName to Downloads"
+                        notificationMessage.value = "Saved $safeName to $locationName"
                     } else {
                         error.value = VmError.Storage(
                             summary = "APK file not found on phone",

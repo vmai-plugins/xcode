@@ -35,6 +35,9 @@ internal object PathGuard {
                 null
             }
         }
+        if (cleanPath.startsWith("content://")) {
+            return "Cannot use content:// URIs in a remote or POSIX workspace."
+        }
         val full = when {
             cleanPath.startsWith("/") || (workingDirectory.startsWith("~") && cleanPath.startsWith("~")) -> cleanPath
             else -> "$workingDirectory/$cleanPath"
@@ -50,6 +53,7 @@ internal object PathGuard {
 
     fun resolve(workingDirectory: String, path: String): String? {
         if (isTreeUri(workingDirectory)) return resolveTreeUriPath(workingDirectory, path)
+        if (path.startsWith("content://")) return null
         val full = when {
             path.startsWith("/") || (workingDirectory.startsWith("~") && path.startsWith("~")) -> path
             else -> "$workingDirectory/$path"

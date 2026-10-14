@@ -438,13 +438,10 @@ class ProjectCreateViewModel @Inject constructor(
     ): VmResult<Unit> = withContext(Dispatchers.IO) {
         try {
             targetDir.mkdirs()
-            val cleanUrl = repoUrl.trim().removeSuffix(".git").removeSuffix("/")
-            val parts = cleanUrl.split("/").takeLast(2)
-            if (parts.size < 2) {
-                return@withContext VmResult.Success(Unit)
-            }
-            val owner = parts[0]
-            val repo = parts[1]
+            val coordinates = extractGitHubRepoCoordinates(repoUrl)
+                ?: return@withContext VmResult.Success(Unit)
+            val owner = coordinates.first
+            val repo = coordinates.second
             val effectiveBranch = branch.ifBlank { "main" }
             val zipUrlString = "https://github.com/$owner/$repo/archive/refs/heads/$effectiveBranch.zip"
 
@@ -647,6 +644,16 @@ internal fun isTrustedGithubArchiveRedirect(uri: java.net.URI): Boolean {
     if (uri.userInfo != null) return false
     val port = uri.port
     return port == -1 || port == 443
+}
+
+internal fun extractGitHubRepoCoordinates(repoUrl: String): Pair<String, String>? {
+    val cleanUrl = repoUrl.trim().removeSuffix(".git").removeSuffix("/")
+    val parts = cleanUrl.split("/").takeLast(2)
+    if (parts.size < 2) return null
+    val owner = parts[0].substringAfterLast(":")
+    val repo = parts[1]
+    if (owner.isBlank() || repo.isBlank()) return null
+    return Pair(owner, repo)
 }
 
 

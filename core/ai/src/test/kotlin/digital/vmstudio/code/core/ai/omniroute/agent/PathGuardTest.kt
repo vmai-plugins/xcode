@@ -72,4 +72,12 @@ class PathGuardTest {
         assertNotNull(PathGuard.problem(root, tree + "projects/other/README.md"))
         assertNotNull(PathGuard.problem(root, tree + "projects/app/../../outside.txt"))
     }
+
+    @Test
+    fun `content URIs are rejected in POSIX workspaces`() {
+        val posixRoot = "/home/ubuntu/app"
+        val contentUri = "content://com.android.externalstorage.documents/tree/primary%3AWorkspace!/file.txt"
+        assertNotNull(PathGuard.problem(posixRoot, contentUri))
+        assertNull(PathGuard.resolve(posixRoot, contentUri))
+    }
 }

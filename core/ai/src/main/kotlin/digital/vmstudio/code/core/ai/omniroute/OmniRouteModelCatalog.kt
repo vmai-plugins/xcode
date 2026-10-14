@@ -111,7 +111,7 @@ class OmniRouteModelCatalog @Inject constructor(
                 compareBy<String> { id ->
                     priorityIndex[id]
                         ?: if (id.startsWith("auto/")) SMART_PRIORITY_ORDER.size else SMART_PRIORITY_ORDER.size + 1
-                },
+                }.thenBy { it.lowercase() },
             )
         }
     }

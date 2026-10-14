@@ -42,12 +42,12 @@ internal object GitParsers {
             if (line.length < 3) continue
             val indexStatus = line[0]
             val workTreeStatus = line[1]
-            val pathPart = line.substring(2).trimStart()
+            val pathPart = if (line.length > 3 && line[2] == ' ') line.substring(3) else line.substring(2).trimStart()
 
             val (rawOriginal, rawDest) = if (pathPart.contains(" -> ")) {
-                pathPart.substringBefore(" -> ").trim() to pathPart.substringAfter(" -> ").trim()
+                pathPart.substringBefore(" -> ") to pathPart.substringAfter(" -> ")
             } else {
-                null to pathPart.trim()
+                null to pathPart
             }
 
             val unquote: (String) -> String = { raw ->

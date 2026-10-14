@@ -134,9 +134,20 @@ class DefaultCommandGuard @Inject constructor(
         command: String,
         limits: CommandLimits,
         requestedByAgent: Boolean,
-    ): VmResult<CommandResult> = authorize(serverId, command, requestedByAgent).flatMap {
-        connectionManager.withSession(serverId) { session ->
-            session.execute(command, limits)
+    ): VmResult<CommandResult> {
+        if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub") {
+            return VmResult.Failure(
+                VmError.Command(
+                    summary = "Cannot execute remote shell commands on local or virtual workspace",
+                    command = command.take(120),
+                    exitCode = -1,
+                ),
+            )
+        }
+        return authorize(serverId, command, requestedByAgent).flatMap {
+            connectionManager.withSession(serverId) { session ->
+                session.execute(command, limits)
+            }
         }
     }
 

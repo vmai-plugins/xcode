@@ -74,7 +74,7 @@ class GoogleDriveManager @Inject constructor(
                 "--exclude='.git' --exclude='node_modules' --exclude='build' ."
             when (val tarResult = runOnServer(serverId, tarCommand, CommandLimits.LONG_RUNNING)) {
                 is VmResult.Failure -> tarResult
-                is VmResult.Success -> if (!tarResult.value.isSuccess) {
+                is VmResult.Success -> if (!tarResult.value.isSuccess && tarResult.value.exitCode != 1) {
                     VmResult.Failure(
                         VmError.Command(
                             summary = "Could not create the project backup archive",

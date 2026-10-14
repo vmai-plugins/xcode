@@ -92,7 +92,7 @@ internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowIte
             result += TranscriptRowItem.Single(toolBuffer.first())
         } else {
             result += TranscriptRowItem.ToolBatch(
-                id = "batch-${toolBuffer.first().id}-${toolBuffer.last().id}",
+                id = "batch-${toolBuffer.first().id}",
                 tools = toolBuffer.toList(),
             )
         }

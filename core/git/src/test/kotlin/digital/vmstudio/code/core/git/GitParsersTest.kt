@@ -49,4 +49,12 @@ class GitParsersTest {
         val status = GitParsers.parseStatus(porcelain, "HEAD")
         assertEquals("feature/login", status.branch)
     }
+
+    @Test
+    fun parseStatus_preservesSpacesInPath() {
+        val porcelain = "??  spaced path/file.txt"
+        val status = GitParsers.parseStatus(porcelain, "main")
+        assertEquals(1, status.untracked.size)
+        assertEquals(" spaced path/file.txt", status.untracked[0].path)
+    }
 }

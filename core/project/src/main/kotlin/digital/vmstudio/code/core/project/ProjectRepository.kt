@@ -4,6 +4,7 @@ import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.vmCatching
+import digital.vmstudio.code.core.database.dao.FileCacheDao
 import digital.vmstudio.code.core.database.dao.ProjectDao
 import digital.vmstudio.code.core.database.dao.ServerDao
 import digital.vmstudio.code.core.database.entity.ProjectEntity
@@ -13,6 +14,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -84,6 +86,7 @@ interface ProjectRepository {
 class DefaultProjectRepository @Inject constructor(
     private val projectDao: ProjectDao,
     private val serverDao: ServerDao,
+    private val fileCacheDao: FileCacheDao,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : ProjectRepository {
 
@@ -219,7 +222,13 @@ class DefaultProjectRepository @Inject constructor(
     }
 
     override suspend fun delete(id: String): VmResult<Unit> = withContext(ioDispatcher) {
-        vmCatching(::mapError) { projectDao.deleteById(id) }
+        vmCatching(::mapError) {
+            val cachedFiles = fileCacheDao.getForProject(id)
+            cachedFiles.forEach { entity ->
+                runCatching { File(entity.localPath).delete() }
+            }
+            projectDao.deleteById(id)
+        }
     }
 
     private fun ProjectEntity.toProject() = Project(
