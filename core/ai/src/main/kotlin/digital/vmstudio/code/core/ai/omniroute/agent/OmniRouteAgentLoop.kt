@@ -359,7 +359,15 @@ class OmniRouteAgentLoop @Inject constructor(
         val streamKey = target.baseUrl + "|" + target.model
         var droppedConnection = false
         val streamed = if (streamKey in nonStreaming) null else try {
-            httpClient.stream(buildRequest(target, workingDirectory, allowedTools, history, stream = true, extraSystemPrompt = extraSystemPrompt))
+            val req = buildRequest(
+                target = target,
+                workingDirectory = workingDirectory,
+                allowedTools = allowedTools,
+                history = history,
+                stream = true,
+                extraSystemPrompt = extraSystemPrompt,
+            )
+            httpClient.stream(req)
                 .collect { event ->
                     val delta = assembler.accept(event.data)?.takeIf { it.isNotEmpty() }
                     // Thinking goes above the reply it led to, so it is shown the
