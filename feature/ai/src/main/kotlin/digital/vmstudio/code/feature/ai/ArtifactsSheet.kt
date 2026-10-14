@@ -41,7 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import digital.vmstudio.code.core.ui.theme.VmTheme
 
 data class SessionArtifact(
     val filePath: String,
