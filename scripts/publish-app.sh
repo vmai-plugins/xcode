@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Universal APK Publisher & Apps Hub Updater
-# Runs on VPS 2 to publish APKs and update https://vmstudio.digital/apps/
+# Runs on VPS 2 to publish APKs and update https://apps.vmstudio.digital/
 set -euo pipefail
 
 APP_SLUG="${1:-x-codes}"
@@ -9,9 +9,9 @@ APP_DESC="${3:-Mobile AI Cloud IDE with live SFTP server file manager, persisten
 APK_PATH="${4:-/opt/vmstudio/builds/apk/xcodes-latest.apk}"
 VERSION="${5:-v3.18}"
 
-DEPLOY_HOST="${DEPLOY_HOST:-root@31.97.63.239}"
-REMOTE_APPS_DIR="/home/vmstudio.digital/public_html/apps"
-TARGET_DIR="${REMOTE_APPS_DIR}/${APP_SLUG}"
+DEPLOY_HOST="${DEPLOY_HOST:-root@200.234.41.231}"
+LOCAL_APPS_DIR="/home/vmstudio-apps/htdocs/apps.vmstudio.digital"
+TARGET_DIR="${LOCAL_APPS_DIR}/${APP_SLUG}"
 TARGET_APK="${APP_SLUG}-latest.apk"
 
 if [ ! -f "$APK_PATH" ]; then
@@ -21,12 +21,19 @@ fi
 
 SIZE_MB=$(du -h "$APK_PATH" | awk '{print $1}')
 
-echo "==> [1/2] Uploading $APP_NAME ($SIZE_MB) to VPS 1..."
-ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
-scp -q "$APK_PATH" "${DEPLOY_HOST}:${TARGET_DIR}/.${TARGET_APK}.uploading"
-ssh "$DEPLOY_HOST" "cd $TARGET_DIR && mv -f .${TARGET_APK}.uploading ${TARGET_APK} && chown -R vmstu1627:vmstu1627 . && chmod 644 ${TARGET_APK}"
+if [ -d "$LOCAL_APPS_DIR" ]; then
+    echo "==> [1/2] Staging $APP_NAME ($SIZE_MB) locally on VPS 2..."
+    mkdir -p "$TARGET_DIR"
+    cp -f "$APK_PATH" "${TARGET_DIR}/${TARGET_APK}"
+    chmod 644 "${TARGET_DIR}/${TARGET_APK}"
+else
+    echo "==> [1/2] Uploading $APP_NAME ($SIZE_MB) to $DEPLOY_HOST..."
+    ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
+    scp -q "$APK_PATH" "${DEPLOY_HOST}:${TARGET_DIR}/.${TARGET_APK}.uploading"
+    ssh "$DEPLOY_HOST" "cd $TARGET_DIR && mv -f .${TARGET_APK}.uploading ${TARGET_APK} && chmod 644 ${TARGET_APK}"
+fi
 
-echo "==> [2/2] Refreshing Apps Hub index at https://vmstudio.digital/apps/..."
+echo "==> [2/2] Refreshing Apps Hub index at https://apps.vmstudio.digital/..."
 ssh "$DEPLOY_HOST" bash -c "'
 python3 - << \"PYEOF\"
 import os, re, glob
