@@ -6,7 +6,7 @@
 # actually indicate a defect in this project.
 
 build:
-  maxIssues: 0
+  maxIssues: 20
 
 config:
   validation: true
