@@ -182,6 +182,7 @@ interface AgentTaskDao {
         val interrupted = listOf(
             AgentTaskStatus.PLANNING,
             AgentTaskStatus.RUNNING,
+            AgentTaskStatus.WAITING_APPROVAL,
             AgentTaskStatus.TESTING,
         )
         markInterrupted(interrupted, timestamp)

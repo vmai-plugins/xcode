@@ -49,12 +49,26 @@ fun GitHubSettingsScreen(
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth()
             )
-            VmButton(
-                text = "Save Token",
-                onClick = { viewModel.setToken(tokenDraft) { tokenDraft = "" } },
-                enabled = tokenDraft.isNotBlank() && !state.isLoading,
-                style = VmButtonStyle.Primary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                VmButton(
+                    text = if (state.hasToken) "Update Token" else "Save Token",
+                    onClick = { viewModel.setToken(tokenDraft) { tokenDraft = "" } },
+                    enabled = tokenDraft.isNotBlank() && !state.isLoading,
+                    style = VmButtonStyle.Primary,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.hasToken) {
+                    VmButton(
+                        text = "Disconnect",
+                        onClick = { viewModel.clearToken { tokenDraft = "" } },
+                        enabled = !state.isLoading,
+                        style = VmButtonStyle.Secondary,
+                    )
+                }
+            }
         }
         
         if (state.isLoading) {

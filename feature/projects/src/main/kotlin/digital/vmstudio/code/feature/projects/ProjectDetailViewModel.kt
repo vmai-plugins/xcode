@@ -289,12 +289,28 @@ class ProjectDetailViewModel @Inject constructor(
                     }
                 if (downloadSuccess && localApkFile.exists()) {
                     notificationMessage.value = "Installing ${artifact.name}..."
-                    apkInstaller.install(localApkFile)
+                    val installResult = apkInstaller.install(localApkFile)
+                    if (installResult is VmResult.Failure) {
+                        error.value = installResult.error
+                    }
                 }
             } else {
                 val file = File(artifact.path)
                 if (file.exists()) {
-                    apkInstaller.install(file)
+                    try {
+                        file.copyTo(localApkFile, overwrite = true)
+                        notificationMessage.value = "Installing ${artifact.name}..."
+                        val installResult = apkInstaller.install(localApkFile)
+                        if (installResult is VmResult.Failure) {
+                            error.value = installResult.error
+                        }
+                    } catch (e: Exception) {
+                        error.value = VmError.Storage(
+                            summary = "Could not stage APK for installation",
+                            reason = e.message,
+                            cause = e,
+                        )
+                    }
                 } else {
                     val msg = "APK file not found on phone"
                     error.value = VmError.Storage(summary = msg, reason = artifact.path)

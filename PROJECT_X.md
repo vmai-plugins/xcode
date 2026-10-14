@@ -326,6 +326,53 @@ During our deep audit, the following critical bugs across AI, UI, Wire Protocol,
 - **Root Cause**: `cycleHubTaskStatus()` updated task status optimistically in local state, but omitted error handling when `projectHubClient.updateTaskStatus()` returned `VmResult.Failure`. The UI remained in the updated state while the server retained the old state.
 - **Fix**: Preserved previous status and added automated rollback if the network mutation returns `VmResult.Failure`.
 
+
+
+### Bug 28: Irrevocable GitHub Personal Access Token & Missing Disconnect Option
+- **Severity**: MEDIUM (User unable to disconnect GitHub account or remove stored token from device)
+- **Files**: [GitHubRepositoryClient.kt:97](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitHubRepositoryClient.kt), [GitHubSettingsViewModel.kt:65](file:///d:/Dev/x-codes/feature/settings/src/main/kotlin/digital/vmstudio/code/feature/settings/GitHubSettingsViewModel.kt), [GitHubSettingsScreen.kt:52](file:///d:/Dev/x-codes/feature/settings/src/main/kotlin/digital/vmstudio/code/feature/settings/GitHubSettingsScreen.kt)
+- **Root Cause**: GitHubRepositoryClient and GitHubSettingsViewModel had methods to save tokens, but no mechanism to clear, revoke, or disconnect a saved GitHub PAT. Once added, a token could never be removed from the phone without clearing entire application storage.
+- **Fix**: Implemented hasToken() and clearToken() in GitHubRepositoryClient, updated GitHubSettingsViewModel with reactive token existence state and clearToken(), and added a dedicated "Disconnect" button in GitHubSettingsScreen.
+
+### Bug 29: Terminal Command Safety Check Bypass on Route Argument Absence
+- **Severity**: HIGH (Dangerous shell commands bypass CommandGuard authorization checks when opening terminal without route serverId)
+- **File**: [TerminalViewModel.kt:221](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalViewModel.kt)
+- **Root Cause**: TerminalViewModel.submitLine() evaluated command safety against al server = serverId (the route's optional ARG_SERVER_ID), ignoring session.serverId. If the route had no serverId or if the user switched tabs to another server's terminal session, commandGuard.authorize either didn't run at all (bypassing all safety checks for dangerous commands) or checked against the wrong server.
+- **Fix**: Updated TerminalViewModel.submitLine() to evaluate authorization against the active session.serverId.
+
+### Bug 30: Extensionless File Corruption in Virtual & Local File System
+- **Severity**: HIGH (Creating or opening extensionless files like Dockerfile, Makefile, LICENSE, README converts them into directories)
+- **File**: [LocalFileSystemDelegate.kt:38](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/LocalFileSystemDelegate.kt)
+- **Root Cause**: esolveLocalFile() assumed any path without a dot in its final component was a directory and executed esolved.mkdirs(). This turned extensionless files (Dockerfile, Makefile, LICENSE, README, etc.) into directories, causing subsequent file reads, writes, and creations to fail with Is a directory or Failed to create file.
+- **Fix**: Removed speculative esolved.mkdirs() from esolveLocalFile(), relying on explicit parent directory creation in writeText, createFile, ename, and list.
+
+### Bug 31: Local APK Installation Crash & FileProvider Root Access Violation
+- **Severity**: MEDIUM (Crash on installing local project APKs due to uncaught IllegalArgumentException / missing FileProvider mapping)
+- **Files**: [ProjectDetailViewModel.kt:290](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt), [ApkInstaller.kt:30](file:///d:/Dev/x-codes/core/update/src/main/kotlin/digital/vmstudio/code/core/update/ApkInstaller.kt), [UpdateManager.kt:130](file:///d:/Dev/x-codes/core/update/src/main/kotlin/digital/vmstudio/code/core/update/UpdateManager.kt)
+- **Root Cause**: In ProjectDetailViewModel.downloadAndInstallApk(), local project APKs at arbitrary filesystem paths were passed directly to pkInstaller.install(file). If the path fell outside the roots declared in ile_paths.xml, FileProvider.getUriForFile threw an uncaught IllegalArgumentException, crashing the application. Furthermore, pkInstaller.install was not wrapped in unCatching, exposing the app to ActivityNotFoundException or SecurityException.
+- **Fix**: In ProjectDetailViewModel, copied local APK files into the app's cache directory (cacheDir/downloads/) where FileProvider has guaranteed configured access under <cache-path name="downloads" .../>. Wrapped ApkInstaller.install() in unCatching returning a VmResult<Unit> with proper VmError emission if the system installer fails to launch.
+
+
+
+### Bug 32: Silent Failure & HTTP 422 Unprocessable Entity in GitHub Content Commits
+- **Severity**: HIGH (Attempting to edit or save files on GitHub with invalid tokens or during transient failures produces confusing 422 Unprocessable Entity errors)
+- **File**: [GitHubRepositoryClient.kt:345](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitHubRepositoryClient.kt)
+- **Root Cause**: In putFileContent(), failure of metaRequest (fetching the existing file's SHA) was silently swallowed and mapped to 
+ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating authentication failures (401/403) or network timeouts as "new file" triggered a secondary doomed PUT request without sha, which GitHub rejected with 422 Unprocessable Entity ("sha" wasn't supplied).
+- **Fix**: Verified metaResponse.error. If the error is an HTTP 404, existingSha is safely set to null; for all other network/authentication failures, the method aborts immediately and returns the actual error to the user.
+
+### Bug 33: GNU ind -printf Failure on BSD / macOS / Alpine Linux Remote Build Hosts
+- **Severity**: MEDIUM (Agent tool list_apks fails with exit code 1 on non-GNU / Busybox Linux containers)
+- **File**: [OmniRouteAgentLoop.kt:1130](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Root Cause**: listApks() executed ind . -maxdepth 5 -type f -name '*.apk' -printf '%P (%s bytes)\n'. The -printf flag is a GNU findutils extension. On Alpine Linux (Busybox), FreeBSD, OpenBSD, NetBSD, and macOS, ind terminates with exit code 1 (ind: -printf: unknown primary or operator).
+- **Fix**: Replaced -printf with POSIX-compliant fallback (find . -maxdepth 5 -type f -name '*.apk' -exec ls -lh {} + 2>/dev/null || find . -maxdepth 5 -type f -name '*.apk').
+
+### Bug 34: Orphaned WAITING_APPROVAL Agent Tasks on Process Death
+- **Severity**: MEDIUM (Tasks left perpetually stuck in "Waiting Approval" state after app kill or crash)
+- **File**: [AiDao.kt:182](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/dao/AiDao.kt)
+- **Root Cause**: When the app process is terminated while an agent task is waiting for user confirmation (e.g. for a dangerous command or file edit), 	oolExecutionDao.cancelInterrupted() marks the tool as cancelled, but gentTaskDao.reconcileInterrupted() omitted AgentTaskStatus.WAITING_APPROVAL from the list of in-flight statuses. The task was left permanently orphaned in WAITING_APPROVAL with no active approval dialog available to resume it.
+- **Fix**: Added AgentTaskStatus.WAITING_APPROVAL to gentTaskDao.reconcileInterrupted()'s status list so orphaned tasks are cleanly transitioned to FAILED with an informative reason at startup.
+
 ---
 
 ## 6. Developer Runbook & Operations

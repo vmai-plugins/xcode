@@ -124,16 +124,9 @@ class UpdateManager @Inject constructor(
 
     /** The system installer can refuse to start; that is reported, never a crash. */
     private fun launchInstaller(apkFile: java.io.File) {
-        runCatching { installer.install(apkFile) }.onFailure { failure ->
-            _state.value = UpdateState.Failed(
-                VmError.Unexpected(
-                    summary = "Could not open the installer",
-                    reason = failure.message,
-                    suggestedAction = "Allow this app to install unknown apps in Android " +
-                        "settings, then try again.",
-                    cause = failure,
-                ),
-            )
+        when (val result = installer.install(apkFile)) {
+            is VmResult.Failure -> _state.value = UpdateState.Failed(result.error)
+            is VmResult.Success -> Unit
         }
     }
 

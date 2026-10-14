@@ -218,11 +218,11 @@ class TerminalViewModel @Inject constructor(
      */
     private fun submitLine() {
         val session = activeSession() ?: return
-        val server = serverId
+        val server = session.serverId
         val line = pendingLine.toString().trim()
         pendingLine.setLength(0)
 
-        val checkable = server != null &&
+        val checkable = server.isNotBlank() &&
             line.isNotEmpty() &&
             !_uiState.value.screen.alternateScreenActive
 
@@ -231,9 +231,8 @@ class TerminalViewModel @Inject constructor(
             return
         }
 
-        val safeServer = server ?: return
         viewModelScope.launch {
-            when (val authorised = commandGuard.authorize(safeServer, line)) {
+            when (val authorised = commandGuard.authorize(server, line)) {
                 is VmResult.Success -> session.sendKey(TerminalKey.ENTER)
                 is VmResult.Failure -> {
                     // The characters are already echoed on the remote line buffer, so

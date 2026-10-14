@@ -1128,7 +1128,7 @@ class OmniRouteAgentLoop @Inject constructor(
         val quotedApks = digital.vmstudio.code.core.ssh.command.shellQuotePath(resolvedApks)
         val result = commandGuard.run(
             serverId,
-            "cd $quotedApks && find . -maxdepth 5 -type f -name '*.apk' -printf '%P (%s bytes)\n'",
+            "cd $quotedApks && (find . -maxdepth 5 -type f -name '*.apk' -exec ls -lh {} + 2>/dev/null || find . -maxdepth 5 -type f -name '*.apk')",
             AGENT_COMMAND_LIMITS,
             requestedByAgent = true,
         )

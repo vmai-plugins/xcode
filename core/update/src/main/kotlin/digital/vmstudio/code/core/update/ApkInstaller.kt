@@ -3,6 +3,8 @@ package digital.vmstudio.code.core.update
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
+import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.result.VmResult
 import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.os.Build
@@ -25,14 +27,27 @@ class ApkInstaller @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
-    fun install(apkFile: File) {
+    fun install(apkFile: File): VmResult<Unit> = runCatching {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)
-    }
+        Unit
+    }.fold(
+        onSuccess = { VmResult.Success(Unit) },
+        onFailure = { failure ->
+            VmResult.Failure(
+                VmError.Unexpected(
+                    summary = "Could not open the installer",
+                    reason = failure.message,
+                    suggestedAction = "Allow this app to install unknown apps in Android settings, then try again.",
+                    cause = failure,
+                ),
+            )
+        },
+    )
 
     /**
      * True when [apkFile]'s signing certificate matches this app's own.

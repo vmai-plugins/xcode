@@ -94,6 +94,27 @@ class GitHubRepositoryClient @Inject constructor(
         return VmResult.Success(Unit)
     }
 
+    suspend fun hasToken(): Boolean =
+        preferences.preferences.first().githubTokenCredentialId != null
+
+    suspend fun clearToken(): VmResult<Unit> {
+        val currentId = preferences.preferences.first().githubTokenCredentialId
+        preferences.setGithubConnection(null, null)
+        repositoryCacheMutex.lock()
+        try {
+            cachedCredentialId = null
+            cachedRepositories = null
+        } finally {
+            repositoryCacheMutex.unlock()
+        }
+        currentId?.let { id ->
+            if (credentialStore.reference(id) is VmResult.Success) {
+                credentialStore.delete(id)
+            }
+        }
+        return VmResult.Success(Unit)
+    }
+
     suspend fun repositories(forceRefresh: Boolean = false): VmResult<List<GitHubRepository>> {
         repositoryCacheMutex.lock()
         try {
@@ -322,7 +343,14 @@ class GitHubRepositoryClient @Inject constructor(
                 is VmResult.Success -> runCatching {
                     org.json.JSONObject(metaResponse.value).optString("sha").takeIf { it.isNotBlank() }
                 }.getOrNull()
-                is VmResult.Failure -> null
+                is VmResult.Failure -> {
+                    val err = metaResponse.error
+                    if (err is VmError.Network && err.statusCode == 404) {
+                        null
+                    } else {
+                        return metaResponse
+                    }
+                }
             }
 
             val encodedContent = android.util.Base64.encodeToString(

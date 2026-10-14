@@ -18,6 +18,7 @@ typealias GitHubRepo = GitHubRepository
 
 data class GitHubSettingsUiState(
     val isLoading: Boolean = false,
+    val hasToken: Boolean = false,
     val error: String? = null,
     val repositories: List<GitHubRepo> = emptyList(),
 )
@@ -40,6 +41,7 @@ class GitHubSettingsViewModel @Inject constructor(
             try {
                 when (val result = github.saveToken(token)) {
                     is VmResult.Success -> {
+                        _uiState.update { it.copy(hasToken = true) }
                         onSaved()
                         loadRepositories()
                     }
@@ -60,16 +62,50 @@ class GitHubSettingsViewModel @Inject constructor(
         }
     }
 
-    fun loadRepositories() {
+    fun clearToken(onCleared: () -> Unit = {}) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                when (val result = github.repositories()) {
-                    is VmResult.Success -> _uiState.update {
-                        it.copy(repositories = result.value, isLoading = false)
+                when (val result = github.clearToken()) {
+                    is VmResult.Success -> {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                hasToken = false,
+                                repositories = emptyList(),
+                                error = null,
+                            )
+                        }
+                        onCleared()
                     }
                     is VmResult.Failure -> _uiState.update {
                         it.copy(isLoading = false, error = result.error.summary)
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = exception.message ?: "Could not clear the GitHub token",
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadRepositories() {
+        viewModelScope.launch {
+            val tokenExists = github.hasToken()
+            _uiState.update { it.copy(isLoading = true, hasToken = tokenExists, error = null) }
+            try {
+                when (val result = github.repositories()) {
+                    is VmResult.Success -> _uiState.update {
+                        it.copy(repositories = result.value, hasToken = tokenExists, isLoading = false)
+                    }
+                    is VmResult.Failure -> _uiState.update {
+                        it.copy(isLoading = false, hasToken = tokenExists, error = result.error.summary)
                     }
                 }
             } catch (cancellation: CancellationException) {

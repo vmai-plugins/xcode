@@ -35,11 +35,7 @@ internal class LocalFileSystemDelegate(
     private fun resolveLocalFile(path: String): File {
         if (path.startsWith("/vmhub/") || path.startsWith("/github/")) {
             val base = context.getExternalFilesDir(null) ?: context.filesDir
-            val resolved = File(base, "projects$path")
-            if (!resolved.exists() && !path.substringAfterLast('/').contains('.')) {
-                resolved.mkdirs()
-            }
-            return resolved
+            return File(base, "projects$path")
         }
         return File(path)
     }
