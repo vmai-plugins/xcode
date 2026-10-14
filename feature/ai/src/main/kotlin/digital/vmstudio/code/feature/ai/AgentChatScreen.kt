@@ -204,8 +204,11 @@ fun AgentChatScreen(
 
     val artifacts = remember(state.transcript) {
         state.transcript.filterIsInstance<TranscriptItem.ToolCall>()
-            .filter { it.affectedPath != null }
-            .map { SessionArtifact(filePath = it.affectedPath!!, isReverted = it.isReverted) }
+            .mapNotNull { item ->
+                item.affectedPath?.let { path ->
+                    SessionArtifact(filePath = path, isReverted = item.isReverted)
+                }
+            }
             .distinctBy { it.filePath }
     }
     var showArtifactsSheet by remember { mutableStateOf(false) }
