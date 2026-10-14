@@ -104,23 +104,35 @@ class TerminalViewModel @Inject constructor(
 
         _uiState.value = _uiState.value.copy(isOpening = true, error = null)
         viewModelScope.launch {
-            val scrollback = preferencesRepository.preferences.first().terminalScrollbackLines
-            when (val result = sessionManager.open(server, columns, rows, scrollback)) {
-                is VmResult.Success -> {
-                    _uiState.value = _uiState.value.copy(isOpening = false)
-                    selectSession(result.value.id)
-                    // Opened from a project: start there, once, not in the home folder.
-                    startPath?.takeIf {
-                        !it.startsWith("/github/") && !it.startsWith("/vmhub/") && !it.startsWith("content://")
-                    }?.let { path ->
-                        result.value.send("cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(path)}\r")
-                        startPath = null
+            try {
+                val scrollback = preferencesRepository.preferences.first().terminalScrollbackLines
+                when (val result = sessionManager.open(server, columns, rows, scrollback)) {
+                    is VmResult.Success -> {
+                        selectSession(result.value.id)
+                        // Opened from a project: start there, once, not in the home folder.
+                        startPath?.takeIf {
+                            !it.startsWith("/github/") && !it.startsWith("/vmhub/") && !it.startsWith("content://")
+                        }?.let { path ->
+                            result.value.send("cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(path)}\r")
+                            startPath = null
+                        }
+                    }
+                    is VmResult.Failure -> {
+                        _uiState.value = _uiState.value.copy(error = result.error)
                     }
                 }
-                is VmResult.Failure -> _uiState.value = _uiState.value.copy(
-                    isOpening = false,
-                    error = result.error,
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                _uiState.value = _uiState.value.copy(
+                    error = VmError.Unexpected(
+                        summary = "Could not open terminal session",
+                        reason = t.message,
+                        cause = t,
+                    ),
                 )
+            } finally {
+                _uiState.value = _uiState.value.copy(isOpening = false)
             }
         }
     }

@@ -69,7 +69,20 @@ class CommandGitService @Inject constructor(
     }
 
     override suspend fun currentBranch(serverId: String, repoPath: String): GitResult<String> {
-        return execute(serverId, repoPath, "git branch --show-current").map { it.stdout.trim() }
+        val branchResult = execute(serverId, repoPath, "git branch --show-current")
+        return when (branchResult) {
+            is GitResult.Success -> {
+                val branch = branchResult.value.stdout.trim()
+                if (branch.isNotEmpty()) {
+                    GitResult.Success(branch)
+                } else {
+                    // Detached HEAD or rebasing: fallback to short commit hash or HEAD
+                    execute(serverId, repoPath, "git rev-parse --short HEAD")
+                        .map { it.stdout.trim().ifEmpty { "HEAD" } }
+                }
+            }
+            is GitResult.Failure -> branchResult
+        }
     }
 
     override suspend fun fetch(serverId: String, repoPath: String): GitResult<Unit> {
@@ -85,7 +98,13 @@ class CommandGitService @Inject constructor(
     }
 
     override suspend fun restoreFile(serverId: String, repoPath: String, filePath: String): GitResult<Unit> {
-        return execute(serverId, repoPath, "git checkout HEAD -- ${filePath.shellQuoted()} 2>/dev/null || rm -f ${filePath.shellQuoted()}").map { }
+        val normalized = filePath.trim().replace('\\', '/')
+        if (normalized.isBlank() || normalized.startsWith("/") || normalized.split('/').any { it == ".." }) {
+            return GitResult.Failure(
+                GitError.CommandFailed("restoreFile", -1, "Invalid relative file path for restore: $filePath"),
+            )
+        }
+        return execute(serverId, repoPath, "git checkout HEAD -- ${normalized.shellQuoted()} 2>/dev/null || rm -f ${normalized.shellQuoted()}").map { }
     }
 
     override suspend fun discoverRepositories(

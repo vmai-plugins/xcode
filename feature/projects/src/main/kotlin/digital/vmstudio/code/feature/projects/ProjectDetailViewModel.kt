@@ -231,39 +231,42 @@ class ProjectDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             isBuildingApk.value = true
-            buildStatusMessage.value = "Running Gradle assembleDebug on server..."
-            val cmd = "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(proj.remotePath)} && chmod +x ./gradlew && ./gradlew assembleDebug"
-            when (val res = commandGuard.run(srvId, cmd, CommandLimits(timeoutMillis = 300_000L))) {
-                is VmResult.Success -> {
-                    if (res.value.isSuccess) {
-                        buildStatusMessage.value = "Build successful!"
-                        activityRepository.record(
-                            category = ActivityCategory.PROJECT,
-                            title = "Built Android APK",
-                            detail = proj.name,
-                            serverId = srvId,
-                            projectId = projectId,
-                        )
-                        scanApkArtifacts()
-                    } else {
-                        val failureDetail = res.value.stderr.ifBlank { res.value.stdout }.takeLast(400)
-                        val summary = "Android build failed: ${failureDetail.ifBlank { "Exit code ${res.value.exitCode}" }}"
+            try {
+                buildStatusMessage.value = "Running Gradle assembleDebug on server..."
+                val cmd = "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(proj.remotePath)} && chmod +x ./gradlew && ./gradlew assembleDebug"
+                when (val res = commandGuard.run(srvId, cmd, CommandLimits(timeoutMillis = 300_000L))) {
+                    is VmResult.Success -> {
+                        if (res.value.isSuccess) {
+                            buildStatusMessage.value = "Build successful!"
+                            activityRepository.record(
+                                category = ActivityCategory.PROJECT,
+                                title = "Built Android APK",
+                                detail = proj.name,
+                                serverId = srvId,
+                                projectId = projectId,
+                            )
+                            scanApkArtifacts()
+                        } else {
+                            val failureDetail = res.value.stderr.ifBlank { res.value.stdout }.takeLast(400)
+                            val summary = "Android build failed: ${failureDetail.ifBlank { "Exit code ${res.value.exitCode}" }}"
+                            buildStatusMessage.value = null
+                            error.value = VmError.Command(
+                                summary = summary,
+                                exitCode = res.value.exitCode,
+                                command = "./gradlew assembleDebug",
+                                stderrExcerpt = failureDetail,
+                            )
+                        }
+                    }
+                    is VmResult.Failure -> {
+                        val summary = "Android build failed: ${res.error.summary}"
                         buildStatusMessage.value = null
-                        error.value = VmError.Command(
-                            summary = summary,
-                            exitCode = res.value.exitCode,
-                            command = "./gradlew assembleDebug",
-                            stderrExcerpt = failureDetail,
-                        )
+                        error.value = VmError.Command(summary = summary, exitCode = 1)
                     }
                 }
-                is VmResult.Failure -> {
-                    val summary = "Android build failed: ${res.error.summary}"
-                    buildStatusMessage.value = null
-                    error.value = VmError.Command(summary = summary, exitCode = 1)
-                }
+            } finally {
+                isBuildingApk.value = false
             }
-            isBuildingApk.value = false
         }
     }
 
@@ -278,55 +281,58 @@ class ProjectDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             isDownloadingApk.value = true
-            notificationMessage.value = "Preparing $safeName..."
-            val downloadsDir = File(context.cacheDir, "downloads").apply { mkdirs() }
-            val localApkFile = File(downloadsDir, safeName)
+            try {
+                notificationMessage.value = "Preparing $safeName..."
+                val downloadsDir = File(context.cacheDir, "downloads").apply { mkdirs() }
+                val localApkFile = File(downloadsDir, safeName)
 
-            if (proj.isRemote) {
-                notificationMessage.value = "Downloading APK from server..."
-                var lastEvent: TransferEvent? = null
-                remoteFileSystem.download(srvId, artifact.path, localApkFile, resume = false)
-                    .collect { event ->
-                        lastEvent = event
-                        when (event) {
-                            is TransferEvent.Completed -> Unit
-                            is TransferEvent.Failed -> error.value = event.error
-                            else -> Unit
+                if (proj.isRemote) {
+                    notificationMessage.value = "Downloading APK from server..."
+                    var lastEvent: TransferEvent? = null
+                    remoteFileSystem.download(srvId, artifact.path, localApkFile, resume = false)
+                        .collect { event ->
+                            lastEvent = event
+                            when (event) {
+                                is TransferEvent.Completed -> Unit
+                                is TransferEvent.Failed -> error.value = event.error
+                                else -> Unit
+                            }
                         }
-                    }
-                val failure = apkTransferFailure(lastEvent)
-                if (failure != null) {
-                    error.value = failure
-                } else if (localApkFile.exists()) {
-                    notificationMessage.value = "Installing $safeName..."
-                    val installResult = apkInstaller.install(localApkFile)
-                    if (installResult is VmResult.Failure) {
-                        error.value = installResult.error
-                    }
-                }
-            } else {
-                val file = File(artifact.path)
-                if (file.exists()) {
-                    try {
-                        file.copyTo(localApkFile, overwrite = true)
+                    val failure = apkTransferFailure(lastEvent)
+                    if (failure != null) {
+                        error.value = failure
+                    } else if (localApkFile.exists()) {
                         notificationMessage.value = "Installing $safeName..."
                         val installResult = apkInstaller.install(localApkFile)
                         if (installResult is VmResult.Failure) {
                             error.value = installResult.error
                         }
-                    } catch (e: Exception) {
-                        error.value = VmError.Storage(
-                            summary = "Could not stage APK for installation",
-                            reason = e.message,
-                            cause = e,
-                        )
                     }
                 } else {
-                    val msg = "APK file not found on phone"
-                    error.value = VmError.Storage(summary = msg, reason = artifact.path)
+                    val file = File(artifact.path)
+                    if (file.exists()) {
+                        try {
+                            file.copyTo(localApkFile, overwrite = true)
+                            notificationMessage.value = "Installing $safeName..."
+                            val installResult = apkInstaller.install(localApkFile)
+                            if (installResult is VmResult.Failure) {
+                                error.value = installResult.error
+                            }
+                        } catch (e: Exception) {
+                            error.value = VmError.Storage(
+                                summary = "Could not stage APK for installation",
+                                reason = e.message,
+                                cause = e,
+                            )
+                        }
+                    } else {
+                        val msg = "APK file not found on phone"
+                        error.value = VmError.Storage(summary = msg, reason = artifact.path)
+                    }
                 }
+            } finally {
+                isDownloadingApk.value = false
             }
-            isDownloadingApk.value = false
         }
     }
 
@@ -398,11 +404,14 @@ class ProjectDetailViewModel @Inject constructor(
         if (path.isBlank() || proj.isLocal) return
         viewModelScope.launch {
             isGitLoading.value = true
-            when (val result = gitService.status(srvId, path)) {
-                is GitResult.Success -> gitStatus.value = result.value
-                is GitResult.Failure -> gitStatus.value = null
+            try {
+                when (val result = gitService.status(srvId, path)) {
+                    is GitResult.Success -> gitStatus.value = result.value
+                    is GitResult.Failure -> gitStatus.value = null
+                }
+            } finally {
+                isGitLoading.value = false
             }
-            isGitLoading.value = false
         }
     }
 
@@ -412,23 +421,26 @@ class ProjectDetailViewModel @Inject constructor(
         if (proj.isLocal) return
         viewModelScope.launch {
             isSyncing.value = true
-            when (val pullResult = gitService.pull(srvId, proj.remotePath)) {
-                is GitResult.Success -> {
-                    activityRepository.record(
-                        category = ActivityCategory.GIT,
-                        title = "Git pulled ${proj.name}",
-                        detail = proj.remotePath,
-                        serverId = srvId,
-                        projectId = projectId,
-                    )
-                    loadProject()
+            try {
+                when (val pullResult = gitService.pull(srvId, proj.remotePath)) {
+                    is GitResult.Success -> {
+                        activityRepository.record(
+                            category = ActivityCategory.GIT,
+                            title = "Git pulled ${proj.name}",
+                            detail = proj.remotePath,
+                            serverId = srvId,
+                            projectId = projectId,
+                        )
+                        loadProject()
+                    }
+                    is GitResult.Failure -> {
+                        val msg = "Git pull failed: ${pullResult.error}"
+                        error.value = VmError.Command(summary = msg, exitCode = 1)
+                    }
                 }
-                is GitResult.Failure -> {
-                    val msg = "Git pull failed: ${pullResult.error}"
-                    error.value = VmError.Command(summary = msg, exitCode = 1)
-                }
+            } finally {
+                isSyncing.value = false
             }
-            isSyncing.value = false
         }
     }
 
@@ -439,41 +451,42 @@ class ProjectDetailViewModel @Inject constructor(
         if (proj.isLocal) return
         viewModelScope.launch {
             isSyncing.value = true
-            when (val addRes = gitService.add(srvId, proj.remotePath)) {
-                is GitResult.Failure -> {
-                    val msg = "Git add failed: ${addRes.error}"
-                    error.value = VmError.Command(summary = msg, exitCode = 1)
-                    isSyncing.value = false
-                    return@launch
+            try {
+                when (val addRes = gitService.add(srvId, proj.remotePath)) {
+                    is GitResult.Failure -> {
+                        val msg = "Git add failed: ${addRes.error}"
+                        error.value = VmError.Command(summary = msg, exitCode = 1)
+                        return@launch
+                    }
+                    is GitResult.Success -> Unit
                 }
-                is GitResult.Success -> Unit
+                when (val commitRes = gitService.commit(srvId, proj.remotePath, message)) {
+                    is GitResult.Failure -> {
+                        val msg = "Git commit failed: ${commitRes.error}"
+                        error.value = VmError.Command(summary = msg, exitCode = 1)
+                        return@launch
+                    }
+                    is GitResult.Success -> Unit
+                }
+                when (val pushRes = gitService.push(srvId, proj.remotePath)) {
+                    is GitResult.Failure -> {
+                        val msg = "Git push failed: ${pushRes.error}"
+                        error.value = VmError.Command(summary = msg, exitCode = 1)
+                    }
+                    is GitResult.Success -> {
+                        activityRepository.record(
+                            category = ActivityCategory.GIT,
+                            title = "Git committed & pushed",
+                            detail = "$message (${proj.name})",
+                            serverId = srvId,
+                            projectId = projectId,
+                        )
+                        loadProject()
+                    }
+                }
+            } finally {
+                isSyncing.value = false
             }
-            when (val commitRes = gitService.commit(srvId, proj.remotePath, message)) {
-                is GitResult.Failure -> {
-                    val msg = "Git commit failed: ${commitRes.error}"
-                    error.value = VmError.Command(summary = msg, exitCode = 1)
-                    isSyncing.value = false
-                    return@launch
-                }
-                is GitResult.Success -> Unit
-            }
-            when (val pushRes = gitService.push(srvId, proj.remotePath)) {
-                is GitResult.Failure -> {
-                    val msg = "Git push failed: ${pushRes.error}"
-                    error.value = VmError.Command(summary = msg, exitCode = 1)
-                }
-                is GitResult.Success -> {
-                    activityRepository.record(
-                        category = ActivityCategory.GIT,
-                        title = "Git committed & pushed",
-                        detail = "$message (${proj.name})",
-                        serverId = srvId,
-                        projectId = projectId,
-                    )
-                    loadProject()
-                }
-            }
-            isSyncing.value = false
         }
     }
 

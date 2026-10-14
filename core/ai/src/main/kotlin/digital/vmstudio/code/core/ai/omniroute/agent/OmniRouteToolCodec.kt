@@ -361,8 +361,12 @@ object OmniRouteToolCodec {
                     val id = block.stringOrNull("id").orEmpty()
                     val name = block.stringOrNull("name")
                     if (name != null) {
-                        val input = (block["input"] as? JsonObject) ?: JsonObject(emptyMap())
-                        toolCalls += OmniRouteToolCall(id, name, input.toString())
+                        val arguments = when (val raw = block["input"]) {
+                            is JsonObject -> raw.toString()
+                            is JsonPrimitive -> if (raw.isString) raw.content else raw.toString()
+                            else -> "{}"
+                        }
+                        toolCalls += OmniRouteToolCall(id, name, arguments)
                     }
                 }
             }

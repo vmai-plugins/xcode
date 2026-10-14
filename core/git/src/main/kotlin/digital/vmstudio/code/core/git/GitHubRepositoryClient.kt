@@ -85,10 +85,7 @@ class GitHubRepositoryClient @Inject constructor(
         }
         previousId?.takeIf { it != credentialId }?.let { oldId ->
             if (credentialStore.reference(oldId) is VmResult.Success) {
-                when (val deleted = credentialStore.delete(oldId)) {
-                    is VmResult.Failure -> return deleted
-                    is VmResult.Success -> Unit
-                }
+                runCatching { credentialStore.delete(oldId) }
             }
         }
         return VmResult.Success(Unit)
@@ -234,13 +231,23 @@ class GitHubRepositoryClient @Inject constructor(
         URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
     suspend fun getFileContent(repoFullName: String, path: String, ref: String? = null): VmResult<String> {
+        val cleanPath = path.trim().removePrefix("/")
+        if (cleanPath.isEmpty()) {
+            return VmResult.Failure(
+                VmError.FileSystem(
+                    summary = "Cannot read repository root as a file",
+                    reason = "Target path resolves to the repository root directory.",
+                    path = path,
+                ),
+            )
+        }
         val secret = when (val result = readToken()) {
             is VmResult.Success -> result.value
             is VmResult.Failure -> return result
         }
         return try {
             val token = secret.useAsString { it }
-            val encodedPath = encodePath(path)
+            val encodedPath = encodePath(cleanPath)
             val refParam = if (!ref.isNullOrBlank()) "?ref=${encodeParam(ref)}" else ""
             val request = Request.Builder()
                 .url("https://api.github.com/repos/$repoFullName/contents/$encodedPath$refParam")
@@ -250,7 +257,20 @@ class GitHubRepositoryClient @Inject constructor(
                 .build()
             when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
                 is VmResult.Failure -> response
-                is VmResult.Success -> VmResult.Success(response.value)
+                is VmResult.Success -> {
+                    val body = response.value
+                    if (body.trimStart().startsWith("[")) {
+                        VmResult.Failure(
+                            VmError.FileSystem(
+                                summary = "Cannot read directory as a file",
+                                reason = "Target path '$path' resolves to a directory.",
+                                path = path,
+                            ),
+                        )
+                    } else {
+                        VmResult.Success(body)
+                    }
+                }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -351,9 +371,18 @@ class GitHubRepositoryClient @Inject constructor(
                             ),
                         )
                     }
-                    runCatching {
+                    val sha = runCatching {
                         org.json.JSONObject(body).optString("sha").takeIf { it.isNotBlank() }
                     }.getOrNull()
+                    if (sha == null) {
+                        return VmResult.Failure(
+                            VmError.Network(
+                                summary = "GitHub did not return a valid file blob SHA for '$path'",
+                                reason = body.take(200),
+                            ),
+                        )
+                    }
+                    sha
                 }
                 is VmResult.Failure -> {
                     val err = metaResponse.error

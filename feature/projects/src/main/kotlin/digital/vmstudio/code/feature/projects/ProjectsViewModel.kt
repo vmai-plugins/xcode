@@ -10,6 +10,7 @@ import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -98,6 +99,12 @@ class ProjectsViewModel @Inject constructor(
                 when (val res = projectHubClient.syncUniversalProjects()) {
                     is VmResult.Success -> {
                         hubStatusMessage.value = "Synced ${res.value} universal workspaces from VM Project Hub"
+                        viewModelScope.launch {
+                            delay(4_000)
+                            if (hubStatusMessage.value?.startsWith("Synced ") == true) {
+                                hubStatusMessage.value = null
+                            }
+                        }
                     }
                     is VmResult.Failure -> {
                         error.value = res.error
@@ -107,6 +114,10 @@ class ProjectsViewModel @Inject constructor(
                 isSyncingHub.value = false
             }
         }
+    }
+
+    fun dismissHubStatusMessage() {
+        hubStatusMessage.value = null
     }
 
     /** Records the open so the list orders by recency, then hands back the project. */

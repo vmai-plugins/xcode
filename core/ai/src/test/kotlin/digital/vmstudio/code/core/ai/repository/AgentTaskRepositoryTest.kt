@@ -95,12 +95,16 @@ class AgentTaskRepositoryTest {
         }
 
         /** Mirrors the real DAO: in-flight rows become FAILED with an explicit reason. */
-        override suspend fun markInterrupted(statuses: List<AgentTaskStatus>, timestamp: Long) {
+        override suspend fun markInterrupted(
+            statuses: List<AgentTaskStatus>,
+            failed: AgentTaskStatus,
+            timestamp: Long,
+        ) {
             taskStore.values
                 .filter { it.status in statuses }
                 .forEach {
                     taskStore[it.id] = it.copy(
-                        status = AgentTaskStatus.FAILED,
+                        status = failed,
                         errorText = "Interrupted: the app stopped before the task finished",
                         updatedAtMillis = timestamp,
                     )

@@ -156,4 +156,42 @@ class DiffParserTest {
         assertEquals(1, result.totalAdditions)
         assertEquals(1, result.totalDeletions)
     }
+
+    @Test
+    fun `parse pure rename without content changes`() {
+        val diff = """
+            diff --git a/source.kt b/target.kt
+            similarity index 100%
+            rename from source.kt
+            rename to target.kt
+        """.trimIndent()
+
+        val result = DiffParser.parse(diff)
+        assertTrue(result.hasChanges)
+        assertEquals(1, result.files.size)
+        val file = result.files[0]
+        assertEquals("source.kt", file.oldPath)
+        assertEquals("target.kt", file.newPath)
+        assertTrue(file.isRename)
+        assertFalse(file.isNew)
+        assertFalse(file.isDeleted)
+    }
+
+    @Test
+    fun `parse binary file difference`() {
+        val diff = """
+            diff --git a/logo.png b/logo.png
+            new file mode 100644
+            Binary files /dev/null and b/logo.png differ
+        """.trimIndent()
+
+        val result = DiffParser.parse(diff)
+        assertTrue(result.hasChanges)
+        assertEquals(1, result.files.size)
+        val file = result.files[0]
+        assertEquals("logo.png", file.newPath)
+        assertTrue(file.isNew)
+        assertEquals(1, file.lines.size)
+        assertEquals(DiffLineType.HEADER, file.lines[0].type)
+    }
 }

@@ -591,6 +591,54 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: When updating an existing secret via `replace()`, `writeSecretLocked()` wrote new ciphertext to disk and attempted to encrypt and persist the updated index. If index persistence failed (e.g. storage full or Keystore failure), the error block executed `if (file.exists()) file.delete()`, destroying the existing secret while the index still referenced it.
 - **Fix**: Backed up original secret bytes before replacing. If index update fails, the previous secret is automatically restored on disk rather than deleted.
 
+### Bug 71: ProjectDetailViewModel Coroutine State Freeze on Build/Sync/Install Failure
+- **Severity**: MEDIUM (UI State Locking & Indefinite Spinner Freeze)
+- **File**: [`ProjectDetailViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt)
+- **Root Cause**: `buildAndroidApk()`, `downloadAndInstallApk()`, `loadGitStatus()`, `syncGit()`, and `commitAndPush()` updated `isBuildingApk`, `isDownloadingApk`, `isGitLoading`, and `isSyncing` to `true` without `try ... finally` blocks. Any coroutine cancellation or unhandled network failure left these flags `true` permanently, locking UI spinners.
+- **Fix**: Wrapped all asynchronous build, download, and git operations in `try ... finally` blocks, ensuring flags always reset cleanly under all execution paths.
+
+### Bug 72: ProjectsViewModel Permanent Workspace Counter Suppression via Stale Hub Status Message
+- **Severity**: LOW (UI Subtitle Suppression & Stale Banner)
+- **File**: [`ProjectsViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectsViewModel.kt)
+- **Root Cause**: `hubStatusMessage` was populated after `syncFromHub()` but never cleared or dismissed. In `ProjectsScreen.kt`, `state.hubStatusMessage ?: "${state.projects.size} active workspaces"` permanently hid the workspace count subtitle after the initial launch sync.
+- **Fix**: Added an auto-dismiss delay (4s) to reset `hubStatusMessage` to `null` and added `dismissHubStatusMessage()` for explicit user dismissals.
+
+### Bug 73: CommandGitService Restore Path Traversal Arbitrary rm Deletion & Detached HEAD Branch Blanking
+- **Severity**: HIGH (Security & Git State Accuracy)
+- **File**: [`CommandGitService.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/CommandGitService.kt)
+- **Root Cause**: `restoreFile` executed `git checkout HEAD -- $file || rm -f $file` without checking for path traversal (`..` or leading `/`), risking unintended file deletion outside the repository. Additionally, `currentBranch` returned an empty string `""` when the repository was in a detached HEAD state.
+- **Fix**: Validated that `filePath` is a strictly relative repository path without `..` traversal before executing restore. Added fallback to `git rev-parse --short HEAD` when `git branch --show-current` returns blank.
+
+### Bug 74: DiffParser Silently Drops 100% Similarity Renames and Binary File Changes
+- **Severity**: MEDIUM (Diff Review Omission)
+- **Files**: [`DiffParser.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/DiffParser.kt), [`DiffParserTest.kt`](file:///d:/Dev/x-codes/core/git/src/test/kotlin/digital/vmstudio/code/core/git/DiffParserTest.kt)
+- **Root Cause**: Pure file renames (100% similarity) and binary files (`Binary files a/... and b/... differ`) lack `--- ` / `+++ ` headers and were completely omitted from the parsed `GitDiff`, showing "No changes" in the diff review UI.
+- **Fix**: Extended `DiffParser` with pending file tracking and `flushPendingIfNeeded()`, preserving renames without hunks and binary file diff entries with descriptive headers.
+
+### Bug 75: OmniRouteToolCodec Drops Arguments in Anthropic Tool Calls When Passed as JSON String
+- **Severity**: HIGH (Agentic Tool Execution Failure & Argument Loss)
+- **File**: [`OmniRouteToolCodec.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteToolCodec.kt)
+- **Root Cause**: In `parseAnthropicResponse`, `(block["input"] as? JsonObject) ?: JsonObject(emptyMap())` discarded tool arguments when an OpenAI-to-Anthropic proxy, Claude forwarder, or gateway delivered tool arguments as a JSON string primitive.
+- **Fix**: Supported both `JsonObject` and `JsonPrimitive` (extracting raw string content) to preserve all tool arguments.
+
+### Bug 76: GitHubRepositoryClient False-Failure on Old Token Deletion & Directory Guard
+- **Severity**: MEDIUM (GitHub Token Persistence & File Read Robustness)
+- **File**: [`GitHubRepositoryClient.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitHubRepositoryClient.kt)
+- **Root Cause**: `saveToken()` returned `VmResult.Failure(deleted.error)` if best-effort deletion of the replaced old token failed, falsely claiming failure despite the new token being saved. `getFileContent()` did not reject root/directory paths, returning directory JSON arrays as file content. `putFileContent()` silently proceeded without `sha` on 200 OK responses with missing blob metadata, causing GitHub 422 errors.
+- **Fix**: Made old token cleanup best-effort via `runCatching`, guarded `getFileContent()` against directory paths, and enforced non-null SHA validation on existing file metadata.
+
+### Bug 77: TerminalViewModel Stuck in isOpening State on Launch Failure
+- **Severity**: MEDIUM (Terminal Tab Opening Freeze)
+- **File**: [`TerminalViewModel.kt`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalViewModel.kt)
+- **Root Cause**: `openSession()` mutated `isOpening = true` without a `try ... finally` block. If preferences loading or session creation threw an unhandled error, `isOpening` remained `true` forever, preventing any future terminal tabs from being opened.
+- **Fix**: Wrapped `openSession()` in `try ... catch ... finally`, catching unexpected throwables as `VmError.Unexpected` and guaranteeing `isOpening = false`.
+
+### Bug 78: EditorViewModel Coroutine State Lock on Load/Save Exceptions
+- **Severity**: MEDIUM (Editor State Lock & Progress Spinner Freeze)
+- **File**: [`EditorViewModel.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: In `loadFile()` and `save()`, `isLoading` and `isSaving` were set to `true` without `try ... finally` blocks. If an unhandled network error or coroutine cancellation occurred, spinners remained permanently active.
+- **Fix**: Enclosed `loadFile()` and `save()` in `try ... finally` blocks to ensure `isLoading` and `isSaving` reset reliably under all conditions.
+
 ### UI Enhancement: Smart Auto-Hiding Headers & Fluid Full-Screen Antigravity Chat
 - **Files**: [`AgentChatScreen.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatScreen.kt), [`ChatTopBar.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/ChatTopBar.kt)
 - **Enhancement**:
