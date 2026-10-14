@@ -33,7 +33,7 @@ internal class LocalFileSystemDelegate(
     private val ioDispatcher: CoroutineDispatcher,
 ) {
     private fun resolveLocalFile(path: String): File {
-        if (path.startsWith("/vmhub/")) {
+        if (path.startsWith("/vmhub/") || path.startsWith("/github/")) {
             val base = context.getExternalFilesDir(null) ?: context.filesDir
             val resolved = File(base, "projects$path")
             if (!resolved.exists() && !path.substringAfterLast('/').contains('.')) {
@@ -63,7 +63,7 @@ internal class LocalFileSystemDelegate(
             }
             val target = resolveLocalFile(path)
             if (!target.isDirectory) {
-                if (path.startsWith("/vmhub/")) {
+                if (path.startsWith("/vmhub/") || path.startsWith("/github/")) {
                     target.mkdirs()
                 } else {
                     return@withContext VmResult.Failure(
@@ -80,7 +80,7 @@ internal class LocalFileSystemDelegate(
                     ),
                 )
             val entries: List<RemoteFileEntry> = children
-                .map { it.toLocalEntry(virtualPrefix = if (path.startsWith("/vmhub/")) path else null) }
+                .map { it.toLocalEntry(virtualPrefix = if (path.startsWith("/vmhub/") || path.startsWith("/github/")) path else null) }
                 .sortedFor(options)
             VmResult.Success(entries)
         }
@@ -99,8 +99,9 @@ internal class LocalFileSystemDelegate(
                 VmError.Storage(summary = "File does not exist", reason = path),
             )
         }
-        val entry = file.toLocalEntry(virtualPrefix = if (path.startsWith("/vmhub/")) path.substringBeforeLast('/') else null)
-        val finalEntry = if (path.startsWith("/vmhub/")) entry.copy(path = path) else entry
+        val isVirtual = path.startsWith("/vmhub/") || path.startsWith("/github/")
+        val entry = file.toLocalEntry(virtualPrefix = if (isVirtual) path.substringBeforeLast('/') else null)
+        val finalEntry = if (isVirtual) entry.copy(path = path) else entry
         VmResult.Success(finalEntry)
     }
 
@@ -437,7 +438,7 @@ internal class LocalFileSystemDelegate(
     suspend fun canonicalize(path: String): VmResult<String> = withContext(ioDispatcher) {
         if (!isTreeUriPath(path)) {
             return@withContext try {
-                if (path.startsWith("/vmhub/")) {
+                if (path.startsWith("/vmhub/") || path.startsWith("/github/")) {
                     VmResult.Success(path)
                 } else {
                     VmResult.Success(resolveLocalFile(path).canonicalPath)

@@ -13,6 +13,7 @@ import digital.vmstudio.code.core.project.ProjectRepository
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.command.CommandLimits
+import digital.vmstudio.code.core.ssh.command.shellQuotePath
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -540,8 +541,7 @@ class ProjectCreateViewModel @Inject constructor(
             is VmResult.Failure -> result
         }
     }
-    private fun escapePath(path: String): String =
-        "'" + path.replace("'", "'\\''") + "'"
+    private fun escapePath(path: String): String = shellQuotePath(path)
 
     private fun normalizeGitHubUrl(url: String): String {
         val trimmed = url.trim()

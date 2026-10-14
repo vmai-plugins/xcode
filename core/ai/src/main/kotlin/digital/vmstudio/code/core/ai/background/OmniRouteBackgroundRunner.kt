@@ -13,6 +13,7 @@ import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandLimits
+import digital.vmstudio.code.core.ssh.command.shellQuotePath
 import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -211,7 +212,7 @@ class OmniRouteBackgroundRunner @Inject constructor(
         // setsid detaches from the SSH session so closing it cannot stop the run.
         // `|| exit 1`: with `&&` the trailing `echo started` still ran after a failed
         // cd, so a missing folder looked like a successful start.
-        return "cd ${quote(workingDirectory)} || exit 1; " +
+        return "cd ${shellQuotePath(workingDirectory)} || exit 1; " +
             "if command -v setsid >/dev/null; then setsid nohup $run & else nohup $run & fi; echo started"
     }
 

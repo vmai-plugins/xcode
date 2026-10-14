@@ -50,7 +50,7 @@ data class HubProjectItem(
         extractGithubRepoPath(repoUrl ?: appUrls)?.let { return it }
         val rawPath = serverPath?.takeIf { it.isNotBlank() }
             ?: appPath?.takeIf { it.isNotBlank() }
-        if (rawPath != null && rawPath.startsWith("/")) return rawPath
+        if (rawPath != null && (rawPath.startsWith("/") || rawPath.startsWith("~"))) return rawPath
         val safeSlug = slug.ifBlank { name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') }
             .ifBlank { "project-$id" }
         return "/vmhub/$safeSlug"

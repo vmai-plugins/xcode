@@ -127,7 +127,7 @@ class DefaultProjectRepository @Inject constructor(
             trimmedPath.startsWith("/github/")
         // SAF workspaces use a persisted content URI rather than a filesystem path.
         // Remote paths still must be absolute because they become the agent's scope.
-        if (!trimmedPath.startsWith("/") && !trimmedPath.startsWith("~/") &&
+        if (!trimmedPath.startsWith("/") && trimmedPath != "~" && !trimmedPath.startsWith("~/") &&
             !(isLocal && ProjectPath.isTreeUri(trimmedPath))
         ) {
             return@withContext VmResult.Failure(

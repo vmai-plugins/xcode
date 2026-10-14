@@ -11,6 +11,7 @@ import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.sftp.fs.TransferEvent
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.command.CommandLimits
+import digital.vmstudio.code.core.ssh.command.shellQuotePath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
@@ -69,7 +70,7 @@ class GoogleDriveManager @Inject constructor(
         val localFile = File(context.cacheDir, archiveName)
 
         val operationResult = try {
-            val tarCommand = "tar -czf ${shellQuote(tempRemoteArchive)} -C ${shellQuote(remotePath)} " +
+            val tarCommand = "tar -czf ${shellQuotePath(tempRemoteArchive)} -C ${shellQuotePath(remotePath)} " +
                 "--exclude='.git' --exclude='node_modules' --exclude='build' ."
             when (val tarResult = runOnServer(serverId, tarCommand, CommandLimits.LONG_RUNNING)) {
                 is VmResult.Failure -> tarResult
@@ -199,8 +200,6 @@ class GoogleDriveManager @Inject constructor(
             )
         }
     }
-
-    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
     companion object {
         private const val TAG = "GoogleDriveManager"

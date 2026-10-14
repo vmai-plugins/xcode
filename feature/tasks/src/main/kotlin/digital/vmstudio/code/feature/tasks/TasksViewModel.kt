@@ -79,11 +79,18 @@ class TasksViewModel @Inject constructor(
             "in_progress" -> "done"
             else -> "todo"
         }
+        val previousStatus = item.status
         hubTasks.value = hubTasks.value.map {
             if (it.id == item.id) it.copy(status = nextStatus) else it
         }
         viewModelScope.launch {
-            projectHubClient.updateTaskStatus(item.id, nextStatus)
+            val result = projectHubClient.updateTaskStatus(item.id, nextStatus)
+            if (result is VmResult.Failure) {
+                // Roll back optimistic state on network or server error
+                hubTasks.value = hubTasks.value.map {
+                    if (it.id == item.id) it.copy(status = previousStatus) else it
+                }
+            }
         }
     }
 

@@ -49,7 +49,7 @@ class SftpRemoteFileSystem @Inject constructor(
     private val localFs = LocalFileSystemDelegate(context, ioDispatcher)
 
     private fun isLocalOrVirtual(serverId: String?, path: String): Boolean =
-        RemoteFileSystem.isLocalServer(serverId) || path.startsWith("/vmhub/")
+        RemoteFileSystem.isLocalServer(serverId) || path.startsWith("/vmhub/") || path.startsWith("/github/")
 
     private fun expandPath(sftp: SFTPClient, path: String): String {
         val trimmed = path.trim()

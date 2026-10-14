@@ -184,4 +184,10 @@ class ClaudeCodeCommandBuilderTest {
         assertFalse(command.contains("ANTHROPIC_AUTH_TOKEN"))
         assertFalse(command.contains("ANTHROPIC_BASE_URL"))
     }
+
+    @Test
+    fun `tilde working directory is quoted to allow POSIX shell expansion`() {
+        val command = ClaudeCodeCommandBuilder.build(config(workingDirectory = "~/projects/my app"))
+        assertTrue("Expected command to cd with unquoted tilde but safely quoted path", command.startsWith("cd ~/'projects/my app' &&"))
+    }
 }

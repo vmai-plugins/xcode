@@ -110,8 +110,10 @@ class TerminalViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(isOpening = false)
                     selectSession(result.value.id)
                     // Opened from a project: start there, once, not in the home folder.
-                    startPath?.let { path ->
-                        result.value.send("cd '${path.replace("'", "'\\''")}'\r")
+                    startPath?.takeIf {
+                        !it.startsWith("/github/") && !it.startsWith("/vmhub/") && !it.startsWith("content://")
+                    }?.let { path ->
+                        result.value.send("cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(path)}\r")
                         startPath = null
                     }
                 }

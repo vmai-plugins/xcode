@@ -125,10 +125,29 @@ class VmHttpClient @Inject constructor(
                                 endpoint = request.url.redactedForDisplay(),
                             ),
                         )
-                        destination.outputStream().use { out ->
-                            body.byteStream().copyTo(out)
+                        val tempFile = File(destination.parentFile, "${destination.name}.part.${System.currentTimeMillis()}")
+                        try {
+                            tempFile.outputStream().use { out ->
+                                body.byteStream().copyTo(out)
+                            }
+                            val moved = tempFile.renameTo(destination) || runCatching {
+                                tempFile.copyTo(destination, overwrite = true)
+                                tempFile.delete()
+                                true
+                            }.getOrDefault(false)
+                            if (moved) {
+                                return@withContext VmResult.Success(destination)
+                            } else {
+                                return@withContext VmResult.Failure(
+                                    VmError.FileSystem(
+                                        summary = "Could not finalize downloaded file",
+                                        path = destination.absolutePath,
+                                    ),
+                                )
+                            }
+                        } finally {
+                            if (tempFile.exists()) tempFile.delete()
                         }
-                        return@withContext VmResult.Success(destination)
                     }
                 }
             } catch (cancellation: CancellationException) {

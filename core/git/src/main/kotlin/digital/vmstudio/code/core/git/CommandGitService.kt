@@ -1,6 +1,7 @@
 package digital.vmstudio.code.core.git
 
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.ssh.command.shellQuotePath
 import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -91,7 +92,7 @@ class CommandGitService @Inject constructor(
         searchRoots: List<String>,
         maxDepth: Int,
     ): GitResult<List<DiscoveredGitRepo>> {
-        val roots = searchRoots.joinToString(" ") { it.shellQuoted() }
+        val roots = searchRoots.joinToString(" ") { shellQuotePath(it) }
         val script = "for r in $roots; do if [ -d \"\$r\" ]; then find \"\$r\" -maxdepth $maxDepth -name .git -type d 2>/dev/null; fi; done"
         return when (val outcome = connectionManager.withSession(serverId) { session ->
             session.execute(script)
@@ -118,7 +119,7 @@ class CommandGitService @Inject constructor(
         repoPath: String,
         command: String,
     ): GitResult<SshCommandResult> {
-        val fullCommand = "cd ${repoPath.shellQuoted()} && $command"
+        val fullCommand = "cd ${shellQuotePath(repoPath)} && $command"
         // withSession's block returns VmResult by contract; the Git layer then maps
         // that outcome onto GitResult so callers see Git-specific error types.
         return when (val outcome = connectionManager.withSession(serverId) { session ->

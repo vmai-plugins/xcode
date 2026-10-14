@@ -1038,8 +1038,7 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         // The model is told it works in the project, so its commands run there, not
         // in the SSH login directory; builds and tests get time to finish.
-        val directory = workingDirectory.trim().replace("'", "'\\''")
-        val command = if (directory.isBlank()) requested else "cd '$directory' && $requested"
+        val command = if (workingDirectory.isBlank()) requested else "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(workingDirectory)} && $requested"
 
         val result = commandGuard.run(serverId, command, AGENT_COMMAND_LIMITS, requestedByAgent = true)
         return when (result) {
@@ -1095,8 +1094,7 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
         val resolved = resolvePath(workingDirectory, directory)
-        val quotedDirectory = resolved.replace("'", "'\\''")
-        val command = "cd '$quotedDirectory' && ./gradlew $tasks --no-daemon"
+        val command = "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(resolved)} && ./gradlew $tasks --no-daemon"
         val result = commandGuard.run(serverId, command, AGENT_COMMAND_LIMITS, requestedByAgent = true)
         return when (result) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
@@ -1127,10 +1125,10 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
         val resolvedApks = resolvePath(workingDirectory, apkDirectory)
-        val quotedApks = resolvedApks.replace("'", "'\\''")
+        val quotedApks = digital.vmstudio.code.core.ssh.command.shellQuotePath(resolvedApks)
         val result = commandGuard.run(
             serverId,
-            "cd '$quotedApks' && find . -maxdepth 5 -type f -name '*.apk' -printf '%P (%s bytes)\n'",
+            "cd $quotedApks && find . -maxdepth 5 -type f -name '*.apk' -printf '%P (%s bytes)\n'",
             AGENT_COMMAND_LIMITS,
             requestedByAgent = true,
         )

@@ -66,3 +66,21 @@ data class CommandLimits(
         val LONG_RUNNING = CommandLimits(timeoutMillis = 30 * 60_000, maxOutputBytes = 4 shl 20)
     }
 }
+
+/**
+ * Safely quotes a path or directory for POSIX shell execution while expanding leading tilde.
+ *
+ * Inside POSIX shells (bash, dash, zsh), tildes enclosed in quotes (e.g. `'~/projects'`)
+ * are NOT expanded, causing `cd` or file commands to fail with `No such file or directory`.
+ * This helper preserves the leading `~` unquoted (e.g. `~/'projects'`) so the shell expands
+ * the user's home directory while securely quoting the remainder against injection or spaces.
+ */
+fun shellQuotePath(path: String): String {
+    val trimmed = path.trim()
+    return when {
+        trimmed.startsWith("~/") -> "~/'" + trimmed.removePrefix("~/").replace("'", "'\\''") + "'"
+        trimmed == "~" -> "~"
+        trimmed.isEmpty() -> "''"
+        else -> "'${trimmed.replace("'", "'\\''")}'"
+    }
+}

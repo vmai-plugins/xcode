@@ -232,21 +232,34 @@ class ProjectDetailViewModel @Inject constructor(
         viewModelScope.launch {
             isBuildingApk.value = true
             buildStatusMessage.value = "Running Gradle assembleDebug on server..."
-            val cmd = "cd '${sh(proj.remotePath)}' && chmod +x ./gradlew && ./gradlew assembleDebug"
+            val cmd = "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(proj.remotePath)} && chmod +x ./gradlew && ./gradlew assembleDebug"
             when (val res = commandGuard.run(srvId, cmd, CommandLimits(timeoutMillis = 300_000L))) {
                 is VmResult.Success -> {
-                    buildStatusMessage.value = "Build successful!"
-                    activityRepository.record(
-                        category = ActivityCategory.PROJECT,
-                        title = "Built Android APK",
-                        detail = proj.name,
-                        serverId = srvId,
-                        projectId = projectId,
-                    )
-                    scanApkArtifacts()
+                    if (res.value.isSuccess) {
+                        buildStatusMessage.value = "Build successful!"
+                        activityRepository.record(
+                            category = ActivityCategory.PROJECT,
+                            title = "Built Android APK",
+                            detail = proj.name,
+                            serverId = srvId,
+                            projectId = projectId,
+                        )
+                        scanApkArtifacts()
+                    } else {
+                        val failureDetail = res.value.stderr.ifBlank { res.value.stdout }.takeLast(400)
+                        val summary = "Android build failed: ${failureDetail.ifBlank { "Exit code ${res.value.exitCode}" }}"
+                        buildStatusMessage.value = null
+                        error.value = VmError.Command(
+                            summary = summary,
+                            exitCode = res.value.exitCode,
+                            command = "./gradlew assembleDebug",
+                            stderrExcerpt = failureDetail,
+                        )
+                    }
                 }
                 is VmResult.Failure -> {
                     val summary = "Android build failed: ${res.error.summary}"
+                    buildStatusMessage.value = null
                     error.value = VmError.Command(summary = summary, exitCode = 1)
                 }
             }

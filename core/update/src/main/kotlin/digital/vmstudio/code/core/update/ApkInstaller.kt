@@ -61,7 +61,7 @@ class ApkInstaller @Inject constructor(
             @Suppress("DEPRECATION")
             packageManager.getPackageArchiveInfo(
                 apkFile.absolutePath,
-                PackageManager.GET_SIGNING_CERTIFICATES,
+                PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES,
             )
         } else {
             @Suppress("DEPRECATION")
@@ -72,7 +72,11 @@ class ApkInstaller @Inject constructor(
 
     private fun installedSigningCertificates(packageManager: PackageManager): List<String> {
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES,
+            )
         } else {
             @Suppress("DEPRECATION")
             packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)

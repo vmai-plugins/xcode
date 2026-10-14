@@ -111,7 +111,12 @@ interface RemoteFileSystem {
         const val DEFAULT_MAX_TEXT_BYTES: Long = 8L * 1024 * 1024
 
         fun isLocalServer(serverId: String?): Boolean =
-            serverId == null || serverId == LOCAL_SERVER_ID || serverId == "device" || serverId.isBlank()
+            serverId == null ||
+                serverId == LOCAL_SERVER_ID ||
+                serverId == "device" ||
+                serverId == "github" ||
+                serverId == "vmhub" ||
+                serverId.isBlank()
     }
 }
 

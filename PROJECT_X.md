@@ -284,6 +284,48 @@ During our deep audit, the following critical bugs across AI, UI, Wire Protocol,
 - **Root Cause**: `looksSensitive()` and `PathGuard.isSecret()` withheld SSH keys and `.env`, but omitted `local.properties` (Android signing keys and keystore passwords), `google-services.json` (OAuth and Firebase client tokens), and `.git/config` (containing embedded GitHub PATs).
 - **Fix**: Expanded sensitivity filters across both `RemotePath` and `PathGuard` to block access to these files.
 
+### Bug 21: POSIX Shell Single-Quoting Tilde Expansion Failure Across Remote Commands & Backups
+- **Severity**: HIGH (Commands and project setups fail on default VPS project paths)
+- **Files**: [`CommandResult.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/command/CommandResult.kt), [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt), [`ClaudeCodeCommandBuilder.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/claudecode/ClaudeCodeCommandBuilder.kt), [`OmniRouteBackgroundRunner.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/background/OmniRouteBackgroundRunner.kt), [`GoogleDriveManager.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/drive/GoogleDriveManager.kt), [`CommandGitService.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/CommandGitService.kt), [`ProjectCreateViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectCreateViewModel.kt), [`ProjectDetailViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt), [`TerminalViewModel.kt`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalViewModel.kt)
+- **Root Cause**: In POSIX shells (bash/sh), tilde expansion does NOT occur inside single quotes (`'~/projects'`). When paths like `"~/projects/app"` were quoted as `'~/...'`, commands like `cd '~/projects'`, `tar -C '~/...'`, `mkdir -p '~/...'`, and `git clone ... '~/...'` failed with `No such file or directory` or created a literal folder named `~`.
+- **Fix**: Implemented `shellQuotePath(path: String)` in `CommandResult.kt`, which leaves leading `~` unquoted (e.g. `~/'projects/app'`) to enable shell tilde expansion while strictly quoting all subsequent path components against injection. Deployed across all remote command invocations.
+
+### Bug 22: RemoteFileSystem Virtual Server Identifier & GitHub/VMHub Route Mismatch
+- **Severity**: HIGH (Zero-clone GitHub repositories trigger failed SSH handshakes)
+- **Files**: [`RemoteFileSystem.kt:113`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/RemoteFileSystem.kt), [`SftpRemoteFileSystem.kt:51`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/SftpRemoteFileSystem.kt), [`VmProjectHubClient.kt:53`](file:///d:/Dev/x-codes/core/project/src/main/kotlin/digital/vmstudio/code/core/project/VmProjectHubClient.kt), [`ProjectRepository.kt:130`](file:///d:/Dev/x-codes/core/project/src/main/kotlin/digital/vmstudio/code/core/project/ProjectRepository.kt)
+- **Root Cause**: `RemoteFileSystem.isLocalServer()` omitted virtual server IDs `"github"` and `"vmhub"`. `SftpRemoteFileSystem.isLocalOrVirtual()` omitted `/github/` path checks. When interacting with zero-clone repos or virtual projects, SFTP calls attempted to establish SSH sessions to host `"github"`. Furthermore, `VmProjectHubClient.universalPath()` discarded `serverPath` starting with `~` and `ProjectRepository` rejected bare `~` paths.
+- **Fix**: Added `"github"` and `"vmhub"` to `isLocalServer()`, included `path.startsWith("/github/")` in `isLocalOrVirtual()`, permitted tilde paths in `universalPath()`, and allowed bare `~` in `ProjectRepository` validation.
+
+### Bug 23: Non-Atomic HTTP Download Corrupting Local Files on Abort or Interruption
+- **Severity**: MEDIUM (Network interruption leaves truncated corrupt files in cache/storage)
+- **File**: [`VmHttpClient.kt:128`](file:///d:/Dev/x-codes/core/network/src/main/kotlin/digital/vmstudio/code/core/network/http/VmHttpClient.kt)
+- **Root Cause**: `download()` wrote directly to the final `destination` output stream while streaming over the network. On socket timeouts, drops, or cancellations, `destination` remained on disk with partial, corrupted content.
+- **Fix**: Implemented atomic downloads writing to a temporary `.part.<timestamp>` file and atomically renaming/moving on successful completion with guaranteed cleanup in a `finally` block.
+
+### Bug 24: False-Positive Build Success on Remote Gradle Compilation Failure
+- **Severity**: HIGH (Failed Gradle builds falsely reported as successful)
+- **File**: [`ProjectDetailViewModel.kt:236`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt)
+- **Root Cause**: In `buildAndroidApk()`, `commandGuard.run` returned `VmResult.Success(CommandResult(...))` whenever the SSH process execution finished, without checking `res.value.isSuccess` (`exitCode == 0`). Compilation errors exiting with code 1 were falsely reported as "Build successful!" and logged to the activity database.
+- **Fix**: Added explicit `res.value.isSuccess` guard, extracting stderr excerpts and surfacing actionable `VmError.Command` failures on non-zero exit codes.
+
+### Bug 25: Terminal Virtual & SAF Path CD Navigation Failure on SSH Connect
+- **Severity**: LOW (Terminal shell displays `cd: No such file or directory` immediately on connection)
+- **File**: [`TerminalViewModel.kt:113`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalViewModel.kt)
+- **Root Cause**: When opening a terminal from a GitHub zero-clone (`/github/...`), VMHub (`/vmhub/...`), or phone SAF (`content://...`) project, `TerminalViewModel` dispatched `cd <path>` to the remote VPS shell, triggering error messages.
+- **Fix**: Filtered out virtual and SAF URI paths from automatic initial terminal cd dispatch.
+
+### Bug 26: Android P+ `getPackageArchiveInfo` Signature Extraction Failure
+- **Severity**: MEDIUM (Self-update verification rejects legitimate updates on several Android OEM builds)
+- **File**: [`ApkInstaller.kt:60, 74`](file:///d:/Dev/x-codes/core/update/src/main/kotlin/digital/vmstudio/code/core/update/ApkInstaller.kt)
+- **Root Cause**: Android P+ introduced `PackageManager.GET_SIGNING_CERTIFICATES`, but on Android 9–11 OEM implementations, `getPackageArchiveInfo` leaves `signingInfo` unpopulated unless `PackageManager.GET_SIGNATURES` is also supplied in the flags bitmask. This caused `signingFingerprints` to return empty, leading `signatureMatchesInstalledApp()` to fail verification and refuse valid self-updates.
+- **Fix**: Combined flags via `PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES` in both archive and installed signature inspections.
+
+### Bug 27: Unhandled Optimistic Kanban State Desync on Network Failure
+- **Severity**: LOW (Tasks UI displays outdated status after failed remote update)
+- **File**: [`TasksViewModel.kt:85`](file:///d:/Dev/x-codes/feature/tasks/src/main/kotlin/digital/vmstudio/code/feature/tasks/TasksViewModel.kt)
+- **Root Cause**: `cycleHubTaskStatus()` updated task status optimistically in local state, but omitted error handling when `projectHubClient.updateTaskStatus()` returned `VmResult.Failure`. The UI remained in the updated state while the server retained the old state.
+- **Fix**: Preserved previous status and added automated rollback if the network mutation returns `VmResult.Failure`.
+
 ---
 
 ## 6. Developer Runbook & Operations

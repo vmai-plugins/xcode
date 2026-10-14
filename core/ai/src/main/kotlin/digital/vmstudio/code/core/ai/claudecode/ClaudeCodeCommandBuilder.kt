@@ -2,6 +2,7 @@ package digital.vmstudio.code.core.ai.claudecode
 
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
+import digital.vmstudio.code.core.ssh.command.shellQuotePath
 
 /**
  * Builds the shell command that starts a Claude Code run on the remote host.
@@ -26,7 +27,7 @@ internal object ClaudeCodeCommandBuilder {
         // `cd` into the project first so the CLI's own working-directory scoping,
         // CLAUDE.md discovery and relative paths all resolve as the user expects.
         parts += "cd"
-        parts += shellQuote(config.workingDirectory)
+        parts += shellQuotePath(config.workingDirectory)
         parts += "&&"
 
         parts += binary
@@ -103,7 +104,7 @@ internal object ClaudeCodeCommandBuilder {
         binary: String = DEFAULT_BINARY,
     ): String = buildList {
         add("cd")
-        add(shellQuote(workingDirectory))
+        add(shellQuotePath(workingDirectory))
         add("&&")
         add(binary)
         add("--bg")
