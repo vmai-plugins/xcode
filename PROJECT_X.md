@@ -984,6 +984,50 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: Room's foreign key cascade deleted rows in `file_cache` when a project was removed from the database, but physical cached files on the Android filesystem (`FileCacheEntity.localPath`) were never deleted, permanently leaking disk space.
 - **Fix**: Injected `FileCacheDao` into `DefaultProjectRepository` and physically deleted all associated disk files before invoking `projectDao.deleteById(id)`.
 
+### Bug 133: Google Sheets Agent Tool Calls Dispatch Hardcoded Error Despite Implemented Handlers
+- **File**: [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Severity**: HIGH (Agent Integration Tool Execution Failure)
+- **Root Cause**: When the model invoked `GOOGLE_SHEET_READ` or `GOOGLE_SHEET_APPEND`, `OmniRouteAgentLoop.dispatch()` returned a hardcoded error `ToolOutcome` stating sheets operations were unavailable, completely bypassing the fully implemented `googleSheetRead(call)` and `googleSheetAppend(call)` handler functions.
+- **Fix**: Routed `OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call)` and `OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call)` directly to their handlers.
+
+### Bug 134: Inability to Retry APK Downloads in UpdateManager Following Network Drops
+- **File**: [`UpdateManager.kt`](file:///d:/Dev/x-codes/core/update/src/main/kotlin/digital/vmstudio/code/core/update/UpdateManager.kt)
+- **Severity**: MEDIUM (Self-Update Download Retry Failure)
+- **Root Cause**: `downloadAndInstall()` required `_state.value as? UpdateState.Available`. When a network interruption dropped the download, `_state.value` shifted to `UpdateState.Failed`. Subsequent user taps on "Retry" were inert because `Available` was null, forcing an unnecessary manual re-query of the GitHub release manifest.
+- **Fix**: Cached `lastAvailableInfo` upon successful checks, allowing `downloadAndInstall()` to seamlessly retry the cached asset info on demand.
+
+### Bug 135: BackgroundServiceStartNotAllowedException on StopExecution When Screen Is Locked
+- **File**: [`AgentRunService.kt`](file:///d:/Dev/x-codes/app/src/main/kotlin/digital/vmstudio/code/background/AgentRunService.kt)
+- **Severity**: HIGH (Foreground Service Stranded & Background Notification Leak)
+- **Root Cause**: When an agent execution completed while the user's screen was locked, `stopExecution(context)` called `context.startService(intent)`. On Android 8+ (API 26+), invoking `startService` from the background throws `BackgroundServiceStartNotAllowedException`. Even though caught by `runCatching`, the intent was dropped, leaving the foreground service running and its notification stranded.
+- **Fix**: Tracked `@Volatile private var activeInstance: AgentRunService?` and directly invoked `instance.handleStopExecution()` in-process when active, avoiding background service start calls entirely.
+
+### Bug 136: Gemini Proxy Thinking & Thought Stream Tokens Discarded by Reasoning Parser
+- **Files**: [`OmniRouteDialect.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/OmniRouteDialect.kt), [`OmniRouteStreamAssembler.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteStreamAssembler.kt)
+- **Severity**: MEDIUM (Model Reasoning Stream Visibility Loss)
+- **Root Cause**: OpenAi reasoning extraction checked only `reasoning_content` and `reasoning`. Gemini proxies and gateways stream model thinking using `"thought": "..."` or `"thinking": "..."`, which were ignored, leaving the reasoning disclosure block blank during Gemini model execution.
+- **Fix**: Added fallbacks for `thought` and `thinking` to both `openAiReasoning()` and `OmniRouteStreamAssembler.acceptOpenAi()`.
+
+---
+
+## 5. Modern Connectors & Integrations Architecture (Teamily AI Benchmark)
+
+Following an architectural audit of **Teamily AI** (`ai.teamily.mobile`), X-Codes upgraded its connector and integration experience from raw developer forms to a modern visual hub:
+
+1. **Category Filter Chips**:
+   - One-tap category switching: `All Integrations`, `Git & VCS`, `Cloud & Servers`, `Data & Sheets`, `AI Gateways`.
+2. **Branded Visual Cards**:
+   - Rounded cards with distinct brand color palettes (GitHub purple, VPS emerald, VM Hub cyan, Google Sheets green, Drive amber, AI violet).
+   - Real-time connection status badges (`Connected`, `Unlinked`, `Available`).
+   - Technical capability tags (e.g., `repo`, `read:user`, `v4_read`, `ed25519`).
+3. **1-Click Token Flow**:
+   - Direct web deep-link to GitHub with exact scopes pre-selected (`https://github.com/settings/tokens/new?scopes=repo,read:user&description=X-codes%20Android`).
+   - Password visibility toggles (eye icons) and clean clipboard paste buttons for tokens.
+   - Built-in live connection testing with instant latency and repository/sheet row count feedback.
+4. **Data Previews**:
+   - Interactive table previews for Google Sheets query testing.
+   - Project archive sync summaries for Google Drive backups.
+
 ---
 
 ## 6. Developer Runbook & Operations

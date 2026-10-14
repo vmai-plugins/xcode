@@ -58,6 +58,7 @@ class AgentRunService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        activeInstance = this
         // START_STICKY redelivers with a null intent after a system-initiated kill,
         // so the server id from the original start would otherwise be lost with the
         // killed instance - pollLoop would then find watchedServers empty on its very
@@ -82,14 +83,7 @@ class AgentRunService : Service() {
             startForegroundSafely(runningCount = watchedCount)
             return START_STICKY
         } else if (action == ACTION_STOP_EXECUTION) {
-            val shouldStop = synchronized(watchedServersLock) {
-                if (activeChatExecutions > 0) activeChatExecutions--
-                activeChatExecutions == 0 && watchedServers.isEmpty()
-            }
-            if (shouldStop) {
-                stopForegroundSafely()
-                stopSelf()
-            }
+            handleStopExecution()
             return START_NOT_STICKY
         }
 
@@ -243,7 +237,19 @@ class AgentRunService : Service() {
         stopSelf()
     }
 
+    internal fun handleStopExecution() {
+        val shouldStop = synchronized(watchedServersLock) {
+            if (activeChatExecutions > 0) activeChatExecutions--
+            activeChatExecutions == 0 && watchedServers.isEmpty()
+        }
+        if (shouldStop) {
+            stopForegroundSafely()
+            stopSelf()
+        }
+    }
+
     override fun onDestroy() {
+        if (activeInstance === this) activeInstance = null
         pollJob?.cancel()
         scope.cancel()
         super.onDestroy()
@@ -257,6 +263,9 @@ class AgentRunService : Service() {
 
         const val ACTION_START_EXECUTION = "digital.vmstudio.code.action.START_EXECUTION"
         const val ACTION_STOP_EXECUTION = "digital.vmstudio.code.action.STOP_EXECUTION"
+
+        @Volatile
+        private var activeInstance: AgentRunService? = null
 
         private const val POLL_INTERVAL_MILLIS = 20_000L
         private const val MAX_IDLE_ROUNDS = 2
@@ -286,6 +295,11 @@ class AgentRunService : Service() {
         }
 
         fun stopExecution(context: Context) {
+            val instance = activeInstance
+            if (instance != null) {
+                instance.handleStopExecution()
+                return
+            }
             val intent = Intent(context, AgentRunService::class.java).apply {
                 action = ACTION_STOP_EXECUTION
             }

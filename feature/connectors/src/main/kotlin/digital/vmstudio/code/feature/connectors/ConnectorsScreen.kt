@@ -1,30 +1,63 @@
 package digital.vmstudio.code.feature.connectors
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -34,9 +67,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ui.component.VmButton
@@ -57,19 +97,65 @@ fun ConnectorsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
-    var sheetToken by remember { mutableStateOf("") }
-    var spreadsheetId by remember { mutableStateOf("") }
-    var sheetRange by remember { mutableStateOf("Sheet1!A1:E5") }
+    // Expanded card states
+    var githubExpanded by remember { mutableStateOf(false) }
+    var githubTokenDraft by remember { mutableStateOf("") }
+    var githubTokenVisible by remember { mutableStateOf(false) }
+
+    var sheetsExpanded by remember { mutableStateOf(false) }
+    var sheetsTokenDraft by remember { mutableStateOf("") }
+    var sheetsTokenVisible by remember { mutableStateOf(false) }
+    var sheetsIdDraft by remember { mutableStateOf("") }
+    var sheetsRangeDraft by remember { mutableStateOf("Sheet1!A1:E5") }
+
+    var driveExpanded by remember { mutableStateOf(false) }
+    var driveTokenDraft by remember { mutableStateOf("") }
+    var driveTokenVisible by remember { mutableStateOf(false) }
+
+    var aiExpanded by remember { mutableStateOf(false) }
+    var aiKeyDraft by remember { mutableStateOf("") }
+    var aiKeyVisible by remember { mutableStateOf(false) }
+
+    val openUrl = { url: String ->
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "No web browser found to open link.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Cloud & Connectors Hub") },
+                title = {
+                    Column {
+                        Text("Connectors & Integrations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Cloud, Git VCS, Google Workspace & AI Providers",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        viewModel.testAiGateway()
+                        viewModel.testGitHub()
+                        viewModel.refreshProjectHubStatus()
+                    }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh all connectors")
                     }
                 },
             )
@@ -85,280 +171,664 @@ fun ConnectorsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            item(key = "connectors-intro") {
-                Text(
-                    text = "Manage external integrations, remote cloud execution environments, Google workspace services, and code repositories connected to X-codes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // Category Filter Chips
+            item(key = "category-filters") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ConnectorFilterChip(
+                        label = "All Integrations",
+                        selected = state.selectedFilter == ConnectorFilter.ALL,
+                        onClick = { viewModel.selectFilter(ConnectorFilter.ALL) },
+                    )
+                    ConnectorFilterChip(
+                        label = "Git & VCS",
+                        selected = state.selectedFilter == ConnectorFilter.GIT_VCS,
+                        onClick = { viewModel.selectFilter(ConnectorFilter.GIT_VCS) },
+                    )
+                    ConnectorFilterChip(
+                        label = "Cloud & Servers",
+                        selected = state.selectedFilter == ConnectorFilter.CLOUD_SERVERS,
+                        onClick = { viewModel.selectFilter(ConnectorFilter.CLOUD_SERVERS) },
+                    )
+                    ConnectorFilterChip(
+                        label = "Data & Sheets",
+                        selected = state.selectedFilter == ConnectorFilter.DATA_SHEETS,
+                        onClick = { viewModel.selectFilter(ConnectorFilter.DATA_SHEETS) },
+                    )
+                    ConnectorFilterChip(
+                        label = "AI Gateways",
+                        selected = state.selectedFilter == ConnectorFilter.AI_GATEWAY,
+                        onClick = { viewModel.selectFilter(ConnectorFilter.AI_GATEWAY) },
+                    )
+                }
             }
 
-            // VPS Remote SSH Runner
-            item(key = "vps-runner") {
-                VmCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            // 1. GitHub Integration (Git & VCS)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.GIT_VCS) {
+                item(key = "card-github") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.Code,
+                        iconTint = Color(0xFF9C27B0),
+                        badgeBackground = Color(0xFFF3E5F5),
+                        title = "GitHub",
+                        category = "Version Control & Codespaces",
+                        status = if (state.hasGithubToken) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = when {
+                            state.isTestingGithub -> "Validating…"
+                            state.hasGithubToken -> state.githubRepoCount?.let { "$it repos" } ?: "Connected"
+                            else -> "Unlinked"
+                        },
+                        description = "Sync repositories, browse file trees, clone workspaces, and launch GitHub Codespaces directly.",
+                        tags = listOf("repo", "read:user", "OAuth/PAT", "REST v3"),
+                        isExpanded = githubExpanded,
+                        onToggleExpand = { githubExpanded = !githubExpanded },
+                        statusMessage = state.githubStatusMessage,
+                        primaryActionText = if (state.hasGithubToken) "Configure" else "Connect Account",
+                        onPrimaryAction = { githubExpanded = !githubExpanded },
+                        secondaryActionText = if (state.hasGithubToken) "Test Link" else null,
+                        onSecondaryAction = { viewModel.testGitHub() },
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Terminal,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Text(
-                                    text = "VPS SSH Remote Runner",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                            VmStatusBadge(
-                                status = if (state.servers.isNotEmpty()) {
-                                    VmStatus.CONNECTED
-                                } else {
-                                    VmStatus.IDLE
-                                },
-                                label = if (state.servers.isNotEmpty()) {
-                                    "${state.servers.size} Server${if (state.servers.size > 1) "s" else ""}"
-                                } else {
-                                    "Inactive"
-                                },
+                            Text(
+                                "1-Click Token Connection",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
                             )
-                        }
+                            Text(
+                                "Authenticate with a GitHub Personal Access Token. Tap 'Get Token' to open GitHub with the exact permissions pre-selected.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
 
-                        Text(
-                            text = "Executes agent CLI commands, shell scripts, and remote terminal sessions on your Linux servers.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                            OutlinedTextField(
+                                value = githubTokenDraft,
+                                onValueChange = { githubTokenDraft = it },
+                                label = { Text("Personal Access Token (ghp_…)") },
+                                singleLine = true,
+                                visualTransformation = if (githubTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { githubTokenVisible = !githubTokenVisible }) {
+                                            Icon(
+                                                imageVector = if (githubTokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = if (githubTokenVisible) "Hide token" else "Show token",
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            clipboardManager.getText()?.text?.let { githubTokenDraft = it.trim() }
+                                        }) {
+                                            Icon(Icons.Default.ContentPaste, contentDescription = "Paste from clipboard")
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
 
-                        if (state.servers.isNotEmpty()) {
-                            Column(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                state.servers.take(3).forEach { server ->
-                                    Text(
-                                        text = "• ${server.name} (${server.username}@${server.host}:${server.port})",
-                                        style = VmTheme.code.mono,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
+                                VmButton(
+                                    text = if (state.isTestingGithub) "Saving…" else "Save & Connect",
+                                    onClick = {
+                                        viewModel.saveGitHubToken(githubTokenDraft)
+                                        githubTokenDraft = ""
+                                    },
+                                    enabled = githubTokenDraft.isNotBlank() && !state.isTestingGithub,
+                                    style = VmButtonStyle.Primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        openUrl("https://github.com/settings/tokens/new?scopes=repo,read:user&description=X-codes%20Android")
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Get Token", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+
+                            if (state.hasGithubToken) {
+                                OutlinedButton(
+                                    onClick = { viewModel.clearGitHubToken() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Text("Disconnect GitHub Account", color = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
-
-                        VmButton(
-                            text = if (state.servers.isNotEmpty()) "Manage Servers" else "Add Server",
-                            onClick = onOpenServers,
-                            style = VmButtonStyle.Primary,
-                            icon = Icons.Default.Settings,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
                     }
                 }
             }
 
-            // GitHub Repositories & Codespaces
-            item(key = "github-connector") {
-                VmCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            // 2. VPS SSH Remote Runner (Cloud & Servers)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.CLOUD_SERVERS) {
+                item(key = "card-vps") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.Terminal,
+                        iconTint = Color(0xFF00897B),
+                        badgeBackground = Color(0xFFE0F2F1),
+                        title = "Linux VPS Servers",
+                        category = "SSH Remote Compute & Execution",
+                        status = if (state.servers.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.servers.isNotEmpty()) "${state.servers.size} server${if (state.servers.size > 1) "s" else ""}" else "No servers",
+                        description = "Direct terminal shells, background command runner, file browser, and agent subprocess execution on your servers.",
+                        tags = listOf("SSH-2.0", "ed25519", "PTY Terminal", "Remote Docker/Gradle"),
+                        isExpanded = false,
+                        onToggleExpand = onOpenServers,
+                        primaryActionText = if (state.servers.isNotEmpty()) "Manage Servers" else "Add Server",
+                        onPrimaryAction = onOpenServers,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                        // Expandable body not needed since onToggleExpand directly opens servers management
+                    }
+                }
+            }
+
+            // 3. VM Project Hub (Universal Portfolio & Tasks)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.CLOUD_SERVERS) {
+                item(key = "card-vm-hub") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.Cloud,
+                        iconTint = Color(0xFF0288D1),
+                        badgeBackground = Color(0xFFE1F5FE),
+                        title = "VM Project Hub",
+                        category = "Universal Workspace & Kanban Sync",
+                        status = VmStatus.CONNECTED,
+                        statusText = state.hubProjectCount?.let { "$it workspaces" } ?: "Online",
+                        description = "Synchronizes universal project repositories and Kanban sprint tasks across local storage, GitHub, and VPS environments.",
+                        tags = listOf("Universal Portfolios", "REST JSON", "Kanban Tasks", "Auto-Mapping"),
+                        isExpanded = false,
+                        onToggleExpand = { viewModel.syncUniversalHubProjects() },
+                        statusMessage = state.hubStatusMessage,
+                        primaryActionText = if (state.isSyncingHub) "Syncing Workspaces…" else "Sync Workspaces & Tasks",
+                        onPrimaryAction = { viewModel.syncUniversalHubProjects() },
+                    ) {}
+                }
+            }
+
+            // 4. Google Sheets (Data & Sheets)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.DATA_SHEETS) {
+                item(key = "card-sheets") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.TableChart,
+                        iconTint = Color(0xFF2E7D32),
+                        badgeBackground = Color(0xFFE8F5E9),
+                        title = "Google Sheets",
+                        category = "Data & Living Knowledge Base",
+                        status = if (state.sheetPreviewRows.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.sheetPreviewRows.isNotEmpty()) "${state.sheetPreviewRows.size} rows cached" else "Available",
+                        description = "Allows AI agents to read context tables, inspect tracking sheets, and append build logs to Google Spreadsheets.",
+                        tags = listOf("Sheets v4", "Cell Ranges", "Table Read/Append", "Live Sync"),
+                        isExpanded = sheetsExpanded,
+                        onToggleExpand = { sheetsExpanded = !sheetsExpanded },
+                        statusMessage = state.sheetStatusMessage,
+                        primaryActionText = "Test & Query",
+                        onPrimaryAction = { sheetsExpanded = !sheetsExpanded },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Code,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Text(
-                                    text = "GitHub Integration",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                            VmStatusBadge(
-                                status = if (state.githubRepoCount != null) {
-                                    VmStatus.CONNECTED
-                                } else {
-                                    VmStatus.IDLE
+                            Text(
+                                "Query or Inspect Google Sheet",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Enter an OAuth access token or service key with spreadsheet permissions to test queries directly.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            OutlinedTextField(
+                                value = sheetsTokenDraft,
+                                onValueChange = { sheetsTokenDraft = it },
+                                label = { Text("Google OAuth Token / Service Key") },
+                                singleLine = true,
+                                visualTransformation = if (sheetsTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { sheetsTokenVisible = !sheetsTokenVisible }) {
+                                        Icon(
+                                            imageVector = if (sheetsTokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = null,
+                                        )
+                                    }
                                 },
-                                label = if (state.githubRepoCount != null) "Connected" else "Unlinked",
+                                modifier = Modifier.fillMaxWidth(),
                             )
-                        }
 
+                            OutlinedTextField(
+                                value = sheetsIdDraft,
+                                onValueChange = { sheetsIdDraft = it },
+                                label = { Text("Spreadsheet ID (from URL)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            OutlinedTextField(
+                                value = sheetsRangeDraft,
+                                onValueChange = { sheetsRangeDraft = it },
+                                label = { Text("Cell Range (e.g. Sheet1!A1:E10)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            VmButton(
+                                text = if (state.isTestingSheet) "Querying Sheets API…" else "Run Sheets Query Test",
+                                onClick = {
+                                    viewModel.testGoogleSheets(sheetsTokenDraft, sheetsIdDraft, sheetsRangeDraft)
+                                },
+                                enabled = sheetsTokenDraft.isNotBlank() && sheetsIdDraft.isNotBlank() && !state.isTestingSheet,
+                                style = VmButtonStyle.Primary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            if (state.sheetPreviewRows.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("Preview (Top Rows):", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                        state.sheetPreviewRows.forEachIndexed { idx, row ->
+                                            Text(
+                                                text = "${idx + 1}: ${row.joinToString(" | ")}",
+                                                style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Google Drive (Cloud Backups)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.DATA_SHEETS) {
+                item(key = "card-drive") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.Storage,
+                        iconTint = Color(0xFFF57C00),
+                        badgeBackground = Color(0xFFFFF3E0),
+                        title = "Google Drive",
+                        category = "Cloud Project Archives & Backups",
+                        status = if (state.driveBackups.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.driveBackups.isNotEmpty()) "${state.driveBackups.size} archives" else "Ready",
+                        description = "Automates project tar.gz creation on VPS and direct upload to Google Drive for offsite disaster recovery.",
+                        tags = listOf("Drive v3", "Tarball Backups", "Multipart Upload", "Cloud Vault"),
+                        isExpanded = driveExpanded,
+                        onToggleExpand = { driveExpanded = !driveExpanded },
+                        statusMessage = state.driveStatusMessage,
+                        primaryActionText = "Manage Backups",
+                        onPrimaryAction = { driveExpanded = !driveExpanded },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            Text(
+                                "Google Drive Vault",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            OutlinedTextField(
+                                value = driveTokenDraft,
+                                onValueChange = { driveTokenDraft = it },
+                                label = { Text("Google Drive OAuth Token") },
+                                singleLine = true,
+                                visualTransformation = if (driveTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { driveTokenVisible = !driveTokenVisible }) {
+                                        Icon(
+                                            imageVector = if (driveTokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = null,
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            VmButton(
+                                text = "Sync Drive Backups",
+                                onClick = { viewModel.refreshDriveBackups(driveTokenDraft) },
+                                enabled = driveTokenDraft.isNotBlank(),
+                                style = VmButtonStyle.Secondary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            if (state.driveBackups.isNotEmpty()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    state.driveBackups.take(5).forEach { file ->
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                            ) {
+                                                Text(file.name, style = VmTheme.code.mono.copy(fontSize = 11.sp), fontWeight = FontWeight.Medium)
+                                                Text("${file.sizeBytes / 1024} KB", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. VM Studio OmniRoute AI Gateway (AI Gateways)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.AI_GATEWAY) {
+                item(key = "card-omniroute") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.SmartToy,
+                        iconTint = Color(0xFF673AB7),
+                        badgeBackground = Color(0xFFEDE7F6),
+                        title = "OmniRoute AI Gateway",
+                        category = "Multi-Model Intelligence & Code Agent",
+                        status = VmStatus.CONNECTED,
+                        statusText = "${state.aiModelCount} models",
+                        description = "Connected to ai.vmstudio.digital with zero-setup built-in cloud intelligence, smart coding models, and free models.",
+                        tags = listOf(
+                            if (state.hasCustomAiKey) "Custom Key" else "Built-in Cloud",
+                            "${state.aiFreeModelCount} Free Models",
+                            state.aiLatencyMillis?.let { "${it}ms Ping" } ?: "Low Latency",
+                            "Tool Calling",
+                        ),
+                        isExpanded = aiExpanded,
+                        onToggleExpand = { aiExpanded = !aiExpanded },
+                        statusMessage = state.aiStatusMessage,
+                        primaryActionText = if (state.hasCustomAiKey) "Edit Key" else "Custom Key",
+                        onPrimaryAction = { aiExpanded = !aiExpanded },
+                        secondaryActionText = if (state.isTestingAi) "Testing…" else "Test Ping",
+                        onSecondaryAction = { viewModel.testAiGateway() },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            Text(
+                                "API Key & Endpoint Configuration",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                if (state.hasCustomAiKey) {
+                                    "Custom API key active. It is encrypted in Android Keystore."
+                                } else {
+                                    "Using built-in VM Studio OmniRoute Cloud key. No key is required for free and core models, but you can enter your own key below."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            OutlinedTextField(
+                                value = aiKeyDraft,
+                                onValueChange = { aiKeyDraft = it },
+                                label = { Text("Custom API Key (OpenRouter / Groq / OmniRoute)") },
+                                singleLine = true,
+                                visualTransformation = if (aiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { aiKeyVisible = !aiKeyVisible }) {
+                                        Icon(
+                                            imageVector = if (aiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = null,
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                VmButton(
+                                    text = "Save Key",
+                                    onClick = {
+                                        viewModel.saveCustomAiKey(aiKeyDraft)
+                                        aiKeyDraft = ""
+                                    },
+                                    enabled = aiKeyDraft.isNotBlank(),
+                                    style = VmButtonStyle.Primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedButton(
+                                    onClick = { openUrl("https://openrouter.ai/keys") },
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("OpenRouter", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+
+                            if (state.hasCustomAiKey) {
+                                OutlinedButton(
+                                    onClick = { viewModel.clearCustomAiKey() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Text("Revert to Built-in Free Cloud Key", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectorFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+        shape = RoundedCornerShape(16.dp),
+    )
+}
+
+@Composable
+private fun ModernConnectorCard(
+    icon: ImageVector,
+    iconTint: Color,
+    badgeBackground: Color,
+    title: String,
+    category: String,
+    status: VmStatus,
+    statusText: String,
+    description: String,
+    tags: List<String>,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    statusMessage: String? = null,
+    primaryActionText: String? = null,
+    onPrimaryAction: (() -> Unit)? = null,
+    secondaryActionText: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
+    expandedContent: @Composable () -> Unit,
+) {
+    val spacing = VmTheme.spacing
+
+    VmCard(
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            // Header Row: Icon + Title + Category + Status Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(badgeBackground),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = iconTint,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    Column {
                         Text(
-                            text = state.githubStatusMessage
-                                ?: "Connect your GitHub Personal Access Token to browse repositories and launch Codespaces.",
-                            style = MaterialTheme.typography.bodySmall,
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = category,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+                VmStatusBadge(
+                    status = status,
+                    label = statusText,
+                )
+            }
 
-                        VmButton(
-                            text = if (state.githubRepoCount != null) "Configure Token" else "Connect GitHub Account",
-                            onClick = onOpenGitHubSettings,
-                            style = VmButtonStyle.Secondary,
-                            icon = Icons.Default.Settings,
-                            modifier = Modifier.fillMaxWidth(),
+            // Description
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            // Tags Pill Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                tags.forEach { tag ->
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Text(
+                            text = tag,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                     }
                 }
             }
 
-            // VM Project Hub (vmstudio.digital/wp-json/xcodes/v1)
-            item(key = "vm-project-hub-connector") {
-                VmCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            // Live status banner if present
+            statusMessage?.let { msg ->
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Cloud,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Text(
-                                    text = "VM Project Hub (Universal)",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                            VmStatusBadge(
-                                status = VmStatus.CONNECTED,
-                                label = state.hubProjectCount?.let { "$it Projects" } ?: "Online",
-                            )
-                        }
-
-                        Text(
-                            text = state.hubStatusMessage
-                                ?: "Universal Portfolio & Kanban Task Sync via vmstudio.digital/wp-json/xcodes/v1. Automatically maps GitHub repos, partial projects, and existing or future VPS servers.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(16.dp),
                         )
-
-                        VmButton(
-                            text = if (state.isSyncingHub) "Syncing Universal Workspaces…" else "Sync Universal Workspaces & Tasks",
-                            onClick = viewModel::syncUniversalHubProjects,
-                            enabled = !state.isSyncingHub,
-                            style = VmButtonStyle.Secondary,
-                            icon = Icons.Default.PlayArrow,
-                            modifier = Modifier.fillMaxWidth(),
+                        Text(
+                            text = msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                     }
                 }
             }
 
-            // VM Studio OmniRoute AI Cloud Gateway
-            item(key = "omniroute-cloud-connector") {
-                VmCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            // Action Buttons Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (primaryActionText != null && onPrimaryAction != null) {
+                    VmButton(
+                        text = primaryActionText,
+                        onClick = onPrimaryAction,
+                        style = VmButtonStyle.Primary,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (secondaryActionText != null && onSecondaryAction != null) {
+                    OutlinedButton(
+                        onClick = onSecondaryAction,
+                        shape = RoundedCornerShape(8.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Cloud,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Text(
-                                    text = "VM Studio OmniRoute Cloud",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                            VmStatusBadge(
-                                status = VmStatus.CONNECTED,
-                                label = "Live Synced",
-                            )
-                        }
-
-                        Text(
-                            text = "Connected to https://ai.vmstudio.digital with separated Smart Auto, Free Models (0-cost live sync), and Failover Combos.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Text(secondaryActionText, style = MaterialTheme.typography.labelMedium)
                     }
+                }
+                IconButton(onClick = onToggleExpand) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand configuration",
+                    )
                 }
             }
 
-            // Google Cloud & Workspace Account
-            item(key = "google-cloud-connector") {
-                VmCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.TableChart,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                                Text(
-                                    text = "Google Account & Cloud Sync",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                            VmStatusBadge(
-                                status = VmStatus.CONNECTED,
-                                label = "Authenticated",
-                            )
-                        }
-
-                        Text(
-                            text = "Signed in via Google. Cloud profile and workspace identity are active without requiring manual service-account JSON or OAuth tokens.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            // Animated Expandable Content
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
+                    expandedContent()
                 }
             }
         }

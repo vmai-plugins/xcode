@@ -534,11 +534,8 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.RUN_BUILD -> runBuild(call, serverId, workingDirectory)
             OmniRouteTool.LIST_APKS -> listApks(call, serverId, workingDirectory)
             OmniRouteTool.WEB_FETCH -> webFetch(call)
-            OmniRouteTool.GOOGLE_SHEET_READ,
-            OmniRouteTool.GOOGLE_SHEET_APPEND -> ToolOutcome(
-                "Google Sheets operations are unavailable because this agent session has no authenticated Sheets connection.",
-                isError = true,
-            )
+            OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call)
+            OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call)
         }
     }
 

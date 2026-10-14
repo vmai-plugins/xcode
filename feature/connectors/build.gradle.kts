@@ -7,8 +7,10 @@ android {
 }
 
 dependencies {
+    implementation(projects.core.ai)
     implementation(projects.core.connectors)
     implementation(projects.core.database)
     implementation(projects.core.git)
+    implementation(projects.core.security)
     implementation(projects.core.ssh)
 }

@@ -110,7 +110,10 @@ class OmniRouteStreamAssembler(private val dialect: OmniRouteDialect) {
         // Reasoning models (and gateways in front of them) stream their thinking
         // under one of these names before any content; without it the chat sat
         // blank for the whole think.
-        (delta.string("reasoning_content") ?: delta.string("reasoning"))?.let(pendingReasoning::append)
+        (delta.string("reasoning_content")
+            ?: delta.string("reasoning")
+            ?: delta.string("thought")
+            ?: delta.string("thinking"))?.let(pendingReasoning::append)
         return delta.string("content")?.also(text::append)
     }
 

@@ -168,7 +168,10 @@ object ChatStreamDecoder {
         val choices = root["choices"] as? JsonArray ?: return null
         val first = choices.firstOrNull() as? JsonObject ?: return null
         val holder = first["delta"] as? JsonObject ?: first["message"] as? JsonObject
-        return holder?.string("reasoning_content") ?: holder?.string("reasoning")
+        return holder?.string("reasoning_content")
+            ?: holder?.string("reasoning")
+            ?: holder?.string("thought")
+            ?: holder?.string("thinking")
     }
 
 }

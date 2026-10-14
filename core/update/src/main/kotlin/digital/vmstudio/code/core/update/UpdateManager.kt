@@ -3,6 +3,7 @@ package digital.vmstudio.code.core.update
 import digital.vmstudio.code.core.common.dispatcher.ApplicationScope
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.update.model.UpdateInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,7 @@ class UpdateManager @Inject constructor(
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
     private val checkMutex = Mutex()
+    private var lastAvailableInfo: UpdateInfo? = null
 
     fun checkForUpdate() {
         if (!checkMutex.tryLock()) return
@@ -40,8 +42,10 @@ class UpdateManager @Inject constructor(
         scope.launch {
             try {
                 _state.value = when (val result = checker.checkForUpdate()) {
-                    is VmResult.Success -> result.value?.let { UpdateState.Available(it) }
-                        ?: UpdateState.UpToDate
+                    is VmResult.Success -> result.value?.let { info ->
+                        lastAvailableInfo = info
+                        UpdateState.Available(info)
+                    } ?: UpdateState.UpToDate
                     is VmResult.Failure -> UpdateState.Failed(result.error)
                 }
             } catch (cancellation: CancellationException) {
@@ -65,7 +69,7 @@ class UpdateManager @Inject constructor(
 
     /** Downloads the update found by the last [checkForUpdate] and installs it. */
     fun downloadAndInstall() {
-        val info = (_state.value as? UpdateState.Available)?.info ?: return
+        val info = (_state.value as? UpdateState.Available)?.info ?: lastAvailableInfo ?: return
         // Set before launching, so a second tap sees Downloading and does nothing;
         // two downloads into one file produced a corrupt APK.
         _state.value = UpdateState.Downloading(info, progress = 0f)
