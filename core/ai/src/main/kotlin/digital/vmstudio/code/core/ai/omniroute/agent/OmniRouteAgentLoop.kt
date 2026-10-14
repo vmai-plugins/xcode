@@ -404,7 +404,14 @@ class OmniRouteAgentLoop @Inject constructor(
         // Don't pay for a failing stream attempt on every later turn.
         if (!droppedConnection && streamKey !in nonStreaming) nonStreaming += streamKey
 
-        val request = buildRequest(target, workingDirectory, allowedTools, history, stream = false, extraSystemPrompt = extraSystemPrompt)
+        val request = buildRequest(
+            target = target,
+            workingDirectory = workingDirectory,
+            allowedTools = allowedTools,
+            history = history,
+            stream = false,
+            extraSystemPrompt = extraSystemPrompt,
+        )
         return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
             is VmResult.Failure -> result
             is VmResult.Success -> {
