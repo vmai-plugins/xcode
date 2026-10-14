@@ -130,7 +130,7 @@ class OmniRouteAgentLoop @Inject constructor(
 
                 val budget = config.contextChars ?: MAX_HISTORY_CHARS
                 var target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
-                var nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history)
+                var nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, config.systemPrompt)
 
                 val shouldFailover = when {
                     nextTurnResult is VmResult.Failure -> isFailoverCandidate(nextTurnResult.error)
@@ -160,7 +160,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     )
                     currentModel = fallbackModel
                     target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
-                    nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history)
+                    nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, config.systemPrompt)
                 }
 
                 val (turn, streamedText) =
@@ -324,11 +324,12 @@ class OmniRouteAgentLoop @Inject constructor(
         allowedTools: Set<OmniRouteTool>,
         history: List<OmniRouteMessage>,
         stream: Boolean,
+        extraSystemPrompt: String? = null,
     ): Request {
         val body = OmniRouteToolCodec.buildRequestBody(
             dialect = target.dialect,
             model = target.model,
-            systemPrompt = systemPrompt(workingDirectory, allowedTools),
+            systemPrompt = systemPrompt(workingDirectory, allowedTools, extraSystemPrompt),
             history = trimHistory(history, budget = target.historyBudget),
             maxTokens = DEFAULT_MAX_TOKENS,
             tools = allowedTools.toList(),
@@ -352,12 +353,13 @@ class OmniRouteAgentLoop @Inject constructor(
         workingDirectory: String,
         allowedTools: Set<OmniRouteTool>,
         history: List<OmniRouteMessage>,
+        extraSystemPrompt: String? = null,
     ): VmResult<Pair<OmniRouteTurn, String>> {
         val assembler = OmniRouteStreamAssembler(target.dialect)
         val streamKey = target.baseUrl + "|" + target.model
         var droppedConnection = false
         val streamed = if (streamKey in nonStreaming) null else try {
-            httpClient.stream(buildRequest(target, workingDirectory, allowedTools, history, stream = true))
+            httpClient.stream(buildRequest(target, workingDirectory, allowedTools, history, stream = true, extraSystemPrompt = extraSystemPrompt))
                 .collect { event ->
                     val delta = assembler.accept(event.data)?.takeIf { it.isNotEmpty() }
                     // Thinking goes above the reply it led to, so it is shown the
@@ -394,7 +396,7 @@ class OmniRouteAgentLoop @Inject constructor(
         // Don't pay for a failing stream attempt on every later turn.
         if (!droppedConnection && streamKey !in nonStreaming) nonStreaming += streamKey
 
-        val request = buildRequest(target, workingDirectory, allowedTools, history, stream = false)
+        val request = buildRequest(target, workingDirectory, allowedTools, history, stream = false, extraSystemPrompt = extraSystemPrompt)
         return when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
             is VmResult.Failure -> result
             is VmResult.Success -> {
@@ -1317,6 +1319,7 @@ class OmniRouteAgentLoop @Inject constructor(
     private fun systemPrompt(
         workingDirectory: String,
         allowedTools: Set<OmniRouteTool>,
+        extraSystemPrompt: String? = null,
     ): String = buildString {
         append(
             "You are an autonomous AI coding agent working in $workingDirectory on a remote " +
@@ -1357,6 +1360,9 @@ class OmniRouteAgentLoop @Inject constructor(
             "Prefer relative paths under $workingDirectory. For large or multi-step requests, formulate a plan by listing steps first, then execute them sequentially. Validate your results between steps. When done, reply " +
                 "with a clear summary of findings or modifications.",
         )
+        if (!extraSystemPrompt.isNullOrBlank()) {
+            append("\n\n").append(extraSystemPrompt.trim())
+        }
     }
 
     private companion object {

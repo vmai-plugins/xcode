@@ -461,6 +461,7 @@ private fun AgentChat(
         onNavigateBack = { navController.popBackStack() },
         onOpenMenu = onOpenMenu,
         onOpenSettings = { navController.navigate(VmDestination.Settings.route) },
+        onOpenConnectors = { navController.navigate(VmDestination.Connectors.route) },
         onWatchBackgroundRuns = startWatchingRuns,
         onOpenDiff = { serverId, filePath ->
             navController.navigate(VmDestination.ServerDiff.routeFor(serverId, filePath))

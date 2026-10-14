@@ -1014,6 +1014,18 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: `observeForConversation()` ordered messages solely by `sequence ASC`, and `recent()` ordered by `sequence DESC`. If two messages shared a sequence due to concurrent insertion, SQLite defaulted to non-deterministic internal ROWID order, causing UI jumping and context inversion.
 - **Fix**: Added secondary and tertiary sort keys: `ORDER BY sequence ASC, createdAtMillis ASC, id ASC` and `ORDER BY sequence DESC, createdAtMillis DESC, id DESC LIMIT :limit`.
 
+### Bug 138: OmniRoute Agent Loop Dropping `config.systemPrompt` (Mobile Guidelines & Squad Personas)
+- **File**: [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Severity**: HIGH (Persona & Mobile Guidance Loss on Gateway Models)
+- **Root Cause**: In `OmniRouteAgentLoop`, `buildRequest` hardcoded `systemPrompt = systemPrompt(workingDirectory, allowedTools)` and completely omitted `config.systemPrompt`. Unlike Claude Code which passed `config.systemPrompt`, all OmniRoute runs dropped the mobile conciseness instructions and custom persona guidance, causing verbose wall-of-text responses.
+- **Fix**: Passed `config.systemPrompt` as `extraSystemPrompt` through `nextTurn(...)` and `buildRequest(...)`, appending it to the base system prompt when non-blank.
+
+### Bug 139: Chat Environment Pill Route Disconnect for Cloud Connectors
+- **Files**: [`AgentChatScreen.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatScreen.kt), [`VmNavHost.kt`](file:///d:/Dev/x-codes/app/src/main/kotlin/digital/vmstudio/code/navigation/VmNavHost.kt)
+- **Severity**: LOW (Navigation Target Inconsistency)
+- **Root Cause**: `EnvironmentContextBar` displayed a "CONNECT" pill for G-Suite & Sheets, but `AgentChatScreen` wired `onOpenConnectors = onOpenSettings`, routing users to general settings rather than the dedicated Connectors Hub.
+- **Fix**: Added explicit `onOpenConnectors` navigation callback in `AgentChatScreen` and wired it to `VmDestination.Connectors.route` in `VmNavHost.kt`.
+
 ---
 
 ## 5. Modern Connectors & Integrations Architecture (Teamily AI Benchmark)
@@ -1033,6 +1045,12 @@ Following an architectural audit of **Teamily AI** (`ai.teamily.mobile`), X-Code
 4. **Data Previews**:
    - Interactive table previews for Google Sheets query testing.
    - Project archive sync summaries for Google Drive backups.
+5. **Session Deliverables & Artifacts Shelf (`ArtifactsSheet.kt`)**:
+   - Aggregates all files created, modified, or written by agent tool calls (`write_file`, `edit_file`, `MultiEdit`) during the chat session.
+   - Live badge counter in `ChatTopBar` (e.g. `[📦 3]`) for 1-tap inspection.
+   - 1-tap "Diff" inspection and 1-tap "Open in Editor" directly from the deliverables card.
+6. **Agent Squad Presets**:
+   - Pre-configured engineering personas in empty chat hero quick actions: `Full-Stack Pod`, `Security Auditor`, `Test Suite`, `DevOps / Release`, `Data & Sheets`, `Git Status`, and `Fix Errors`.
 
 ---
 

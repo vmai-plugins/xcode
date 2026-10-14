@@ -73,6 +73,7 @@ fun AgentChatScreen(
     /** When set, the top bar shows a menu button (opens the app drawer) instead of Back. */
     onOpenMenu: (() -> Unit)? = null,
     onOpenSettings: () -> Unit = {},
+    onOpenConnectors: () -> Unit = onOpenSettings,
     /**
      * Invoked when a detached run starts, so the host can begin watching it. The
      * watcher is a service in the app module, which a feature must not reach into.
@@ -201,6 +202,29 @@ fun AgentChatScreen(
         } else null
     }
 
+    val artifacts = remember(state.transcript) {
+        state.transcript.filterIsInstance<TranscriptItem.ToolCall>()
+            .filter { it.affectedPath != null }
+            .map { SessionArtifact(filePath = it.affectedPath!!, isReverted = it.isReverted) }
+            .distinctBy { it.filePath }
+    }
+    var showArtifactsSheet by remember { mutableStateOf(false) }
+
+    if (showArtifactsSheet) {
+        ArtifactsSheet(
+            artifacts = artifacts,
+            onOpenDiff = openDiff,
+            onOpenFile = { path ->
+                if (githubRepoFullName != null) {
+                    showGithubTreeSheet = true
+                } else {
+                    state.serverId?.let { onOpenFiles(it, path) }
+                }
+            },
+            onDismiss = { showArtifactsSheet = false },
+        )
+    }
+
     if (showGithubTreeSheet && githubRepoFullName != null) {
         GitHubFileTreeSheet(
             repoFullName = githubRepoFullName,
@@ -264,6 +288,8 @@ fun AgentChatScreen(
                     onConversationAction = { action -> currentChat?.let { pendingChatAction = it to action } },
                     isFullScreen = isFullScreen,
                     onToggleFullScreen = { isFullScreen = !isFullScreen },
+                    artifactsCount = artifacts.size,
+                    onOpenArtifacts = { showArtifactsSheet = true },
                 )
             }
         },
@@ -345,7 +371,7 @@ fun AgentChatScreen(
                                 onOpenSettings()
                             }
                         },
-                        onOpenConnectors = onOpenSettings,
+                        onOpenConnectors = onOpenConnectors,
                     )
 
                     HealthBanner(

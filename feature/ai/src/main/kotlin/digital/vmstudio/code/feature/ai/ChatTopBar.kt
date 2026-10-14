@@ -1,8 +1,10 @@
 package digital.vmstudio.code.feature.ai
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -103,6 +106,8 @@ internal fun ChatTopBar(
     onConversationAction: (ConversationAction) -> Unit,
     isFullScreen: Boolean = false,
     onToggleFullScreen: (() -> Unit)? = null,
+    artifactsCount: Int = 0,
+    onOpenArtifacts: (() -> Unit)? = null,
 ) {
     var showProjects by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
@@ -207,6 +212,35 @@ internal fun ChatTopBar(
                     )
                 }
             }
+            if (artifactsCount > 0 && onOpenArtifacts != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF6366F1).copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onOpenArtifacts)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Inventory2,
+                            contentDescription = "Deliverables",
+                            tint = Color(0xFF818CF8),
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            text = artifactsCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE0E7FF),
+                        )
+                    }
+                }
+            }
             if (hasTranscript) {
                 IconButton(onClick = onNewChat) { Icon(Icons.Default.Add, contentDescription = "New chat") }
             }
@@ -224,6 +258,23 @@ internal fun ChatTopBar(
                     Icon(Icons.Default.MoreVert, contentDescription = "More")
                 }
                 DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                    if (artifactsCount > 0 && onOpenArtifacts != null) {
+                        DropdownMenuItem(
+                            text = { Text("Deliverables ($artifactsCount)") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Inventory2,
+                                    contentDescription = null,
+                                    tint = Color(0xFF818CF8),
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            onClick = {
+                                showMore = false
+                                onOpenArtifacts()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Files") },
                         leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },

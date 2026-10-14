@@ -161,13 +161,15 @@ internal fun EmptyChatHero(
             modifier = Modifier.padding(top = 6.dp, bottom = 28.dp),
         )
 
-        // --- Kimi Horizontal Quick Action Pills ---
+        // --- Teamily & Antigravity Agent Squad Actions ---
         val actions = listOf(
-            "Project Audit" to "Audit the current workspace, check architecture, dependencies, and potential bugs.",
-            "Explain Code" to "Explain the structure of this project, its dependencies, and entry points.",
-            "Write Tests" to "Write tests for the critical components and business logic in this repo.",
-            "Git Status" to "Check git status, show uncommitted diffs, and review changes.",
-            "Fix Errors" to "Review recent runtime errors and propose complete, robust fixes.",
+            "Full-Stack Pod" to "Act as a Full-Stack Engineering squad: audit project structure, inspect entry points, implement robust features, and verify complete builds.",
+            "Security Auditor" to "Run a strict security and vulnerability audit on this codebase. Check credentials, permissions, input sanitization, and data leaks.",
+            "Test Suite" to "Write comprehensive unit, integration, and edge-case tests for the critical business logic in this repo.",
+            "DevOps / Release" to "Audit deployment configs, Gradle build tasks, Dockerfiles, and verify release APK / binary artifact readiness.",
+            "Data & Sheets" to "Inspect tabular data, CSVs, or Google Sheets connectors, and generate automated processing scripts.",
+            "Git Status" to "Check git status, show uncommitted diffs, and review modified files in detail.",
+            "Fix Errors" to "Review recent runtime errors or test failures, trace root causes, and apply complete fixes.",
         )
 
         Row(
