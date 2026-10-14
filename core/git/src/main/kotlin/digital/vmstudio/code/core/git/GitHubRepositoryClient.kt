@@ -340,9 +340,21 @@ class GitHubRepositoryClient @Inject constructor(
                 .header("X-GitHub-Api-Version", "2022-11-28")
                 .build()
             val existingSha = when (val metaResponse = httpClient.execute(metaRequest, RetryPolicy.NONE)) {
-                is VmResult.Success -> runCatching {
-                    org.json.JSONObject(metaResponse.value).optString("sha").takeIf { it.isNotBlank() }
-                }.getOrNull()
+                is VmResult.Success -> {
+                    val body = metaResponse.value.trimStart()
+                    if (body.startsWith("[")) {
+                        return VmResult.Failure(
+                            VmError.FileSystem(
+                                summary = "Cannot overwrite directory with file content",
+                                reason = "Target path '$path' in $repoFullName resolves to a directory.",
+                                path = path,
+                            ),
+                        )
+                    }
+                    runCatching {
+                        org.json.JSONObject(body).optString("sha").takeIf { it.isNotBlank() }
+                    }.getOrNull()
+                }
                 is VmResult.Failure -> {
                     val err = metaResponse.error
                     if (err is VmError.Network && err.statusCode == 404) {

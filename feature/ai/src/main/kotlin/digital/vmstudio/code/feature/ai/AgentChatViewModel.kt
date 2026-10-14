@@ -910,8 +910,10 @@ class AgentChatViewModel @Inject constructor(
     }
 
     fun queueMessage(prompt: String, attachments: List<Uri> = emptyList()) {
-        if (prompt.isBlank()) return
-        val item = QueuedMessage(id = nextId(), prompt = prompt, attachments = attachments)
+        val effectivePrompt = prompt.ifBlank {
+            if (attachments.isNotEmpty()) "Please inspect the attached file(s)." else return
+        }
+        val item = QueuedMessage(id = nextId(), prompt = effectivePrompt, attachments = attachments)
         _uiState.update { it.copy(queuedMessages = it.queuedMessages + item) }
     }
 
@@ -935,21 +937,24 @@ class AgentChatViewModel @Inject constructor(
 
     fun send(prompt: String, attachments: List<Uri> = emptyList()) {
         val state = _uiState.value
-        if (prompt.isBlank() || !state.canAcceptInput) return
+        val effectivePrompt = prompt.ifBlank {
+            if (attachments.isNotEmpty()) "Please inspect the attached file(s)." else return
+        }
+        if (!state.canAcceptInput) return
 
-        if (prompt.trim().equals("/clear", ignoreCase = true) || prompt.trim().equals("/reset", ignoreCase = true)) {
+        if (effectivePrompt.trim().equals("/clear", ignoreCase = true) || effectivePrompt.trim().equals("/reset", ignoreCase = true)) {
             startNewConversation()
             return
         }
 
         if (state.isRunning) {
-            queueMessage(prompt, attachments)
+            queueMessage(effectivePrompt, attachments)
             return
         }
 
         // Blank in a general chat: the gateway then answers without tools.
         val server = state.serverId.orEmpty()
-        append(TranscriptItem.UserPrompt(nextId(), prompt))
+        append(TranscriptItem.UserPrompt(nextId(), effectivePrompt))
         _uiState.update { it.copy(isRunning = true, error = null) }
 
         runJob = viewModelScope.launch {

@@ -333,25 +333,61 @@ class ProjectDetailViewModel @Inject constructor(
     fun downloadApkToPhoneDownloads(artifact: ApkArtifact) {
         val proj = project.value ?: return
         val srvId = proj.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+        val safeName = try {
+            safeApkDisplayName(artifact.name)
+        } catch (e: IllegalArgumentException) {
+            error.value = VmError.Validation(summary = "Invalid APK filename", reason = e.message)
+            return
+        }
         viewModelScope.launch {
             isDownloadingApk.value = true
-            val publicDownloads = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOWNLOADS,
-            )
-            val destDir = if (publicDownloads != null && publicDownloads.exists() && publicDownloads.canWrite()) {
-                publicDownloads
-            } else {
-                File(context.cacheDir, "downloads").apply { mkdirs() }
-            }
-            val destFile = File(destDir, artifact.name)
+            try {
+                val publicDownloads = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS,
+                )
+                val destDir = if (publicDownloads != null && publicDownloads.exists() && publicDownloads.canWrite()) {
+                    publicDownloads
+                } else {
+                    File(context.cacheDir, "downloads").apply { mkdirs() }
+                }
+                val destFile = File(destDir, safeName)
 
-            if (proj.isRemote) {
-                remoteFileSystem.download(srvId, artifact.path, destFile, resume = false).collect { }
-            } else {
-                File(artifact.path).copyTo(destFile, overwrite = true)
+                if (proj.isRemote) {
+                    var lastEvent: TransferEvent? = null
+                    remoteFileSystem.download(srvId, artifact.path, destFile, resume = false)
+                        .collect { event ->
+                            lastEvent = event
+                            if (event is TransferEvent.Failed) {
+                                error.value = event.error
+                            }
+                        }
+                    val failure = apkTransferFailure(lastEvent)
+                    if (failure != null) {
+                        error.value = failure
+                    } else {
+                        notificationMessage.value = "Saved $safeName to Downloads"
+                    }
+                } else {
+                    val file = File(artifact.path)
+                    if (file.exists()) {
+                        file.copyTo(destFile, overwrite = true)
+                        notificationMessage.value = "Saved $safeName to Downloads"
+                    } else {
+                        error.value = VmError.Storage(
+                            summary = "APK file not found on phone",
+                            reason = artifact.path,
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                error.value = VmError.Storage(
+                    summary = "Could not save APK to Downloads",
+                    reason = e.message,
+                    cause = e,
+                )
+            } finally {
+                isDownloadingApk.value = false
             }
-            notificationMessage.value = "Saved ${artifact.name} to Downloads"
-            isDownloadingApk.value = false
         }
     }
 
@@ -453,13 +489,15 @@ class ProjectDetailViewModel @Inject constructor(
     }
 
     fun addTask(title: String, priority: TaskPriority = TaskPriority.NORMAL) {
+        val trimmed = title.trim()
+        if (trimmed.isBlank()) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val newTask = AgentTaskEntity(
                 id = "task_" + UUID.randomUUID().toString().take(TASK_ID_LENGTH),
                 projectId = projectId,
                 conversationId = null,
-                title = title.trim(),
+                title = trimmed,
                 description = "",
                 status = AgentTaskStatus.TODO,
                 priority = priority,

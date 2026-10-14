@@ -125,7 +125,7 @@ class EditorViewModel @Inject constructor(
             loadError.value = null
             if (filePath.startsWith("/github/")) {
                 val parts = filePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
-                if (parts.size >= 2) {
+                if (parts.size >= 3) {
                     val repoFullName = "${parts[0]}/${parts[1]}"
                     val relativePath = parts.drop(2).joinToString("/")
                     when (val result = gitHubRepositoryClient.getFileContent(repoFullName, relativePath)) {
@@ -145,6 +145,13 @@ class EditorViewModel @Inject constructor(
                             return@launch
                         }
                     }
+                } else {
+                    loadError.value = VmError.FileSystem(
+                        summary = "Invalid GitHub file path",
+                        reason = "A GitHub file path must include owner, repository, and file path: $filePath",
+                    )
+                    isLoading.value = false
+                    return@launch
                 }
             }
             // The editor keeps whole copies of the text for undo and redraws every
@@ -196,7 +203,9 @@ class EditorViewModel @Inject constructor(
             val next = text.indexOf(query, currentOffset, ignoreCase = true)
             if (next >= 0) next else text.indexOf(query, 0, ignoreCase = true)
         } else {
-            val prev = text.lastIndexOf(query, (currentOffset - 1).coerceAtLeast(0), ignoreCase = true)
+            val prev = if (currentOffset > 0) {
+                text.lastIndexOf(query, currentOffset - 1, ignoreCase = true)
+            } else -1
             if (prev >= 0) prev else text.lastIndexOf(query, text.length, ignoreCase = true)
         }
         if (index >= 0) {
@@ -257,8 +266,9 @@ class EditorViewModel @Inject constructor(
             isSaving.value = true
             saveError.value = null
 
+            val isGitHub = filePath.startsWith("/github/")
             val loadedAt = loadedModifiedAtSeconds
-            val remoteAt = if (overwrite) null else currentModifiedAtSeconds()
+            val remoteAt = if (overwrite || isGitHub) null else currentModifiedAtSeconds()
             if (loadedAt != null && remoteAt != null && remoteAt != loadedAt) {
                 saveError.value = VmError.FileSystem(
                     summary = CONFLICT_SUMMARY,
@@ -275,7 +285,7 @@ class EditorViewModel @Inject constructor(
             val text = state.snapshot().textFieldValue.text
             if (filePath.startsWith("/github/")) {
                 val parts = filePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
-                if (parts.size >= 2) {
+                if (parts.size >= 3) {
                     val repoFullName = "${parts[0]}/${parts[1]}"
                     val relativePath = parts.drop(2).joinToString("/")
                     when (val result = gitHubRepositoryClient.putFileContent(
@@ -304,6 +314,13 @@ class EditorViewModel @Inject constructor(
                             return@launch
                         }
                     }
+                } else {
+                    saveError.value = VmError.FileSystem(
+                        summary = "Invalid GitHub file path",
+                        reason = "A GitHub file path must include owner, repository, and file path: $filePath",
+                    )
+                    isSaving.value = false
+                    return@launch
                 }
             }
             when (val result = remoteFileSystem.writeText(serverId, filePath, text)) {

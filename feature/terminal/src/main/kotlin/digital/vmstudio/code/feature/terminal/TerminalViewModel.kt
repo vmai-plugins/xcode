@@ -155,13 +155,16 @@ class TerminalViewModel @Inject constructor(
     fun send(text: String) {
         if ('\n' in text || '\r' in text) {
             val segments = text.split(Regex("\r\n|\n|\r"))
-            segments.forEachIndexed { index, part ->
-                if (part.isNotEmpty()) {
-                    activeSession()?.send(part)
-                    pendingLine.append(part)
-                }
-                if (index < segments.size - 1) {
-                    submitLine()
+            viewModelScope.launch {
+                segments.forEachIndexed { index, part ->
+                    if (part.isNotEmpty()) {
+                        activeSession()?.send(part)
+                        pendingLine.append(part)
+                    }
+                    if (index < segments.size - 1) {
+                        val proceed = submitLineInternal()
+                        if (!proceed) return@launch
+                    }
                 }
             }
             return
@@ -217,7 +220,13 @@ class TerminalViewModel @Inject constructor(
      * known: configured project commands and, later, every agent tool call.
      */
     private fun submitLine() {
-        val session = activeSession() ?: return
+        viewModelScope.launch {
+            submitLineInternal()
+        }
+    }
+
+    private suspend fun submitLineInternal(): Boolean {
+        val session = activeSession() ?: return false
         val server = session.serverId
         val line = pendingLine.toString().trim()
         pendingLine.setLength(0)
@@ -228,20 +237,22 @@ class TerminalViewModel @Inject constructor(
 
         if (!checkable) {
             session.sendKey(TerminalKey.ENTER)
-            return
+            return true
         }
 
-        viewModelScope.launch {
-            when (val authorised = commandGuard.authorize(server, line)) {
-                is VmResult.Success -> session.sendKey(TerminalKey.ENTER)
-                is VmResult.Failure -> {
-                    // The characters are already echoed on the remote line buffer, so
-                    // simply withholding the newline would leave the command sitting
-                    // at the prompt looking accepted. Ctrl+C abandons the line and
-                    // returns a fresh prompt.
-                    session.interrupt()
-                    _uiState.value = _uiState.value.copy(error = authorised.error)
-                }
+        return when (val authorised = commandGuard.authorize(server, line)) {
+            is VmResult.Success -> {
+                session.sendKey(TerminalKey.ENTER)
+                true
+            }
+            is VmResult.Failure -> {
+                // The characters are already echoed on the remote line buffer, so
+                // simply withholding the newline would leave the command sitting
+                // at the prompt looking accepted. Ctrl+C abandons the line and
+                // returns a fresh prompt.
+                session.interrupt()
+                _uiState.value = _uiState.value.copy(error = authorised.error)
+                false
             }
         }
     }

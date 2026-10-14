@@ -211,15 +211,27 @@ class FilesViewModel @Inject constructor(
     }
 
     fun createDirectory(name: String) = mutate { server, path ->
-        remoteFileSystem.createDirectory(server, RemotePath.join(path, name))
+        val clean = name.trim()
+        if (clean.isBlank() || clean == "." || clean == ".." || clean.contains('/') || clean.contains('\\')) {
+            return@mutate VmResult.Failure(VmError.Validation(summary = "Invalid directory name", reason = name))
+        }
+        remoteFileSystem.createDirectory(server, RemotePath.join(path, clean))
     }
 
     fun createFile(name: String) = mutate { server, path ->
-        remoteFileSystem.createFile(server, RemotePath.join(path, name))
+        val clean = name.trim()
+        if (clean.isBlank() || clean == "." || clean == ".." || clean.contains('/') || clean.contains('\\')) {
+            return@mutate VmResult.Failure(VmError.Validation(summary = "Invalid file name", reason = name))
+        }
+        remoteFileSystem.createFile(server, RemotePath.join(path, clean))
     }
 
     fun rename(entry: RemoteFileEntry, newName: String) = mutate { server, path ->
-        remoteFileSystem.rename(server, entry.path, RemotePath.join(path, newName))
+        val clean = newName.trim()
+        if (clean.isBlank() || clean == "." || clean == ".." || clean.contains('/') || clean.contains('\\')) {
+            return@mutate VmResult.Failure(VmError.Validation(summary = "Invalid file name", reason = newName))
+        }
+        remoteFileSystem.rename(server, entry.path, RemotePath.join(path, clean))
     }
 
     fun delete(entries: List<RemoteFileEntry>) {
@@ -264,14 +276,17 @@ class FilesViewModel @Inject constructor(
         if (state.transfer != null || state.serverId.isEmpty()) return
         val server = state.serverId
         activeTransferJob = viewModelScope.launch {
-            val label = "Downloading ${entry.name}"
-            setTransfer(TransferStatus(label))
-            val result = transfers.download(server, entry) { setTransfer(TransferStatus(label, it)) }
-            setTransfer(null)
-            activeTransferJob = null
-            when (result) {
-                is VmResult.Success -> shareChannel.send(result.value)
-                is VmResult.Failure -> _uiState.update { it.copy(error = result.error) }
+            try {
+                val label = "Downloading ${entry.name}"
+                setTransfer(TransferStatus(label))
+                val result = transfers.download(server, entry) { setTransfer(TransferStatus(label, it)) }
+                when (result) {
+                    is VmResult.Success -> shareChannel.send(result.value)
+                    is VmResult.Failure -> _uiState.update { it.copy(error = result.error) }
+                }
+            } finally {
+                setTransfer(null)
+                activeTransferJob = null
             }
         }
     }

@@ -185,7 +185,10 @@ class TerminalSession internal constructor(
     /** Sends raw text, as typed. */
     fun send(text: String) {
         if (text.isEmpty()) return
-        scope.launch(emulatorDispatcher) {
+        // Local echo is the remote's job; scrolling back to the bottom on input
+        // is not, and users expect typing to return them to the prompt.
+        _scrollOffset.value = 0
+        scope.launch(readerDispatcher) {
             runCatching {
                 runInterruptible {
                     channel.output.write(text.toByteArray(Charsets.UTF_8))
@@ -194,9 +197,6 @@ class TerminalSession internal constructor(
             }.onFailure {
                 VmLog.w(LogCategory.TERMINAL, TAG, "Write to session $id failed", it)
             }
-            // Local echo is the remote's job; scrolling back to the bottom on input
-            // is not, and users expect typing to return them to the prompt.
-            _scrollOffset.value = 0
         }
     }
 

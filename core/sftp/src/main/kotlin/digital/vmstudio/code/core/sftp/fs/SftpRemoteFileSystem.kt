@@ -157,6 +157,9 @@ class SftpRemoteFileSystem @Inject constructor(
         if (isLocalOrVirtual(serverId, path)) return localFs.delete(path, recursive)
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
+            if (normalised == "/" || normalised.isBlank()) {
+                error("Refusing to delete root directory: $path")
+            }
             val attributes = sftp.lstat(normalised)
             if (attributes.type == FileMode.Type.DIRECTORY) {
                 if (!recursive) {
@@ -477,6 +480,7 @@ class SftpRemoteFileSystem @Inject constructor(
     }
 
     private fun deleteRecursively(sftp: SFTPClient, path: String) {
+        if (path == "/" || path.isBlank()) error("Refusing to recursively delete root directory.")
         sftp.ls(path)
             .filterNot { it.name == "." || it.name == ".." }
             .forEach { entry ->

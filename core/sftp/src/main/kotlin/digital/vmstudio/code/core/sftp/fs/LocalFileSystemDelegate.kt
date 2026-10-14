@@ -189,7 +189,13 @@ internal class LocalFileSystemDelegate(
     }
 
     suspend fun delete(path: String, recursive: Boolean): VmResult<Unit> = withContext(ioDispatcher) {
+        val trimmed = path.trim()
+        if (trimmed == "/" || trimmed.isEmpty()) {
+            return@withContext storageFailure("Refusing to delete root directory", path)
+        }
         if (isTreeUriPath(path)) {
+            val (parentPath, _) = parentAndName(path)
+                ?: return@withContext storageFailure("Refusing to delete root storage document", path)
             val resolved = resolveDocument(path)
                 ?: return@withContext VmResult.Success(Unit)
             if (recursive && resolved.document.isDirectory) {
@@ -205,6 +211,9 @@ internal class LocalFileSystemDelegate(
             }
         }
         val f = resolveLocalFile(path)
+        if (f.parentFile == null || f.canonicalPath == "/" || f.canonicalPath == File("/").canonicalPath) {
+            return@withContext storageFailure("Refusing to delete root directory", path)
+        }
         val ok = if (recursive) f.deleteRecursively() else f.delete()
         if (ok || !f.exists()) {
             VmResult.Success(Unit)

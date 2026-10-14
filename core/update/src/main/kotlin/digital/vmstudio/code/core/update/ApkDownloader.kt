@@ -50,8 +50,9 @@ class ApkDownloader @Inject constructor(
         ) {
             runInterruptible {
                 val dir = File(context.cacheDir, UPDATES_DIR).apply { mkdirs() }
-                val destFile = File(dir, fileName)
-                val partFile = File(dir, "$fileName.part")
+                val safeName = File(fileName).name.ifBlank { "update.apk" }
+                val destFile = File(dir, safeName)
+                val partFile = File(dir, "$safeName.part")
 
                 val response = client.newCall(Request.Builder().url(url).build()).execute()
                 response.use {

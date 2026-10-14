@@ -29,8 +29,12 @@ class HtmlPreviewViewModel @Inject constructor(
 
     fun load(serverId: String, path: String) {
         _state.value = HtmlPreviewState.Loading
+        val effectiveServerId = when {
+            path.startsWith("/vmhub/") || serverId.isBlank() -> RemoteFileSystem.LOCAL_SERVER_ID
+            else -> serverId
+        }
         viewModelScope.launch {
-            _state.value = when (val result = remoteFileSystem.readText(serverId, path)) {
+            _state.value = when (val result = remoteFileSystem.readText(effectiveServerId, path)) {
                 is VmResult.Success -> HtmlPreviewState.Ready(path, result.value)
                 is VmResult.Failure -> HtmlPreviewState.Failed(result.error)
             }

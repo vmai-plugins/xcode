@@ -453,6 +453,144 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: `analyseRemove` checked only `it == "/" || it == "/*"`. Commands targeting `rm -rf ~`, `rm -rf $HOME`, `rm -rf ~/`, or `rm -rf //` bypassed the root deletion blocker and were allowed or only flagged as general destructive.
 - **Fix**: Added `targetsHome` check covering `~`, `~/`, `~/*`, `$HOME`, and added multi-slash detection (`clean.all { it == '/' }`). Added `rm-rf-home` rule categorized as `CommandRisk.BLOCKED`.
 
+### Bug 48: TerminalSession Blocking Single-Threaded `emulatorDispatcher` on Socket Write
+- **Severity**: HIGH (UI hang, input delay, and frame freeze during terminal output)
+- **File**: [`TerminalSession.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/session/TerminalSession.kt)
+- **Root Cause**: `send()` launched on `emulatorDispatcher` (`limitedParallelism(1)`), running blocking socket write `channel.output.write(...)` and `flush()`. Under network latency or backpressure, this blocked the single thread of `emulatorDispatcher`, starving `resize()`, `publishSnapshot()`, and the reader loop from mutating the emulator.
+- **Fix**: Moved `channel.output.write()` to `readerDispatcher` (`Dispatchers.IO`), and kept `_scrollOffset.value = 0` immediate and thread-safe.
+
+### Bug 49: TerminalBuffer `scrollUp` / `scrollDown` IndexOutOfBounds on Invalid Margins or Inverted Regions
+- **Severity**: MEDIUM (Terminal emulator crash on corrupted or negative CSI scroll regions)
+- **File**: [`TerminalBuffer.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/emulator/TerminalBuffer.kt)
+- **Root Cause**: `scrollUp(top, bottom, count, style)` and `scrollDown` lacked boundary validation (`top < 0`, `bottom >= rows`, or `top > bottom`). If ANSI input or window resizing set an inverted or out-of-bounds scroll region, `screen.removeAt(top)` crashed with `IndexOutOfBoundsException`.
+- **Fix**: Added guard `if (count <= 0 || top !in 0 until rows || bottom !in 0 until rows || top > bottom) return` to both methods.
+
+### Bug 50: ApkDownloader Cache Directory Traversal on Untrusted Release Asset Names
+- **Severity**: MEDIUM (Path traversal vulnerability in self-update mechanism)
+- **File**: [`ApkDownloader.kt`](file:///d:/Dev/x-codes/core/update/src/main/kotlin/digital/vmstudio/code/core/update/ApkDownloader.kt)
+- **Root Cause**: `destFile = File(dir, fileName)` used raw `fileName` from GitHub release asset name without stripping directory traversal characters (`../`).
+- **Fix**: Sanitized `val safeName = File(fileName).name.ifBlank { "update.apk" }` before creating `destFile` and `partFile`.
+
+### Bug 51: Editor Zero-Clone GitHub File Path Extraction Off-By-One on Root Repos
+- **Severity**: LOW/MEDIUM (Editor crash or empty string path write when opening `/github/owner/repo`)
+- **File**: [`EditorViewModel.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: Checked `if (parts.size >= 2)` instead of `if (parts.size >= 3)`. For `/github/owner/repo`, `relativePath` became `""`, causing invalid GitHub contents API calls and falling through to local filesystem operations.
+- **Fix**: Enforced `parts.size >= 3`, validating `relativePath.isNotBlank()` and returning a clean `VmError.FileSystem` error otherwise.
+
+### Bug 52: GitHubRepositoryClient `putFileContent` Missing Pre-Check on Directory Targets
+- **Severity**: MEDIUM (GitHub API 409 Conflict / crash when saving over a directory path)
+- **File**: [`GitHubRepositoryClient.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitHubRepositoryClient.kt)
+- **Root Cause**: GitHub contents API returns a JSON array when `path` is a folder, causing `JSONObject(metaResponse.value).optString("sha")` to fail or produce a 409 conflict when saving.
+- **Fix**: Detected `metaResponse.value.trimStart().startsWith("[")` and returned `VmError.FileSystem("Cannot overwrite directory with file content")`.
+
+### Bug 53: ProjectDetailViewModel.downloadApkToPhoneDownloads Path Traversal & Unchecked Failures
+- **Severity**: MEDIUM (Security vulnerability, misleading success message on failed downloads, and UI hang)
+- **File**: [`ProjectDetailViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt)
+- **Root Cause**: `downloadApkToPhoneDownloads` omitted filename validation via `safeApkDisplayName`, ignored `TransferEvent.Failed` during remote downloads (falsely notifying "Saved to Downloads"), and lacked try-finally error handling which left `isDownloadingApk = true` indefinitely on I/O failure.
+- **Fix**: Applied `safeApkDisplayName`, inspected `apkTransferFailure(lastEvent)`, and wrapped the operation in `try-finally` to guarantee progress state reset.
+
+### Bug 54: SftpRemoteFileSystem & LocalFileSystemDelegate Unchecked Root Directory Deletion
+- **Severity**: HIGH (Catastrophic recursive destruction of remote server or phone storage root)
+- **Files**: [`SftpRemoteFileSystem.kt`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/SftpRemoteFileSystem.kt), [`LocalFileSystemDelegate.kt`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/LocalFileSystemDelegate.kt)
+- **Root Cause**: `delete(serverId, path, recursive)` had no defensive barrier against `path == "/"` or blank path. Calling recursive delete on `/` triggered `deleteRecursively(sftp, "/")` or `File("/").deleteRecursively()`, attempting to destroy all root-level directories.
+- **Fix**: Added explicit guards rejecting deletion of `/`, blank paths, and filesystem root nodes in both implementations.
+
+### Bug 55: TerminalViewModel Multiline Paste Keystroke Scrambling & Desynchronization
+- **Severity**: MEDIUM (Terminal input corruption and scrambled command execution on pasted scripts)
+- **File**: [`TerminalViewModel.kt`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalViewModel.kt), [`TerminalView.kt`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalView.kt)
+- **Root Cause**: When pasting multiline text, `send()` iterated over lines, emitting `activeSession()?.send(part)` synchronously while launching `submitLine()` on an asynchronous coroutine. Later lines were sent to the remote shell before the preceding line's ENTER was authorized and committed, merging commands into unexecutable strings. Also, `TerminalView` omitted `onDragCancel` and lacked full cursor bounds checks.
+- **Fix**: Sequentialized multiline transmission in a single coroutine using `submitLineInternal(): Boolean`, suspending until authorization completes and halting if blocked. Added `onDragCancel` reset and complete row/column cursor bounds checking.
+
+### Bug 56: OmniRouteAgentLoop Missing Root Target Guard for GitHub Workspaces in File Operations
+- **Severity**: LOW/MEDIUM (Invalid GitHub API requests and failed agent edits on `/github/owner/repo`)
+- **File**: [`OmniRouteAgentLoop.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt)
+- **Root Cause**: `parseGitHubPath(resolved)` returned `repoFullName to ""` for repo root paths. While `readFile` defended against empty relative paths, `writeFile` and `editFile` did not, attempting to read and write repository root as a blob.
+- **Fix**: Added `if (relativePath.isBlank()) return ToolOutcome("Cannot write/edit repository root as a file.", isError = true)` in both tools.
+
+### Bug 57: VmHttpClient Stream Trailing SSE Event Flush Verification
+- **Severity**: LOW/MEDIUM (Stream Termination Reliability)
+- **File**: [`VmHttpClient.kt`](file:///d:/Dev/x-codes/core/network/src/main/kotlin/digital/vmstudio/code/core/network/http/VmHttpClient.kt)
+- **Root Cause**: SSE streams terminating without a trailing blank line previously dropped the final buffered chunk. Audited and verified `decoder.finish()?.takeIf { !it.isDone }?.let { emit(it) }` executes reliably on stream EOF.
+- **Fix**: Verified stream EOF flushing to ensure no partial final event is lost when connection drops or completes.
+
+### Bug 58: FilesViewModel Unchecked Name Traversal & Share Transfer State Hang
+- **Severity**: MEDIUM (File creation directory escape & UI transfer freeze)
+- **File**: [`FilesViewModel.kt`](file:///d:/Dev/x-codes/feature/files/src/main/kotlin/digital/vmstudio/code/feature/files/FilesViewModel.kt)
+- **Root Cause**: `createDirectory`, `createFile`, and `rename` did not validate inputs, allowing names with traversal characters (`../`, `/`, `\\`) or blank strings to mutate unintended parent paths. Additionally, `share()` did not wrap file download in `try-finally`, leaving `_uiState.transfer` and `activeTransferJob` non-null on download failure, blocking subsequent transfers.
+- **Fix**: Added defensive name checks (`clean.isBlank() || clean == "." || clean == ".." || clean.contains('/') || clean.contains('\\')`) returning `VmError.Validation`, and enclosed `share()` in `try-finally` to guarantee transfer state reset.
+
+### Bug 59: ProjectDetailViewModel Blank Task Insertion & AiDao SQL Enum Inconsistency
+- **Severity**: LOW/MEDIUM (Data integrity & SQL mapping robustness)
+- **Files**: [`ProjectDetailViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt), [`AiDao.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/dao/AiDao.kt)
+- **Root Cause**: `ProjectDetailViewModel.addTask` did not guard against blank titles, inserting empty tasks into the database when tapped with empty text. `AiDao.markInterrupted` hardcoded `'FAILED'` string literal in raw SQL instead of using a typed enum bind parameter `:failed`.
+- **Fix**: Guarded `addTask` with `if (trimmed.isBlank()) return`, and updated `AiDao.markInterrupted` to accept `:failed` parameter matching Room's type converters.
+
+### Bug 60: GitHubSettingsViewModel Hostile Error Banner on Fresh Launch Without Token
+- **Severity**: MEDIUM (User Experience & False Failure Report)
+- **File**: [`GitHubSettingsViewModel.kt`](file:///d:/Dev/x-codes/feature/settings/src/main/kotlin/digital/vmstudio/code/feature/settings/GitHubSettingsViewModel.kt)
+- **Root Cause**: `loadRepositories()` called `github.repositories()` even when `github.hasToken()` was false. On fresh install, this triggered an immediate authentication error, painting a red error banner across the screen before the user had entered a token.
+- **Fix**: Checked `if (!tokenExists)` early in `loadRepositories()`, resetting loading and repositories cleanly without surfacing an error.
+
+### Bug 61: VmProjectHubClient Task ID URL-Encoding & Decimal Percentage Parsing
+- **Severity**: LOW/MEDIUM (API Request Failure & Progress Calculation)
+- **File**: [`VmProjectHubClient.kt`](file:///d:/Dev/x-codes/core/project/src/main/kotlin/digital/vmstudio/code/core/project/VmProjectHubClient.kt)
+- **Root Cause**: `updateTaskStatus` interpolated `taskId` raw into the URL string without URL encoding. Task IDs with spaces or URL-special characters caused malformed request URLs. Additionally, `JsonObject.int` used `toIntOrNull()`, failing on percentage values serialized as floating-point strings (e.g. `"10.0"`).
+- **Fix**: Encoded `taskId` via `URLEncoder.encode(taskId, "UTF-8")`, and added fallback `raw.toDoubleOrNull()?.toInt()` in `JsonObject.int`.
+
+### Bug 62: ServerEditViewModel Test Connection Orphaned Server Entity Leak
+- **Severity**: MEDIUM (Database Pollution & Unintended Draft Persistence)
+- **File**: [`ServerEditViewModel.kt`](file:///d:/Dev/x-codes/feature/servers/src/main/kotlin/digital/vmstudio/code/feature/servers/ServerEditViewModel.kt)
+- **Root Cause**: `testConnection()` called `serverRepository.save(current.draft)` to obtain an ID for `connectionManager.reconnect`. For new drafts, this committed a server entity to Room and KeyStore. If the test failed or the user cancelled without saving, the broken server was permanently orphaned in the database.
+- **Fix**: Tracked `temporaryCreatedServerId`. If a test on a new server fails, it immediately deletes the temporary server entity. In `onCleared()`, any unconfirmed temporary server is automatically cleaned up from the database.
+
+### Bug 63: GoogleDriveManager Backup Failure Masking on Harmless Temp File Cleanup Glitch
+- **Severity**: MEDIUM (False Backup Failure Alert & Redundant Multi-Hundred MB Uploads)
+- **File**: [`GoogleDriveManager.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/drive/GoogleDriveManager.kt)
+- **Root Cause**: When `backupProject()` successfully finished creating and uploading the project archive to Google Drive, it subsequently ran `cleanupBackup()` to delete temporary archives on the VPS and phone cache. If temp deletion encountered a minor filesystem warning, the entire method returned `VmResult.Failure`, reporting the backup as failed to the user despite successful upload to Google Drive.
+- **Fix**: When `operationResult is VmResult.Success`, non-fatal temporary cleanup warnings are logged as `VmLog.w` without converting the successful upload result into a failure.
+
+### Bug 64: GoogleSheetsClient & GoogleDriveClient Unencoded IDs & Empty Rows 400 Bad Request
+- **Severity**: MEDIUM (Malformed API Requests & Google Cloud Endpoint Failures)
+- **Files**: [`GoogleSheetsClient.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/sheets/GoogleSheetsClient.kt), [`GoogleDriveClient.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/drive/GoogleDriveClient.kt)
+- **Root Cause**: `GoogleSheetsClient` interpolated `spreadsheetId` unencoded into API URLs, and `GoogleDriveClient` interpolated `fileId` unencoded into media download endpoints. Furthermore, when `GoogleSheetsClient.appendValues()` was invoked with empty `rows`, it dispatched an empty JSON payload that Google Sheets API rejected with `400 Bad Request: Invalid values[0]: Empty data array`.
+- **Fix**: URL-encoded `spreadsheetId` and `fileId` via `URLEncoder.encode(..., "UTF-8")`. Added fast-exit in `appendValues` for empty row collections, returning success without dispatching invalid payloads.
+
+### Bug 65: CommandSafety Incomplete `$HOME/*` Pattern & Tokenizer Escaped-Quote Desynchronization
+- **Severity**: HIGH (Catastrophic Shell Command Protection Gap & Tokenizer Corruption)
+- **File**: [`CommandSafety.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/command/CommandSafety.kt)
+- **Root Cause**: `analyseRemove()` checked home directory targets but omitted `$HOME/*` and `${HOME}/*`, allowing `rm -rf $HOME/*` to slip through as `DESTRUCTIVE` rather than `BLOCKED`. Additionally, `tokenise()` lacked backslash-quote escape handling inside double quotes, treating `\"` as an unescaped closing quote and desynchronizing shell token boundaries.
+- **Fix**: Added `$HOME/*` and `${HOME}/*` patterns to `targetsHome`, ensuring recursive removal is strictly `BLOCKED`. Added escaped-character lookahead in `tokenise()` within double-quoted tokens.
+
+### Bug 66: AttachmentStager Cache File Collision & Phantom File Return on Failed Rename
+- **Severity**: HIGH (Data Loss, Crash on Duplicate Attachments & File System Race Condition)
+- **File**: [`AttachmentStager.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AttachmentStager.kt)
+- **Root Cause**: `copyToCache()` created a uniquely named temp file and then unconditionally executed `File(target.parentFile, name).also { target.renameTo(it) }`. When multiple attachments shared the same filename (or `cacheDir/name` pre-existed), `renameTo` failed, leaving a non-existent file path returned to the caller (`FileNotFoundException`). Furthermore, in `stage()`, cleanup in `finally` deleted the shared name prematurely before other attachments finished processing.
+- **Fix**: Replaced raw file renaming with `LocalAttachment(file, displayName)` holding isolated UUID-based cache files while preserving display names, guaranteeing collision-free, atomic staging and reliable cleanup.
+
+### Bug 67: ChatComposer & AgentChatViewModel Zero-Prompt Attachment Transmission Blocker
+- **Severity**: MEDIUM (User Experience & Multimodal Prompt Ingestion)
+- **Files**: [`ChatComposer.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/ChatComposer.kt), [`AgentChatViewModel.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatViewModel.kt)
+- **Root Cause**: In `ModernComposer`, `canSend` was strictly gated on `text.isNotBlank()`, disabling the Send button when users attached photos or logs without accompanying text. Additionally, `AgentChatViewModel.send()` and `queueMessage()` immediately discarded submissions with blank text.
+- **Fix**: Enabled send when `text.isNotBlank() || attachments.isNotEmpty()`, supplying a default instruction prompt (`"Please inspect the attached file(s)."`) for attachment-only transmissions.
+
+### Bug 68: HtmlPreviewSheet WebView Memory Leak & Local/VM Hub Workspace 404 Disconnect
+- **Severity**: MEDIUM (Native Memory Leak & Local HTML Preview Failure)
+- **Files**: [`HtmlPreviewSheet.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/HtmlPreviewSheet.kt), [`HtmlPreviewViewModel.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/HtmlPreviewViewModel.kt)
+- **Root Cause**: In `SandboxedWebView`, `AndroidView` instantiated `WebView` without an `onRelease` callback, leaking the native Chromium rendering engine and thread pool on sheet dismissal. In `HtmlPreviewViewModel.load()`, when viewing HTML in a local or VM Hub project, `serverId` was passed as empty string, causing `remoteFileSystem.readText` to fail looking up a non-existent SSH server.
+- **Fix**: Added `onRelease = { webView -> webView.stopLoading(); webView.destroy() }` to `SandboxedWebView`. Resolved `effectiveServerId = if (serverId.isBlank() || path.startsWith("/vmhub/")) RemoteFileSystem.LOCAL_SERVER_ID else serverId`.
+
+### Bug 69: EditorViewModel Find-Previous Index-0 Sticky Loop & Backward Search Freeze
+- **Severity**: MEDIUM (Code Editor Navigation Freeze)
+- **File**: [`EditorViewModel.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: In `EditorViewModel.findNext(query, forward = false)`, `(currentOffset - 1).coerceAtLeast(0)` evaluated to 0 when the selection was at the beginning of the document. `lastIndexOf(query, 0)` continually matched index 0, locking the editor cursor in an infinite loop on the first occurrence. Also, `currentModifiedAtSeconds()` performed unnecessary SFTP stat operations on virtual `/github/` paths.
+- **Fix**: Adjusted backward search boundary so `currentOffset <= 0` immediately wraps to `lastIndexOf(query, text.length)`. Bypassed filesystem stat for GitHub virtual paths.
+
+### Bug 70: FileSecureCredentialStore Replace Failure Secret Deletion & Index Desynchronization
+- **Severity**: HIGH (Credential Destruction & Security Keystore Desynchronization)
+- **File**: [`FileSecureCredentialStore.kt`](file:///d:/Dev/x-codes/core/security/src/main/kotlin/digital/vmstudio/code/core/security/store/FileSecureCredentialStore.kt)
+- **Root Cause**: When updating an existing secret via `replace()`, `writeSecretLocked()` wrote new ciphertext to disk and attempted to encrypt and persist the updated index. If index persistence failed (e.g. storage full or Keystore failure), the error block executed `if (file.exists()) file.delete()`, destroying the existing secret while the index still referenced it.
+- **Fix**: Backed up original secret bytes before replacing. If index update fails, the previous secret is automatically restored on disk rather than deleted.
+
 ### UI Enhancement: Smart Auto-Hiding Headers & Fluid Full-Screen Antigravity Chat
 - **Files**: [`AgentChatScreen.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatScreen.kt), [`ChatTopBar.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/ChatTopBar.kt)
 - **Enhancement**:

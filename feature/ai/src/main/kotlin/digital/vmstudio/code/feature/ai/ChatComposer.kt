@@ -107,7 +107,7 @@ internal fun ModernComposer(
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
-    val canSend = enabled && text.isNotBlank()
+    val canSend = enabled && (text.isNotBlank() || attachments.isNotEmpty())
     val haptic = LocalHapticFeedback.current
 
     Surface(
@@ -388,9 +388,13 @@ internal fun ModernComposer(
                                     onTextChange("")
                                     onDetach()
                                 } else {
-                                    val toSend = text
-                                    onTextChange("")
-                                    onSend(toSend)
+                                    val toSend = text.ifBlank {
+                                        if (attachments.isNotEmpty()) "Please inspect the attached file(s)." else ""
+                                    }
+                                    if (toSend.isNotBlank()) {
+                                        onTextChange("")
+                                        onSend(toSend)
+                                    }
                                 }
                             },
                     ) {

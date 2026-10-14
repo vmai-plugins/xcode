@@ -73,8 +73,9 @@ class GoogleSheetsClient @Inject constructor(
         spreadsheetId: String,
         range: String,
     ): VmResult<SheetValueRange> {
+        val encodedSpreadsheetId = URLEncoder.encode(spreadsheetId, "UTF-8")
         val encodedRange = URLEncoder.encode(range, "UTF-8").replace("+", "%20")
-        val url = "$SHEETS_API_BASE/$spreadsheetId/values/$encodedRange"
+        val url = "$SHEETS_API_BASE/$encodedSpreadsheetId/values/$encodedRange"
 
         val request = Request.Builder()
             .url(url)
@@ -99,8 +100,12 @@ class GoogleSheetsClient @Inject constructor(
         range: String,
         rows: List<List<String>>,
     ): VmResult<AppendValuesResponse> {
+        if (rows.isEmpty()) {
+            return VmResult.Success(AppendValuesResponse(spreadsheetId = spreadsheetId))
+        }
+        val encodedSpreadsheetId = URLEncoder.encode(spreadsheetId, "UTF-8")
         val encodedRange = URLEncoder.encode(range, "UTF-8").replace("+", "%20")
-        val url = "$SHEETS_API_BASE/$spreadsheetId/values/$encodedRange:append?valueInputOption=USER_ENTERED"
+        val url = "$SHEETS_API_BASE/$encodedSpreadsheetId/values/$encodedRange:append?valueInputOption=USER_ENTERED"
 
         val requestBodyJson = buildJsonObject {
             put("range", range)

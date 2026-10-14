@@ -108,7 +108,7 @@ class FileSecureCredentialStore @Inject constructor(
                 updatedAtMillis = System.currentTimeMillis(),
                 expiresAtMillis = expiresAtMillis,
             )
-            writeSecretLocked(updated, secret)
+            writeSecretLocked(updated, secret, isReplace = true)
         }
     }
 
@@ -193,7 +193,11 @@ class FileSecureCredentialStore @Inject constructor(
 
     // --- internals -------------------------------------------------------------
 
-    private fun writeSecretLocked(ref: CredentialRef, secret: Secret): VmResult<CredentialRef> {
+    private fun writeSecretLocked(
+        ref: CredentialRef,
+        secret: Secret,
+        isReplace: Boolean = false,
+    ): VmResult<CredentialRef> {
         val plaintext = secret.copyBytes()
         val encrypted = try {
             crypto.encrypt(plaintext)
@@ -202,6 +206,10 @@ class FileSecureCredentialStore @Inject constructor(
         }
         val file = secretFileOrNull(ref.id)
             ?: return VmResult.Failure(rejectedId())
+        val backupBytes = if (isReplace && file.exists()) {
+            runCatching { file.readBytes() }.getOrNull()
+        } else null
+
         val operation = encrypted.flatMap { bytes ->
             vmCatching(::mapIoError) { writeAtomically(file, bytes) }
         }.flatMap {
@@ -212,7 +220,11 @@ class FileSecureCredentialStore @Inject constructor(
         return when (operation) {
             is VmResult.Success -> VmResult.Success(ref)
             is VmResult.Failure -> {
-                if (file.exists()) file.delete()
+                if (backupBytes != null) {
+                    runCatching { writeAtomically(file, backupBytes) }
+                } else if (!isReplace && file.exists()) {
+                    file.delete()
+                }
                 operation
             }
         }

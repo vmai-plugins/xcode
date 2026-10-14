@@ -98,14 +98,18 @@ class GitHubSettingsViewModel @Inject constructor(
     fun loadRepositories() {
         viewModelScope.launch {
             val tokenExists = github.hasToken()
-            _uiState.update { it.copy(isLoading = true, hasToken = tokenExists, error = null) }
+            if (!tokenExists) {
+                _uiState.update { it.copy(isLoading = false, hasToken = false, repositories = emptyList(), error = null) }
+                return@launch
+            }
+            _uiState.update { it.copy(isLoading = true, hasToken = true, error = null) }
             try {
                 when (val result = github.repositories()) {
                     is VmResult.Success -> _uiState.update {
-                        it.copy(repositories = result.value, hasToken = tokenExists, isLoading = false)
+                        it.copy(repositories = result.value, hasToken = true, isLoading = false)
                     }
                     is VmResult.Failure -> _uiState.update {
-                        it.copy(isLoading = false, hasToken = tokenExists, error = result.error.summary)
+                        it.copy(isLoading = false, hasToken = true, error = result.error.summary)
                     }
                 }
             } catch (cancellation: CancellationException) {

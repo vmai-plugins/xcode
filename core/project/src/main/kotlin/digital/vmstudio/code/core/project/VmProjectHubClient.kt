@@ -128,8 +128,9 @@ class VmProjectHubClient @Inject constructor(
             put("status", newStatus)
         }.toString()
 
+        val encodedId = java.net.URLEncoder.encode(taskId, "UTF-8")
         val request = Request.Builder()
-            .url("$HUB_BASE_URL/tasks/$taskId")
+            .url("$HUB_BASE_URL/tasks/$encodedId")
             .header("X-VMPJ-Key", DEFAULT_HUB_KEY)
             .header("Content-Type", "application/json")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
@@ -292,5 +293,7 @@ class VmProjectHubClient @Inject constructor(
 private fun JsonObject.str(key: String): String? =
     (this[key] as? JsonPrimitive)?.content?.takeUnless { it == "null" }
 
-private fun JsonObject.int(key: String): Int? =
-    (this[key] as? JsonPrimitive)?.content?.toIntOrNull()
+private fun JsonObject.int(key: String): Int? {
+    val raw = (this[key] as? JsonPrimitive)?.content ?: return null
+    return raw.toIntOrNull() ?: raw.toDoubleOrNull()?.toInt()
+}

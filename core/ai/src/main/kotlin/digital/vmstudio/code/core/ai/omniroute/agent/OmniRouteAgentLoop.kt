@@ -826,6 +826,9 @@ class OmniRouteAgentLoop @Inject constructor(
         val resolved = resolvePath(workingDirectory, path)
 
         parseGitHubPath(resolved)?.let { (repoFullName, relativePath) ->
+            if (relativePath.isBlank()) {
+                return ToolOutcome("Cannot edit repository root as a file.", isError = true)
+            }
             val existingContent = when (val result = gitHubRepositoryClient.getFileContent(repoFullName, relativePath)) {
                 is VmResult.Success -> result.value
                 is VmResult.Failure -> return ToolOutcome(
@@ -950,6 +953,9 @@ class OmniRouteAgentLoop @Inject constructor(
         val resolved = resolvePath(workingDirectory, path)
 
         parseGitHubPath(resolved)?.let { (repoFullName, relativePath) ->
+            if (relativePath.isBlank()) {
+                return ToolOutcome("Cannot write repository root as a file.", isError = true)
+            }
             val existingContent = (gitHubRepositoryClient.getFileContent(repoFullName, relativePath) as? VmResult.Success)?.value
             val autoApply = canAutoApply(ServerEnvironment.DEVELOPMENT, permissionMode, autonomyLevel)
             if (!autoApply) {

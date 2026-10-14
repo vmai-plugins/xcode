@@ -377,7 +377,9 @@ object CommandSafety {
         }
         val targetsHome = operands.any { operand ->
             val clean = operand.trim()
-            clean == "~" || clean == "~/" || clean == "~/*" || clean == "\$HOME" || clean == "\$HOME/" || clean == "\${HOME}"
+            clean == "~" || clean == "~/" || clean == "~/*" ||
+                clean == "\$HOME" || clean == "\$HOME/" || clean == "\$HOME/*" ||
+                clean == "\${HOME}" || clean == "\${HOME}/" || clean == "\${HOME}/*"
         }
         return when {
             targetsRoot && recursive -> listOf(
@@ -436,7 +438,14 @@ object CommandSafety {
             val char = segment[index]
             when {
                 quote != null -> {
-                    if (char == quote) quote = null else current.append(char)
+                    if (char == '\\' && quote == '"' && index + 1 < segment.length) {
+                        current.append(segment[index + 1])
+                        index++
+                    } else if (char == quote) {
+                        quote = null
+                    } else {
+                        current.append(char)
+                    }
                 }
                 char == '\'' || char == '"' -> quote = char
                 char == '\\' && index + 1 < segment.length -> {

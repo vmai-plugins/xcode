@@ -117,7 +117,7 @@ class TerminalBuffer(
      * the top of a full-screen region into scrollback.
      */
     fun scrollUp(top: Int, bottom: Int, count: Int, style: Long) {
-        if (count <= 0) return
+        if (count <= 0 || top !in 0 until rows || bottom !in 0 until rows || top > bottom) return
         val effective = count.coerceAtMost(bottom - top + 1)
         val retainToScrollback = top == 0 && bottom == rows - 1
 
@@ -136,7 +136,7 @@ class TerminalBuffer(
 
     /** Scrolls the region down, used by reverse index and insert-line. */
     fun scrollDown(top: Int, bottom: Int, count: Int, style: Long) {
-        if (count <= 0) return
+        if (count <= 0 || top !in 0 until rows || bottom !in 0 until rows || top > bottom) return
         val effective = count.coerceAtMost(bottom - top + 1)
         repeat(effective) {
             val removed = screen.removeAt(bottom)

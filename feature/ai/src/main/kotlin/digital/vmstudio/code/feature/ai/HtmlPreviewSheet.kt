@@ -108,6 +108,10 @@ private fun SandboxedWebView(html: String) {
         update = { webView ->
             webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
         },
+        onRelease = { webView ->
+            webView.stopLoading()
+            webView.destroy()
+        },
     )
 }
 

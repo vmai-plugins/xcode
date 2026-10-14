@@ -132,7 +132,8 @@ class GoogleDriveClient @Inject constructor(
         accessToken: String,
         fileId: String,
     ): VmResult<String> {
-        val url = "$DRIVE_API_BASE/files/$fileId?alt=media"
+        val encodedFileId = URLEncoder.encode(fileId, "UTF-8")
+        val url = "$DRIVE_API_BASE/files/$encodedFileId?alt=media"
         val request = Request.Builder()
             .url(url)
             .addHeader("Authorization", "Bearer $accessToken")
@@ -147,7 +148,8 @@ class GoogleDriveClient @Inject constructor(
         fileId: String,
         destination: java.io.File,
     ): VmResult<java.io.File> {
-        val url = "$DRIVE_API_BASE/files/$fileId?alt=media"
+        val encodedFileId = URLEncoder.encode(fileId, "UTF-8")
+        val url = "$DRIVE_API_BASE/files/$encodedFileId?alt=media"
         val request = Request.Builder()
             .url(url)
             .addHeader("Authorization", "Bearer $accessToken")

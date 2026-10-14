@@ -105,6 +105,7 @@ fun TerminalView(
                     var accumulated = 0f
                     detectDragGestures(
                         onDragEnd = { accumulated = 0f },
+                        onDragCancel = { accumulated = 0f },
                         onDrag = { change, dragAmount ->
                             change.consume()
                             accumulated += dragAmount.y
@@ -167,7 +168,7 @@ fun TerminalView(
                     }
                 }
 
-                if (screen.cursorVisible && screen.cursorRow < screen.rows) {
+                if (screen.cursorVisible && screen.cursorRow in 0 until screen.rows && screen.cursorColumn in 0 until screen.columns) {
                     drawRect(
                         color = cursorColor.copy(alpha = 0.75f),
                         topLeft = Offset(

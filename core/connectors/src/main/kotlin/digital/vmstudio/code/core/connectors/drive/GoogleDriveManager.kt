@@ -147,21 +147,21 @@ class GoogleDriveManager @Inject constructor(
             cleanupBackup(serverId, tempRemoteArchive, localFile)
         }
         if (cleanupError != null) {
+            if (operationResult is VmResult.Success) {
+                VmLog.w(
+                    LogCategory.CONNECTOR,
+                    TAG,
+                    "Backup uploaded successfully to Google Drive, but temporary file cleanup reported: ${cleanupError.summary} - ${cleanupError.reason}",
+                )
+                return@withContext operationResult
+            }
             val operationError = (operationResult as? VmResult.Failure)?.error
             return@withContext VmResult.Failure(
                 VmError.Ssh(
-                    summary = if (operationResult is VmResult.Success) {
-                        "Backup uploaded, but temporary cleanup failed"
-                    } else {
-                        "Google Drive backup and cleanup failed"
-                    },
+                    summary = "Google Drive backup and cleanup failed",
                     reason = listOfNotNull(operationError?.summary, operationError?.reason, cleanupError.summary, cleanupError.reason)
                         .joinToString(" "),
-                    suggestedAction = if (operationResult is VmResult.Success) {
-                        "Check Google Drive before retrying, then remove temporary backup files from the VPS and phone."
-                    } else {
-                        "Inspect and remove temporary backup files on the VPS and phone."
-                    },
+                    suggestedAction = "Inspect and remove temporary backup files on the VPS and phone.",
                     cause = cleanupError.cause,
                 ),
             )

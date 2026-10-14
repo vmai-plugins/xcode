@@ -68,18 +68,20 @@ class AttachmentStager @Inject constructor(
         val names = mutableListOf<String>()
         val inlinedTexts = linkedMapOf<String, String>()
         for (uri in uris) {
-            val local = when (val copied = copyToCache(uri)) {
+            val localAttachment = when (val copied = copyToCache(uri)) {
                 is VmResult.Success -> copied.value
                 is VmResult.Failure -> return copied
             }
+            val local = localAttachment.file
+            val displayName = localAttachment.displayName
             try {
-                names += local.name
+                names += displayName
                 val image = inlineImage(uri, local)
                 if (image != null) {
                     images += image
                 }
                 if (canUploadToWorkspace) {
-                    val remotePath = "$remoteDir/${System.currentTimeMillis()}-${local.name}"
+                    val remotePath = "$remoteDir/${System.currentTimeMillis()}-$displayName"
                     upload(effectiveServerId, local, remotePath)?.let { return VmResult.Failure(it) }
                     paths += remotePath
                 } else if (image == null) {
@@ -95,7 +97,7 @@ class AttachmentStager @Inject constructor(
                         }
                     }.getOrNull()
                     if (!textSnippet.isNullOrBlank()) {
-                        inlinedTexts[local.name] = textSnippet
+                        inlinedTexts[displayName] = textSnippet
                     }
                 }
             } finally {
@@ -153,9 +155,11 @@ class AttachmentStager @Inject constructor(
         reason = reason,
     )
 
-    private suspend fun copyToCache(uri: Uri): VmResult<File> = withContext(ioDispatcher) {
+    private data class LocalAttachment(val file: File, val displayName: String)
+
+    private suspend fun copyToCache(uri: Uri): VmResult<LocalAttachment> = withContext(ioDispatcher) {
         val name = displayName(uri).replace(UNSAFE_NAME_CHARS, "_").ifBlank { "attachment" }
-        val target = File(context.cacheDir, "attach-${System.nanoTime()}-$name")
+        val target = File(context.cacheDir, "attach-${System.nanoTime()}-${java.util.UUID.randomUUID()}-$name")
         try {
             val input = context.contentResolver.openInputStream(uri)
                 ?: return@withContext unreadable(name, "The file could not be opened.")
@@ -164,7 +168,7 @@ class AttachmentStager @Inject constructor(
                 target.delete()
                 return@withContext unreadable(name, "Files over 20 MB cannot be attached.")
             }
-            VmResult.Success(File(target.parentFile, name).also { target.renameTo(it) })
+            VmResult.Success(LocalAttachment(target, name))
         } catch (io: IOException) {
             target.delete()
             unreadable(name, io.message)
@@ -182,7 +186,7 @@ class AttachmentStager @Inject constructor(
             ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
             ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')
 
-    private fun unreadable(name: String, reason: String?): VmResult<File> = VmResult.Failure(
+    private fun <T> unreadable(name: String, reason: String?): VmResult<T> = VmResult.Failure(
         VmError.FileSystem(summary = "Could not attach $name", reason = reason, path = name),
     )
 

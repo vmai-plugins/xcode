@@ -185,17 +185,21 @@ interface AgentTaskDao {
             AgentTaskStatus.WAITING_APPROVAL,
             AgentTaskStatus.TESTING,
         )
-        markInterrupted(interrupted, timestamp)
+        markInterrupted(interrupted, AgentTaskStatus.FAILED, timestamp)
     }
 
     @Query(
         """
         UPDATE agent_task
-        SET status = 'FAILED',
+        SET status = :failed,
             errorText = 'Interrupted: the app stopped before the task finished',
             updatedAtMillis = :timestamp
         WHERE status IN (:statuses)
         """,
     )
-    suspend fun markInterrupted(statuses: List<AgentTaskStatus>, timestamp: Long)
+    suspend fun markInterrupted(
+        statuses: List<AgentTaskStatus>,
+        failed: AgentTaskStatus,
+        timestamp: Long,
+    )
 }

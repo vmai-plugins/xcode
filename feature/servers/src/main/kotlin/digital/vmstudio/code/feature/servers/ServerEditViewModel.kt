@@ -46,6 +46,7 @@ class ServerEditViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val serverId: String? = savedStateHandle[ARG_SERVER_ID]
+    private var temporaryCreatedServerId: String? = null
 
     private val _uiState = MutableStateFlow(ServerEditUiState(isEditing = serverId != null))
     val uiState: StateFlow<ServerEditUiState> = _uiState.asStateFlow()
@@ -140,12 +141,14 @@ class ServerEditViewModel @Inject constructor(
 
         _uiState.update { it.copy(isTesting = true, saveError = null, testSuccessMessage = null) }
         viewModelScope.launch {
+            val isNewServer = current.draft.id == null
             when (val saveResult = serverRepository.save(current.draft)) {
                 is VmResult.Failure -> {
                     _uiState.update { it.copy(isTesting = false, saveError = saveResult.error) }
                 }
                 is VmResult.Success -> {
                     val server = saveResult.value
+                    if (isNewServer) temporaryCreatedServerId = server.id
                     when (val sessionResult = connectionManager.reconnect(server.id)) {
                         is VmResult.Success -> {
                             val info = sessionResult.value.serverInfo
@@ -163,11 +166,15 @@ class ServerEditViewModel @Inject constructor(
                             }
                         }
                         is VmResult.Failure -> {
+                            if (isNewServer) {
+                                serverRepository.delete(server.id)
+                                temporaryCreatedServerId = null
+                            }
                             _uiState.update {
                                 it.copy(
                                     isTesting = false,
                                     saveError = sessionResult.error,
-                                    draft = it.draft.copy(id = server.id),
+                                    draft = if (isNewServer) it.draft.copy(id = null) else it.draft.copy(id = server.id),
                                 )
                             }
                         }
@@ -192,19 +199,22 @@ class ServerEditViewModel @Inject constructor(
             // the next use connects with what was just saved.
             if (result is VmResult.Success && serverId != null) connectionManager.disconnect(serverId)
             when (result) {
-                is VmResult.Success -> _uiState.update {
-                    // Clear secret fields from UI state the moment they are stored:
-                    // ViewModel state survives configuration changes and can be
-                    // captured in a heap dump.
-                    it.copy(
-                        isSaving = false,
-                        savedServerId = result.value.id,
-                        draft = it.draft.copy(
-                            password = "",
-                            privateKeyPem = "",
-                            passphrase = "",
-                        ),
-                    )
+                is VmResult.Success -> {
+                    temporaryCreatedServerId = null
+                    _uiState.update {
+                        // Clear secret fields from UI state the moment they are stored:
+                        // ViewModel state survives configuration changes and can be
+                        // captured in a heap dump.
+                        it.copy(
+                            isSaving = false,
+                            savedServerId = result.value.id,
+                            draft = it.draft.copy(
+                                password = "",
+                                privateKeyPem = "",
+                                passphrase = "",
+                            ),
+                        )
+                    }
                 }
                 is VmResult.Failure -> _uiState.update {
                     it.copy(isSaving = false, saveError = result.error)
@@ -222,6 +232,11 @@ class ServerEditViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        temporaryCreatedServerId?.let { tempId ->
+            viewModelScope.launch(kotlinx.coroutines.NonCancellable) {
+                serverRepository.delete(tempId)
+            }
+        }
         // Best-effort scrub of any secret still held in the draft.
         _uiState.update {
             it.copy(draft = it.draft.copy(password = "", privateKeyPem = "", passphrase = ""))
