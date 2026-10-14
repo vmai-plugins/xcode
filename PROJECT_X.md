@@ -912,6 +912,36 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: `ApkDownloader` writes chunks to `$safeName.part`. If a network error, HTTP error, or cancellation occurred during download, the `.part` file remained in `context.cacheDir/updates` indefinitely without being deleted, wasting storage.
 - **Fix**: Wrapped the download body streaming in a `try-catch` that deletes `partFile` if an exception occurs before the atomic move.
 
+### Bug 121: Compose LazyColumn Key Instability Causing Tool Batch Auto-Collapse
+- **File**: [`ChatTranscript.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/ChatTranscript.kt)
+- **Severity**: HIGH (Annoying UI Auto-Collapse During Streaming Runs)
+- **Root Cause**: `groupTranscript` generated batch IDs with `batch-${toolBuffer.first().id}-${toolBuffer.last().id}`. Every time a new tool arrived during a streaming run, `last().id` changed, mutating the item key in `LazyColumn`. Compose destroyed and recreated the composable, discarding its `expanded` state and collapsing the drawer in front of the user.
+- **Fix**: Key the batch stably by the first tool ID (`batch-${toolBuffer.first().id}`).
+
+### Bug 122: Unbounded Pagination OOM Risk in GoogleDriveClient
+- **File**: [`GoogleDriveClient.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/drive/GoogleDriveClient.kt)
+- **Severity**: MEDIUM (Memory Exhaustion & Rate Limiting)
+- **Root Cause**: `listFiles` paginated indefinitely using `do { ... } while (pageToken != null)` without an upper ceiling on total pages or files.
+- **Fix**: Introduce a configurable `maxFiles: Int = 100` safeguard to bound the pagination loop.
+
+### Bug 123: N+1 Concurrent Database Query Explosion in TasksViewModel
+- **File**: [`TasksViewModel.kt`](file:///d:/Dev/x-codes/feature/tasks/src/main/kotlin/digital/vmstudio/code/feature/tasks/TasksViewModel.kt)
+- **Severity**: MEDIUM (Database Pool Contention & UI Stutter)
+- **Root Cause**: `combine(tasks.observeAll(), hubTasks, isSyncingHub)` executed asynchronous per-task SQLite queries `tasks.serverIdFor(task.projectId)` on every state emission.
+- **Fix**: Fetch distinct project server IDs in a single batch query or in-memory map.
+
+### Bug 124: Scoped Storage Fallback Misleading Notification on Android 10+
+- **File**: [`ProjectDetailViewModel.kt`](file:///d:/Dev/x-codes/feature/projects/src/main/kotlin/digital/vmstudio/code/feature/projects/ProjectDetailViewModel.kt)
+- **Severity**: LOW (Misleading User Notification)
+- **Root Cause**: On Android 10+ (API 29+), `Environment.getExternalStoragePublicDirectory(...).canWrite()` returns false due to Scoped Storage, silently redirecting APK downloads to internal cache `context.cacheDir/downloads`. However, `notificationMessage` still tells the user `"Saved $safeName to Downloads"`, causing user confusion when checking their device Downloads folder.
+- **Fix**: Save to `context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)` or accurately inform the user when saving to application cache.
+
+### Bug 125: Tar Soft-Warning Exit Code Causing Backup Aborts
+- **File**: [`GoogleDriveManager.kt`](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/drive/GoogleDriveManager.kt)
+- **Severity**: MEDIUM (False Backup Failures)
+- **Root Cause**: The remote backup command `tar -czf ... -C <path> ... .` treats any non-zero exit code as a hard failure (`!tarResult.value.isSuccess`). In GNU `tar`, exit code 1 indicates non-fatal warnings (such as files modified or sockets skipped during archiving). This causes complete backups to be discarded as failures.
+- **Fix**: Accept exit code 1 as successful when the archive file is non-empty, or pass `--warning=no-file-changed`.
+
 ---
 
 ## 6. Developer Runbook & Operations
