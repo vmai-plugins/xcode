@@ -177,6 +177,9 @@ class AttachmentStager @Inject constructor(
 
     private fun inlineImage(uri: Uri, file: File): ImageAttachment? {
         val mediaType = context.contentResolver.getType(uri)?.takeIf { it.startsWith("image/") }
+            ?: android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(file.extension.lowercase())
+                ?.takeIf { it.startsWith("image/") }
         if (mediaType == null || file.length() > MAX_INLINE_IMAGE_BYTES) return null
         return ImageAttachment(mediaType, Base64.encodeToString(file.readBytes(), Base64.NO_WRAP))
     }

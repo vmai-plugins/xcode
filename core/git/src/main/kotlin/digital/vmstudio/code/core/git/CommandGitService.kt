@@ -141,6 +141,11 @@ class CommandGitService @Inject constructor(
         repoPath: String,
         command: String,
     ): GitResult<SshCommandResult> {
+        if (serverId.isBlank()) {
+            return GitResult.Failure(
+                GitError.CommandFailed(command, -1, "No remote server configured for Git operations."),
+            )
+        }
         val fullCommand = "cd ${shellQuotePath(repoPath)} && $command"
         // withSession's block returns VmResult by contract; the Git layer then maps
         // that outcome onto GitResult so callers see Git-specific error types.

@@ -54,29 +54,34 @@ class ApkDownloader @Inject constructor(
                 val destFile = File(dir, safeName)
                 val partFile = File(dir, "$safeName.part")
 
-                val response = client.newCall(Request.Builder().url(url).build()).execute()
-                response.use {
-                    if (!it.isSuccessful) throw IOException("Download failed: HTTP ${it.code}")
-                    val body = it.body ?: throw IOException("Empty download response")
-                    val total = body.contentLength()
+                try {
+                    val response = client.newCall(Request.Builder().url(url).build()).execute()
+                    response.use {
+                        if (!it.isSuccessful) throw IOException("Download failed: HTTP ${it.code}")
+                        val body = it.body ?: throw IOException("Empty download response")
+                        val total = body.contentLength()
 
-                    body.byteStream().use { input ->
-                        partFile.outputStream().use { output ->
-                            val buffer = ByteArray(BUFFER_SIZE)
-                            var downloaded = 0L
-                            while (true) {
-                                val read = input.read(buffer)
-                                if (read == -1) break
-                                output.write(buffer, 0, read)
-                                downloaded += read
-                                if (total > 0) onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
+                        body.byteStream().use { input ->
+                            partFile.outputStream().use { output ->
+                                val buffer = ByteArray(BUFFER_SIZE)
+                                var downloaded = 0L
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read == -1) break
+                                    output.write(buffer, 0, read)
+                                    downloaded += read
+                                    if (total > 0) onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
+                                }
                             }
                         }
                     }
-                }
 
-                Files.move(partFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                destFile
+                    Files.move(partFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    destFile
+                } catch (t: Throwable) {
+                    if (partFile.exists()) partFile.delete()
+                    throw t
+                }
             }
         }
     }

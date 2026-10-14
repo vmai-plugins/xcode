@@ -605,10 +605,12 @@ class AgentChatViewModel @Inject constructor(
             val lastModel = prefs.lastChatModel?.takeIf { last ->
                 syncedModels.isEmpty() || last in syncedModels
             }
+            val defaultFallbackModel = "auto/best-coding"
+            val effectiveModel = (lastModel ?: omniModel)?.ifBlank { null } ?: defaultFallbackModel
             _uiState.update {
                 it.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
-                    selectedModel = lastModel ?: omniModel.orEmpty(),
+                    selectedModel = effectiveModel,
                 )
             }
             checkHealth()

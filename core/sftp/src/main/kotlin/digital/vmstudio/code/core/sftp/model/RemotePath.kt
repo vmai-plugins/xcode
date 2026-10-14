@@ -21,12 +21,35 @@ object RemotePath {
     const val SEPARATOR = '/'
     const val ROOT = "/"
 
-    fun isAbsolute(path: String): Boolean = path.startsWith(SEPARATOR)
+    fun isAbsolute(path: String): Boolean = path.startsWith(SEPARATOR) || path.startsWith("content://")
 
-    fun name(path: String): String =
-        normalise(path).trimEnd(SEPARATOR).substringAfterLast(SEPARATOR).ifEmpty { ROOT }
+    fun name(path: String): String {
+        if (path.startsWith("content://")) {
+            val bang = path.indexOf("!/")
+            if (bang >= 0) {
+                val subPath = path.substring(bang + 2).trimEnd(SEPARATOR)
+                return if (subPath.isEmpty()) ROOT else subPath.substringAfterLast(SEPARATOR)
+            }
+            return path
+        }
+        return normalise(path).trimEnd(SEPARATOR).substringAfterLast(SEPARATOR).ifEmpty { ROOT }
+    }
 
     fun parent(path: String): String? {
+        if (path.startsWith("content://")) {
+            val bang = path.indexOf("!/")
+            if (bang >= 0) {
+                val uriPart = path.substring(0, bang + 2)
+                val subPath = path.substring(bang + 2).trimEnd(SEPARATOR)
+                if (subPath.isEmpty()) return null
+                val index = subPath.lastIndexOf(SEPARATOR)
+                return when {
+                    index < 0 -> uriPart
+                    else -> uriPart + subPath.substring(0, index)
+                }
+            }
+            return null
+        }
         val normalised = normalise(path).trimEnd(SEPARATOR)
         if (normalised.isEmpty() || normalised == ROOT) return null
         val index = normalised.lastIndexOf(SEPARATOR)
@@ -59,6 +82,15 @@ object RemotePath {
      */
     fun normalise(path: String): String {
         if (path.isEmpty()) return ""
+        if (path.startsWith("content://")) {
+            val bang = path.indexOf("!/")
+            if (bang >= 0) {
+                val uriPrefix = path.substring(0, bang + 1)
+                val subPath = path.substring(bang + 1)
+                return uriPrefix + normalise(subPath)
+            }
+            return path
+        }
         val absolute = isAbsolute(path)
         val stack = ArrayDeque<String>()
         var leadingParents = 0

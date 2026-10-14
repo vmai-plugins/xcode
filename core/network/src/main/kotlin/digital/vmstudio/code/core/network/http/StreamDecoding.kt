@@ -66,7 +66,8 @@ class SseDecoder {
         eventName = null
         val isDone = payload.trim() == DONE_SENTINEL ||
             name == "message_stop" ||
-            payload.contains("\"type\":\"message_stop\"")
+            payload.contains("\"type\":\"message_stop\"") ||
+            (payload.contains("\"message_stop\"") && payload.contains("\"type\""))
         return SseEvent(name = name, data = payload, isDone = isDone)
     }
 

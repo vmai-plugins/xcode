@@ -8,6 +8,7 @@ import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.flatMap
 import digital.vmstudio.code.core.common.result.map
 import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
+import digital.vmstudio.code.core.ssh.connection.SshConnectionState
 import digital.vmstudio.code.core.terminal.emulator.TerminalEmulator
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -41,6 +43,18 @@ class TerminalSessionManager @Inject constructor(
 
     private val _activeSessionId = MutableStateFlow<String?>(null)
     val activeSessionId: StateFlow<String?> = _activeSessionId.asStateFlow()
+
+    init {
+        applicationScope.launch(ioDispatcher) {
+            connectionManager.states.collect { serverStates ->
+                serverStates.forEach { (serverId, state) ->
+                    if (state is SshConnectionState.Disconnected || state is SshConnectionState.Failed) {
+                        closeAllForServer(serverId)
+                    }
+                }
+            }
+        }
+    }
 
     fun session(id: String): TerminalSession? = sessionsById[id]
 

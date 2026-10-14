@@ -864,9 +864,56 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Fix**:
   1. Created `AgentExecutionKeepAlive` in `core:ai` and bound an implementation in `:app` calling `AgentRunService.startExecution()` / `stopExecution()`.
   2. Promoted `AgentRunService` to an active Foreground Service with an ongoing notification (`"AI is generating response - Active connection preserved in background"`) whenever `AgentWakeLockManager.acquire()` is called during chat generation.
-  3. Added `.pingInterval(20, TimeUnit.SECONDS)` to `OkHttpClient` to keep HTTP/2 connections and carrier NAT mappings alive during extended thinking pauses.
+### Bug 113: SSE Parser Missing Whitespace-Tolerant Match for Anthropic `message_stop` Sentinels
+- **Severity**: HIGH (SSE Stream Socket Hang on Proxy-Delivered Anthropic Responses)
+- **Files**: [`StreamDecoding.kt`](file:///d:/Dev/x-codes/core/network/src/main/kotlin/digital/vmstudio/code/core/network/http/StreamDecoding.kt)
+- **Root Cause**: `SseDecoder` detects end of stream via `payload.contains("\"type\":\"message_stop\"")`. However, standard JSON formatters, proxies, and gateways emit spaces after colons (`"type": "message_stop"`). When an Anthropic stream terminates through a proxy without an explicit SSE `event: message_stop` header, the hardcoded spaceless match fails, preventing the stream from completing normally and causing downstream readers to stall.
+- **Fix**: Added whitespace-tolerant matching `(payload.contains("\"message_stop\"") && payload.contains("\"type\""))` alongside the exact match, ensuring streams close cleanly regardless of JSON serializer spacing.
+
+### Bug 114: Storage Access Framework / Tree URI Path Normalization Corruption
+- **File**: [`RemotePath.kt`](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/model/RemotePath.kt)
+- **Severity**: HIGH (SAF Folder Import / Content URI Scheme Corruption)
+- **Root Cause**: `RemotePath.normalise()` split paths by `/` and discarded empty string segments (`"", "." -> Unit`). For Storage Access Framework paths starting with `content://`, splitting `"content://authority/tree/xyz"` created `["content:", "", "authority", ...]`. Dropping `""` and rejoining with `/` turned `content://` into `content:/` (single slash), corrupting the Android Content URI scheme. When `isTreeUriPath` subsequently checked `path.startsWith("content://")`, it returned `false`, breaking all file operations in linked SAF folders.
+- **Fix**: Guarded `content://` paths in `RemotePath.normalise()`, `parent()`, `name()`, and `isAbsolute()`, preserving the `content://...` URI authority part intact and normalising only the relative subpath following the `!/` delimiter.
+
+### Bug 115: Image Attachment Failure on Non-Standard Content URIs & File Providers
+- **File**: [`AttachmentStager.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AttachmentStager.kt)
+- **Severity**: MEDIUM (Vision Models Unable to Receive Attached Images from Document Providers)
+- **Root Cause**: `inlineImage` determined image MIME type exclusively via `context.contentResolver.getType(uri)`. For third-party file pickers, local cache file URIs, or document providers that do not implement `getType()`, this returned `null`. Even when the file extension was clearly `.png`, `.jpg`, `.jpeg`, `.webp`, or `.gif`, `inlineImage` returned `null` and the attachment was never converted to base64, depriving vision-capable AI models of the image.
+- **Fix**: Added a fallback to `android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())` when `contentResolver.getType(uri)` returns null.
+
+### Bug 116: General Chat / First-Run Composer Freeze Due to Blank Default Model
+- **File**: [`AgentChatViewModel.kt`](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/AgentChatViewModel.kt)
+- **Severity**: HIGH (Disabled Input Field and Send Button on Fresh App Installs)
+- **Root Cause**: On first launch before models are synced or selected, `prefs.aiSelectedModelId` and `prefs.lastChatModel` are null. `selectedModel` was set to `""`. In turn, `canAcceptInput` (`selectedModel.isNotBlank() && ...`) evaluated to `false`, disabling the entire composer input field, voice button, and send button without any indication to the user.
+- **Fix**: Provided a robust fallback to `"auto/best-coding"` (`PREFERRED_DEFAULT_MODELS.first()`) when both `lastModel` and `omniModel` are blank or null, ensuring the chat composer is immediately interactive.
+
+### Bug 117: Leaked Terminal Channels and Zombie Tabs on SSH Disconnect / Server Deletion
+- **File**: [`TerminalSessionManager.kt`](file:///d:/Dev/x-codes/core/terminal/src/main/kotlin/digital/vmstudio/code/core/terminal/session/TerminalSessionManager.kt)
+- **Severity**: MEDIUM (Ghost Terminal Tabs and Socket Resource Leaks)
+- **Root Cause**: `TerminalSessionManager` declared `closeAllForServer(serverId)`, but it was never invoked anywhere when an SSH connection was dropped or a server was deleted. Active terminal sessions lingered in `sessionsById` with broken socket channels, leaving dead tabs in the UI.
+- **Fix**: In `TerminalSessionManager.init`, observed `connectionManager.states` across `applicationScope`. Whenever a server transitions to `SshConnectionState.Disconnected` or `SshConnectionState.Failed`, automatically trigger `closeAllForServer(serverId)` to clean up dead sessions and release emulator resources.
+
+### Bug 118: Null/Blank Server ID Error Spam in CommandGitService
+- **File**: [`CommandGitService.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/CommandGitService.kt)
+- **Severity**: LOW (Unnecessary SQLite Lookups and Database Error Logging)
+- **Root Cause**: `execute()` unconditionally attempted `connectionManager.withSession(serverId)` even when `serverId` was blank (e.g. from General Chat or unassigned local workspaces), executing a pointless SQLite lookup on `serverRepository.get("")` and logging a database error.
+- **Fix**: Guarded `execute()` with `if (serverId.isBlank()) return GitResult.Failure(GitError.CommandFailed(command, -1, "No remote server configured for Git operations."))`.
+
+### Bug 119: Missing Pre-Connection Foreign Key Enforcement on Android SQLite Connection Pool
+- **File**: [`DatabaseModule.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/di/DatabaseModule.kt)
+- **Severity**: HIGH (Foreign Key Constraints and Cascade Deletions Bypassed in WAL Mode)
+- **Root Cause**: `Room.databaseBuilder().addCallback()` executes `PRAGMA foreign_keys = ON` only during `onOpen(db)`. In SQLite WAL mode, secondary reader connections in the Android SQLite connection pool are initialized without triggering `RoomDatabase.Callback.onOpen()`. SQLite foreign key constraints are per-connection and therefore disabled on those reader connections.
+- **Fix**: Wrapped `SupportSQLiteOpenHelper.Factory` to intercept `onConfigure(db: SupportSQLiteDatabase)` on every connection and execute `db.setForeignKeyConstraintsEnabled(true)`.
+
+### Bug 120: Missing Partial File Cleanup on Aborted APK Download
+- **File**: [`ApkDownloader.kt`](file:///d:/Dev/x-codes/core/update/src/main/kotlin/digital/vmstudio/code/core/update/ApkDownloader.kt)
+- **Severity**: LOW (Storage Waste from Orphaned Partial Download Files)
+- **Root Cause**: `ApkDownloader` writes chunks to `$safeName.part`. If a network error, HTTP error, or cancellation occurred during download, the `.part` file remained in `context.cacheDir/updates` indefinitely without being deleted, wasting storage.
+- **Fix**: Wrapped the download body streaming in a `try-catch` that deletes `partFile` if an exception occurs before the atomic move.
 
 ---
+
 ## 6. Developer Runbook & Operations
 
 ### 6.1 Building the Project

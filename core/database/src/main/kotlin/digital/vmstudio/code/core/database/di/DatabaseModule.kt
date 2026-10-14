@@ -38,7 +38,45 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): VmDatabase =
         Room.databaseBuilder(context, VmDatabase::class.java, VmDatabase.NAME)
             // Foreign keys are declared on the entities; SQLite only enforces them
-            // when explicitly enabled, and cascade deletes are relied on throughout.
+            // when explicitly enabled per-connection. In WAL mode, reader pool connections
+            // bypass onOpen, so onConfigure is required to enforce constraints globally.
+            .openHelperFactory(
+                object : androidx.sqlite.db.SupportSQLiteOpenHelper.Factory {
+                    private val delegate = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory()
+
+                    override fun create(
+                        configuration: androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration,
+                    ): androidx.sqlite.db.SupportSQLiteOpenHelper {
+                        val newCallback = object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(configuration.callback.version) {
+                            override fun onConfigure(db: SupportSQLiteDatabase) {
+                                db.setForeignKeyConstraintsEnabled(true)
+                                configuration.callback.onConfigure(db)
+                            }
+
+                            override fun onCreate(db: SupportSQLiteDatabase) = configuration.callback.onCreate(db)
+
+                            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) =
+                                configuration.callback.onUpgrade(db, oldVersion, newVersion)
+
+                            override fun onDowngrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) =
+                                configuration.callback.onDowngrade(db, oldVersion, newVersion)
+
+                            override fun onOpen(db: SupportSQLiteDatabase) = configuration.callback.onOpen(db)
+
+                            override fun onCorruption(db: SupportSQLiteDatabase) = configuration.callback.onCorruption(db)
+                        }
+
+                        val newConfig = androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(configuration.context)
+                            .name(configuration.name)
+                            .callback(newCallback)
+                            .noBackupDirectory(configuration.useNoBackupDirectory)
+                            .allowDataLossOnRecovery(configuration.allowDataLossOnRecovery)
+                            .build()
+
+                        return delegate.create(newConfig)
+                    }
+                },
+            )
             .addCallback(
                 object : androidx.room.RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
