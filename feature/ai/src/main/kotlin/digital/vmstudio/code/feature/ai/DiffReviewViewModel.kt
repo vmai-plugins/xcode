@@ -55,7 +55,11 @@ class DiffReviewViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            if (RemoteFileSystem.isLocalServer(serverId) || filePath.startsWith("/github/") || filePath.startsWith("/vmhub/")) {
+            if (RemoteFileSystem.isLocalServer(serverId) ||
+                filePath.startsWith("/github/") ||
+                filePath.startsWith("/vmhub/") ||
+                filePath.startsWith("content://")
+            ) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     diff = GitDiff(),
@@ -109,7 +113,11 @@ class DiffReviewViewModel @Inject constructor(
 
     fun reject() {
         viewModelScope.launch {
-            if (RemoteFileSystem.isLocalServer(serverId) || filePath.startsWith("/github/") || filePath.startsWith("/vmhub/")) {
+            if (RemoteFileSystem.isLocalServer(serverId) ||
+                filePath.startsWith("/github/") ||
+                filePath.startsWith("/vmhub/") ||
+                filePath.startsWith("content://")
+            ) {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     error = VmError.Unexpected(

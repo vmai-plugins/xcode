@@ -37,10 +37,20 @@ internal object GitParsers {
             val workTreeStatus = line[1]
             val pathPart = line.substring(2).trimStart()
 
-            val path = if (pathPart.contains(" -> ")) {
+            val rawPath = if (pathPart.contains(" -> ")) {
                 pathPart.substringAfter(" -> ")
             } else {
                 pathPart
+            }.trim()
+
+            val path = if (rawPath.startsWith("\"") && rawPath.endsWith("\"") && rawPath.length >= 2) {
+                rawPath.substring(1, rawPath.length - 1)
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+                    .replace("\\t", "\t")
+                    .replace("\\n", "\n")
+            } else {
+                rawPath
             }
 
             // Staged changes (index)

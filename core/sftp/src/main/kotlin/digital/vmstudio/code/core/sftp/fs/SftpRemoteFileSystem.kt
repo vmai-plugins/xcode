@@ -49,7 +49,10 @@ class SftpRemoteFileSystem @Inject constructor(
     private val localFs = LocalFileSystemDelegate(context, ioDispatcher)
 
     private fun isLocalOrVirtual(serverId: String?, path: String): Boolean =
-        RemoteFileSystem.isLocalServer(serverId) || path.startsWith("/vmhub/") || path.startsWith("/github/")
+        RemoteFileSystem.isLocalServer(serverId) ||
+            path.startsWith("/vmhub/") ||
+            path.startsWith("/github/") ||
+            path.startsWith("content://")
 
     private fun expandPath(sftp: SFTPClient, path: String): String {
         val trimmed = path.trim()
@@ -139,7 +142,7 @@ class SftpRemoteFileSystem @Inject constructor(
     }
 
     override suspend fun rename(serverId: String, from: String, to: String): VmResult<Unit> {
-        if (isLocalOrVirtual(serverId, from) || to.startsWith("/vmhub/")) return localFs.rename(from, to)
+        if (isLocalOrVirtual(serverId, from) || isLocalOrVirtual(serverId, to)) return localFs.rename(from, to)
         return withSftp(serverId, from) { sftp ->
             sftp.rename(expandPath(sftp, from), expandPath(sftp, to))
             VmLog.i(LogCategory.SFTP, TAG, "Renamed $from to $to")
@@ -173,7 +176,7 @@ class SftpRemoteFileSystem @Inject constructor(
         path: String,
         permissions: RemotePermissions,
     ): VmResult<Unit> {
-        if (RemoteFileSystem.isLocalServer(serverId)) return VmResult.Success(Unit)
+        if (isLocalOrVirtual(serverId, path)) return VmResult.Success(Unit)
         return withSftp(serverId, path) { sftp ->
             sftp.chmod(expandPath(sftp, path), permissions.mode)
         }

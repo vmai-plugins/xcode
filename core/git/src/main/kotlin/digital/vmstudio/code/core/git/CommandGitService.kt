@@ -44,7 +44,8 @@ class CommandGitService @Inject constructor(
     }
 
     override suspend fun diffAll(serverId: String, repoPath: String): GitResult<GitDiff> {
-        return execute(serverId, repoPath, "git diff HEAD").map { DiffParser.parse(it.stdout) }
+        val command = "git rev-parse --verify HEAD >/dev/null 2>&1 && git diff HEAD || git diff --cached 2>/dev/null || git diff"
+        return execute(serverId, repoPath, command).map { DiffParser.parse(it.stdout) }
     }
 
     override suspend fun add(serverId: String, repoPath: String, files: List<String>): GitResult<Unit> {

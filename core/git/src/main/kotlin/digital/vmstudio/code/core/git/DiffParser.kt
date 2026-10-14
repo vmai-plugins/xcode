@@ -5,9 +5,21 @@ package digital.vmstudio.code.core.git
  */
 object DiffParser {
 
-    private val FILE_HEADER_OLD = Regex("""^--- a?\/(.+)""")
-    private val FILE_HEADER_NEW = Regex("""^\+\+\+ b?\/(.+)""")
+    private val FILE_HEADER_OLD = Regex("""^--- (?:[a-zA-Z]\/|\/)?(.+)""")
+    private val FILE_HEADER_NEW = Regex("""^\+\+\+ (?:[a-zA-Z]\/|\/)?(.+)""")
     private val HUNK_HEADER = Regex("""^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@.*""")
+
+    private fun cleanPath(raw: String?): String? {
+        if (raw == null) return null
+        val strippedTab = raw.substringBefore('\t').trim()
+        return if (strippedTab.startsWith("\"") && strippedTab.endsWith("\"") && strippedTab.length >= 2) {
+            strippedTab.substring(1, strippedTab.length - 1)
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\")
+        } else {
+            strippedTab
+        }
+    }
 
     /**
      * Parses a complete diff output (potentially containing multiple files).
@@ -19,32 +31,47 @@ object DiffParser {
         val lines = diffOutput.lines()
         var i = 0
 
+        var pendingNew = false
+        var pendingDeleted = false
+        var pendingRename = false
+
         while (i < lines.size) {
             val line = lines[i]
 
+            if (line.startsWith("new file mode")) {
+                pendingNew = true
+                i++
+                continue
+            } else if (line.startsWith("deleted file mode")) {
+                pendingDeleted = true
+                i++
+                continue
+            } else if (line.startsWith("rename from")) {
+                pendingRename = true
+                i++
+                continue
+            }
+
             if (line.startsWith("--- ") && i + 1 < lines.size && lines[i + 1].startsWith("+++ ")) {
-                val rawOld = FILE_HEADER_OLD.matchEntire(line)?.groupValues?.get(1)
-                val rawNew = FILE_HEADER_NEW.matchEntire(lines[i + 1])?.groupValues?.get(1)
+                val rawOldMatch = FILE_HEADER_OLD.matchEntire(line)?.groupValues?.get(1)
+                val rawNewMatch = FILE_HEADER_NEW.matchEntire(lines[i + 1])?.groupValues?.get(1)
+                val rawOld = cleanPath(rawOldMatch)
+                val rawNew = cleanPath(rawNewMatch)
                 i += 2
 
-                val isNewFile = rawOld == "dev/null" || rawOld == "/dev/null"
-                val isDeletedFile = rawNew == "dev/null" || rawNew == "/dev/null"
-                val oldPath = if (isNewFile) null else rawOld
-                val newPath = if (isDeletedFile) null else rawNew
+                val isNewFile = rawOld == "dev/null" || rawOld == "/dev/null" || pendingNew
+                val isDeletedFile = rawNew == "dev/null" || rawNew == "/dev/null" || pendingDeleted
+                val oldPath = if (isNewFile && !pendingRename) null else rawOld
+                val newPath = if (isDeletedFile && !pendingRename) null else rawNew
 
                 val diffLines = mutableListOf<DiffLine>()
-                var isNew = isNewFile
-                var isDeleted = isDeletedFile
-                var isRename = oldPath != null && newPath != null && oldPath != newPath
+                val isNew = isNewFile
+                val isDeleted = isDeletedFile
+                val isRename = pendingRename || (oldPath != null && newPath != null && oldPath != newPath)
 
-                // Check for file mode changes
-                if (i < lines.size && lines[i].startsWith("new file mode")) {
-                    isNew = true; i++
-                } else if (i < lines.size && lines[i].startsWith("deleted file mode")) {
-                    isDeleted = true; i++
-                } else if (i < lines.size && lines[i].startsWith("rename from")) {
-                    isRename = true; i += 2
-                }
+                pendingNew = false
+                pendingDeleted = false
+                pendingRename = false
 
                 // Parse hunks
                 while (i < lines.size && !lines[i].startsWith("--- ") &&
@@ -62,6 +89,11 @@ object DiffParser {
 
                 files += FileDiff(oldPath, newPath, isNew, isDeleted, isRename, calculateLineNumbers(diffLines))
             } else {
+                if (line.startsWith("diff --git")) {
+                    pendingNew = false
+                    pendingDeleted = false
+                    pendingRename = false
+                }
                 i++
             }
         }

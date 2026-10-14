@@ -107,18 +107,11 @@ class GoogleDriveClient @Inject constructor(
             parentFolderId?.let { parent -> put("parents", buildJsonArray { add(parent) }) }
         }.toString()
 
+        val relatedType = "multipart/related".toMediaType()
         val requestBody = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart(
-                "metadata",
-                "metadata",
-                metadataJson.toRequestBody("application/json; charset=UTF-8".toMediaType()),
-            )
-            .addFormDataPart(
-                "file",
-                filename,
-                fileBody,
-            )
+            .setType(relatedType)
+            .addPart(metadataJson.toRequestBody("application/json; charset=UTF-8".toMediaType()))
+            .addPart(fileBody)
             .build()
 
         val request = Request.Builder()
@@ -147,6 +140,20 @@ class GoogleDriveClient @Inject constructor(
             .build()
 
         return httpClient.execute(request, RetryPolicy())
+    }
+
+    suspend fun downloadFileTo(
+        accessToken: String,
+        fileId: String,
+        destination: java.io.File,
+    ): VmResult<java.io.File> {
+        val url = "$DRIVE_API_BASE/files/$fileId?alt=media"
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $accessToken")
+            .get()
+            .build()
+        return httpClient.download(request, destination)
     }
 
     companion object {

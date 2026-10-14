@@ -200,15 +200,22 @@ class FileSecureCredentialStore @Inject constructor(
         } finally {
             java.util.Arrays.fill(plaintext, 0)
         }
-        return encrypted.flatMap { bytes ->
-            val file = secretFileOrNull(ref.id)
-                ?: return@flatMap VmResult.Failure(rejectedId())
+        val file = secretFileOrNull(ref.id)
+            ?: return VmResult.Failure(rejectedId())
+        val operation = encrypted.flatMap { bytes ->
             vmCatching(::mapIoError) { writeAtomically(file, bytes) }
         }.flatMap {
             loadIndexLocked()
         }.flatMap { index ->
             persistIndexLocked(index + (ref.id to ref))
-        }.map { ref }
+        }
+        return when (operation) {
+            is VmResult.Success -> VmResult.Success(ref)
+            is VmResult.Failure -> {
+                if (file.exists()) file.delete()
+                operation
+            }
+        }
     }
 
     /**

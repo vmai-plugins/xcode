@@ -1,4 +1,4 @@
-# PROJECT X: THE DEFINITIVE ARCHITECTURE, DEVELOPMENT & GAP SPECIFICATION
+﻿# PROJECT X: THE DEFINITIVE ARCHITECTURE, DEVELOPMENT & GAP SPECIFICATION
 
 > **System**: X-Codes (Mobile Cloud IDE & Autonomous Agent for Android)  
 > **Repository**: `https://github.com/vmai-plugins/xcode.git`  
@@ -317,7 +317,7 @@ During our deep audit, the following critical bugs across AI, UI, Wire Protocol,
 ### Bug 26: Android P+ `getPackageArchiveInfo` Signature Extraction Failure
 - **Severity**: MEDIUM (Self-update verification rejects legitimate updates on several Android OEM builds)
 - **File**: [`ApkInstaller.kt:60, 74`](file:///d:/Dev/x-codes/core/update/src/main/kotlin/digital/vmstudio/code/core/update/ApkInstaller.kt)
-- **Root Cause**: Android P+ introduced `PackageManager.GET_SIGNING_CERTIFICATES`, but on Android 9–11 OEM implementations, `getPackageArchiveInfo` leaves `signingInfo` unpopulated unless `PackageManager.GET_SIGNATURES` is also supplied in the flags bitmask. This caused `signingFingerprints` to return empty, leading `signatureMatchesInstalledApp()` to fail verification and refuse valid self-updates.
+- **Root Cause**: Android P+ introduced `PackageManager.GET_SIGNING_CERTIFICATES`, but on Android 9â€“11 OEM implementations, `getPackageArchiveInfo` leaves `signingInfo` unpopulated unless `PackageManager.GET_SIGNATURES` is also supplied in the flags bitmask. This caused `signingFingerprints` to return empty, leading `signatureMatchesInstalledApp()` to fail verification and refuse valid self-updates.
 - **Fix**: Combined flags via `PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES` in both archive and installed signature inspections.
 
 ### Bug 27: Unhandled Optimistic Kanban State Desync on Network Failure
@@ -373,8 +373,45 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: When the app process is terminated while an agent task is waiting for user confirmation (e.g. for a dangerous command or file edit), 	oolExecutionDao.cancelInterrupted() marks the tool as cancelled, but gentTaskDao.reconcileInterrupted() omitted AgentTaskStatus.WAITING_APPROVAL from the list of in-flight statuses. The task was left permanently orphaned in WAITING_APPROVAL with no active approval dialog available to resume it.
 - **Fix**: Added AgentTaskStatus.WAITING_APPROVAL to gentTaskDao.reconcileInterrupted()'s status list so orphaned tasks are cleanly transitioned to FAILED with an informative reason at startup.
 
----
 
+
+### Bug 35: Google Drive API v3 MIME Type Rejection & Binary Archive Download Corruption
+- **Severity**: HIGH (Google Drive project backup uploads fail with 400 Bad Request; binary download converts bytes through lossy UTF-8 String)
+- **File**: [GoogleDriveClient.kt:110, 145](file:///d:/Dev/x-codes/core/connectors/src/main/kotlin/digital/vmstudio/code/core/connectors/drive/GoogleDriveClient.kt)
+- **Root Cause**: GoogleDriveClient.uploadFile() used MultipartBody.Builder().setType(MultipartBody.FORM) with form-data parts. Google Drive API v3 /upload/drive/v3/files?uploadType=multipart strictly rejects multipart/form-data with HTTP 400 Bad Request, requiring multipart/related. Additionally, downloadFile() only returned VmResult<String>, corrupting binary project archives (.tar.gz, .zip) through UTF-8 string conversion.
+- **Fix**: Changed upload multipart format to multipart/related with clean JSON and file parts, and added streaming downloadFileTo(accessToken, fileId, destination) leveraging httpClient.download for binary-safe disk streaming.
+
+### Bug 36: Compose TextField IME Composition Out-Of-Bounds Crash
+- **Severity**: MEDIUM (Crash with IndexOutOfBoundsException when undoing, redoing, or replacing text while soft keyboard IME composition is active)
+- **Files**: [EditorState.kt:130](file:///d:/Dev/x-codes/core/editor/src/main/kotlin/digital/vmstudio/code/core/editor/EditorState.kt), [EditorViewModel.kt:236](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: When programmatic text changes occurred (such as undo, redo, or multi-occurrence replacement), TextFieldValue.copy() preserved the active composition: TextRange? range. If the restored text was shorter than the old composing span, Compose's BasicTextField crashed with IndexOutOfBoundsException: composition out of bounds.
+- **Fix**: Explicitly cleared composition = null in EditorState.applyText() and EditorViewModel.replace() / goToLine().
+
+### Bug 37: Orphaned Dangling Credential Files on Partial Keystore Persistence Failure
+- **Severity**: LOW (Security hygiene: failed credential index writes leave unindexed orphaned ciphertext files on internal storage)
+- **File**: [FileSecureCredentialStore.kt:205](file:///d:/Dev/x-codes/core/security/src/main/kotlin/digital/vmstudio/code/core/security/store/FileSecureCredentialStore.kt)
+- **Root Cause**: In writeSecretLocked(), the encrypted credential file ref.id.bin was written to disk before committing the updated reference to the index. If persistIndexLocked() failed (e.g. disk full or crypto failure), the newly created file was left on disk permanently as an unreferenced orphan that standard delete operations could never clean up.
+- **Fix**: Wrapped the write pipeline with when (operation) cleanup to delete the staged file if index loading or persistence fails.
+
+### Bug 38: Storage Access Framework (content://) & Virtual Workspace Remote Execution Leak
+- **Severity**: HIGH (Remote command failures, path corruption, and illegal SFTP routing when operating on phone storage SAF or virtual projects)
+- **Files**: [SftpRemoteFileSystem.kt:51, 142, 176](file:///d:/Dev/x-codes/core/sftp/src/main/kotlin/digital/vmstudio/code/core/sftp/fs/SftpRemoteFileSystem.kt), [OmniRouteAgentLoop.kt:674, 860, 965, 1033, 1090, 1121](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/OmniRouteAgentLoop.kt), [DiffReviewViewModel.kt:58, 112](file:///d:/Dev/x-codes/feature/ai/src/main/kotlin/digital/vmstudio/code/feature/ai/DiffReviewViewModel.kt)
+- **Root Cause**: SftpRemoteFileSystem.isLocalOrVirtual only checked RemoteFileSystem.isLocalServer(serverId) and /vmhub/ or /github/ prefixes, omitting Android SAF content:// paths. When users opened phone folders with a remote server configured, SFTP attempted remote Linux file operations against content:// URIs. In OmniRouteAgentLoop, grepSearch, editFile, writeFile, runCommand, runBuild, and listApks failed to check content://, leading to SSH execution attempts of cd content://... && ./gradlew on remote VPS servers. DiffReviewViewModel also attempted remote git diff on local phone storage URIs.
+- **Fix**: Added path.startsWith("content://") to isLocalOrVirtual(), unified rename() and setPermissions() to route virtual/SAF targets to localFs, added content:// guards to OmniRoute agent grep/edit/write/run tools, and prevented DiffReviewViewModel from invoking remote git operations on SAF documents.
+
+### Bug 39: CommandGitService.diffAll Fatal Failure on Empty/Initial Repositories
+- **Severity**: MEDIUM (Git diff view and DiffReviewViewModel crash on newly initialized Git repositories)
+- **File**: [CommandGitService.kt:46](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/CommandGitService.kt)
+- **Root Cause**: diffAll(serverId, repoPath) executed git diff HEAD. In freshly initialized repositories (git init) prior to the first commit, HEAD does not exist. Git aborted with fatal: ambiguous argument 'HEAD': unknown revision and exit code 128, causing GitResult.Failure and UI crash.
+- **Fix**: Changed command to git rev-parse --verify HEAD >/dev/null 2>&1 && git diff HEAD || git diff --cached 2>/dev/null || git diff to cleanly fall back to staged or working tree diffs when HEAD is not yet present.
+
+### Bug 40: DiffParser Dropping File Mode Changes, Inverted Header Parsing, and Unquoted Path Omission
+- **Severity**: MEDIUM (Diff parser silently omitted root files without diff prefixes, dropped mode/rename flags, and corrupted paths with quotes)
+- **Files**: [DiffParser.kt:8, 26](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/DiffParser.kt), [GitParsers.kt:38](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/GitParsers.kt)
+- **Root Cause**: FILE_HEADER_OLD and FILE_HEADER_NEW in DiffParser required a/ or b/ with a mandatory /, failing to match diffs formatted without prefixes (diff.noprefix = true) for repo-root files. Furthermore, new file mode, deleted file mode, and rename from occur before --- / +++ in git diff format, but were checked after, making mode detection unreachable dead code. Additionally, porcelain status parser in GitParsers retained surrounding quotes for paths containing spaces.
+- **Fix**: Updated FILE_HEADER_OLD and FILE_HEADER_NEW to support optional prefixes and strip tab-separated metadata, tracked mode and rename headers from the git diff block, and stripped quotes and unescaped porcelain paths.
+
+---
 ## 6. Developer Runbook & Operations
 
 ### 6.1 Building the Project
@@ -424,6 +461,6 @@ All commands are run from the project root (`d:\Dev\x-codes`):
 > If you are an AI assistant continuing work on **Project X (X-Codes)**:  
 > 1. Always ensure both `ANTHROPIC_MESSAGES` and `OPENAI_CHAT` dialects remain valid when modifying `OmniRouteToolCodec.kt`.  
 > 2. When creating or editing files, always verify whether line endings are CRLF or LF using `findMatchingTarget()`.  
-> 3. Never wrap streaming chat items in heavy Compose `SelectionContainer` blocks—keep rendering fast and reactive.  
+> 3. Never wrap streaming chat items in heavy Compose `SelectionContainer` blocksâ€”keep rendering fast and reactive.  
 > 4. Keep all 14 modules compiling cleanly with `./gradlew.bat assembleRelease`.  
 > 5. All git operations must be committed and pushed to `origin/main` using the mingit binary.

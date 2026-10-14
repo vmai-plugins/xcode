@@ -671,7 +671,10 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
-        if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId) || resolved.startsWith("/vmhub/")) {
+        if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId) ||
+            resolved.startsWith("/vmhub/") ||
+            resolved.startsWith("content://")
+        ) {
             return localGrep(serverId, resolved, query, caseSensitive)
         }
 
@@ -857,7 +860,9 @@ class OmniRouteAgentLoop @Inject constructor(
         }
 
         val server = when {
-            RemoteFileSystem.isLocalServer(serverId) || resolved.startsWith("/vmhub/") -> null
+            RemoteFileSystem.isLocalServer(serverId) ||
+                resolved.startsWith("/vmhub/") ||
+                resolved.startsWith("content://") -> null
             else -> when (val result = serverRepository.get(serverId)) {
                 is VmResult.Success -> result.value
                 is VmResult.Failure -> null
@@ -962,7 +967,9 @@ class OmniRouteAgentLoop @Inject constructor(
         }
 
         val server = when {
-            RemoteFileSystem.isLocalServer(serverId) || resolved.startsWith("/vmhub/") -> null
+            RemoteFileSystem.isLocalServer(serverId) ||
+                resolved.startsWith("/vmhub/") ||
+                resolved.startsWith("content://") -> null
             else -> when (val result = serverRepository.get(serverId)) {
                 is VmResult.Success -> result.value
                 is VmResult.Failure -> null
@@ -1030,7 +1037,11 @@ class OmniRouteAgentLoop @Inject constructor(
     ): ToolOutcome {
         val requested = argument(call.argumentsJson, "command")
             ?: return ToolOutcome("Missing required argument \"command\".", isError = true)
-        if (RemoteFileSystem.isLocalServer(serverId) || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/")) {
+        if (RemoteFileSystem.isLocalServer(serverId) ||
+            workingDirectory.startsWith("/github/") ||
+            workingDirectory.startsWith("/vmhub/") ||
+            workingDirectory.startsWith("content://")
+        ) {
             return ToolOutcome(
                 "Terminal commands are not supported in local or virtual workspaces. Running commands requires an active SSH VPS server.",
                 isError = true,
@@ -1087,7 +1098,11 @@ class OmniRouteAgentLoop @Inject constructor(
         PathGuard.problem(workingDirectory, directory)?.let { problem ->
             return ToolOutcome(problem, isError = true)
         }
-        if (RemoteFileSystem.isLocalServer(serverId) || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/")) {
+        if (RemoteFileSystem.isLocalServer(serverId) ||
+            workingDirectory.startsWith("/github/") ||
+            workingDirectory.startsWith("/vmhub/") ||
+            workingDirectory.startsWith("content://")
+        ) {
             return ToolOutcome(
                 "Gradle builds cannot run on phone storage or virtual workspaces. Attach an active SSH build server to compile.",
                 isError = true,
@@ -1118,7 +1133,11 @@ class OmniRouteAgentLoop @Inject constructor(
         PathGuard.problem(workingDirectory, apkDirectory)?.let { problem ->
             return ToolOutcome(problem, isError = true)
         }
-        if (RemoteFileSystem.isLocalServer(serverId) || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/")) {
+        if (RemoteFileSystem.isLocalServer(serverId) ||
+            workingDirectory.startsWith("/github/") ||
+            workingDirectory.startsWith("/vmhub/") ||
+            workingDirectory.startsWith("content://")
+        ) {
             return ToolOutcome(
                 "APK artifact search requires an active SSH Linux build server.",
                 isError = true,
