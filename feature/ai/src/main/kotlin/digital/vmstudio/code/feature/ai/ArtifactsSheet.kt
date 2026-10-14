@@ -109,7 +109,11 @@ internal fun ArtifactsSheet(
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = if (artifacts.isEmpty()) "No file modifications yet" else "${artifacts.size} files generated / edited",
+                            text = if (artifacts.isEmpty()) {
+                                "No file modifications yet"
+                            } else {
+                                "${artifacts.size} files generated / edited"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
