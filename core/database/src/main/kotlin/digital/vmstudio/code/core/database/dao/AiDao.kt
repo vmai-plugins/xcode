@@ -56,7 +56,7 @@ interface ConversationDao {
 @Dao
 interface MessageDao {
 
-    @Query("SELECT * FROM message WHERE conversationId = :conversationId ORDER BY sequence ASC")
+    @Query("SELECT * FROM message WHERE conversationId = :conversationId ORDER BY sequence ASC, createdAtMillis ASC, id ASC")
     fun observeForConversation(conversationId: String): Flow<List<MessageEntity>>
 
     /**
@@ -64,7 +64,7 @@ interface MessageDao {
      * which must not load an entire long conversation into memory.
      */
     @Query(
-        "SELECT * FROM message WHERE conversationId = :conversationId ORDER BY sequence DESC LIMIT :limit",
+        "SELECT * FROM message WHERE conversationId = :conversationId ORDER BY sequence DESC, createdAtMillis DESC, id DESC LIMIT :limit",
     )
     suspend fun recent(conversationId: String, limit: Int): List<MessageEntity>
 

@@ -1008,6 +1008,12 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
 - **Root Cause**: OpenAi reasoning extraction checked only `reasoning_content` and `reasoning`. Gemini proxies and gateways stream model thinking using `"thought": "..."` or `"thinking": "..."`, which were ignored, leaving the reasoning disclosure block blank during Gemini model execution.
 - **Fix**: Added fallbacks for `thought` and `thinking` to both `openAiReasoning()` and `OmniRouteStreamAssembler.acceptOpenAi()`.
 
+### Bug 137: Non-Deterministic SQLite Conversation Ordering on Sequence Number Collisions
+- **File**: [`AiDao.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/dao/AiDao.kt)
+- **Severity**: MEDIUM (Chat Message Ordering Inconsistency)
+- **Root Cause**: `observeForConversation()` ordered messages solely by `sequence ASC`, and `recent()` ordered by `sequence DESC`. If two messages shared a sequence due to concurrent insertion, SQLite defaulted to non-deterministic internal ROWID order, causing UI jumping and context inversion.
+- **Fix**: Added secondary and tertiary sort keys: `ORDER BY sequence ASC, createdAtMillis ASC, id ASC` and `ORDER BY sequence DESC, createdAtMillis DESC, id DESC LIMIT :limit`.
+
 ---
 
 ## 5. Modern Connectors & Integrations Architecture (Teamily AI Benchmark)
