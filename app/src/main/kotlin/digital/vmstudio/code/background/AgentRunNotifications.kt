@@ -67,6 +67,16 @@ class AgentRunNotifications @Inject constructor(
         .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         .build()
 
+    fun executionNotification() = NotificationCompat.Builder(context, CHANNEL_PROGRESS)
+        .setSmallIcon(R.drawable.ic_notification_agent)
+        .setContentTitle("AI is generating response")
+        .setContentText("Active connection preserved in background.")
+        .setContentIntent(openApp())
+        .setOngoing(true)
+        .setSilent(true)
+        .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        .build()
+
     fun notifyFinished(run: BackgroundRun) {
         val id = run.id ?: return
         val notification = NotificationCompat.Builder(context, CHANNEL_FINISHED)

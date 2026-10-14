@@ -354,8 +354,12 @@ private fun EditorContent(
     val lineCount = remember(text) { text.count { it == '\n' } + 1 }
     val lineNumbers = remember(lineCount) { (1..lineCount).joinToString("\n") }
     // The size chosen in Settings; mono at a fixed 12sp ignored it.
-    val editorStyle = VmTheme.code.editor
-    val gutterWidth = (lineCount.toString().length * 8 + 16).dp
+    val baseStyle = VmTheme.code.editor
+    val fontSp = baseStyle.fontSize.value.coerceAtLeast(10f)
+    val editorStyle = baseStyle.copy(
+        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+    )
+    val gutterWidth = (lineCount.toString().length * (fontSp * 0.65f) + 20).dp
 
     Column(modifier = Modifier.fillMaxSize()) {
         saveError?.let { err ->

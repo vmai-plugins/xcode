@@ -123,9 +123,15 @@ class AgentRunWatcher @Inject constructor(
         }
     }
 
-    /** Newest kept: a set has no order, so the oldest ids are the ones trimmed off. */
-    private fun merge(existing: Set<String>?, incoming: Collection<String>): Set<String> =
-        (existing.orEmpty() + incoming).toList().takeLast(MAX_REMEMBERED).toSet()
+    /** Newest kept: append incoming at the end of LinkedHashSet and trim excess from the front. */
+    private fun merge(existing: Set<String>?, incoming: Collection<String>): Set<String> {
+        val merged = LinkedHashSet<String>(existing.orEmpty())
+        merged.removeAll(incoming.toSet())
+        merged.addAll(incoming)
+        if (merged.size <= MAX_REMEMBERED) return merged
+        val toDrop = merged.size - MAX_REMEMBERED
+        return merged.drop(toDrop).toSet()
+    }
 
     private suspend fun announcedIds(key: Preferences.Key<Set<String>>): Set<String> =
         store.data.first()[key] ?: emptySet()

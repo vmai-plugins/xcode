@@ -201,18 +201,43 @@ class SshSession internal constructor(
      *
      * A manual reader rather than `bufferedReader().lineSequence()` because the
      * sequence blocks on `hasNext()` and cannot be interrupted; this loop yields
-     * between lines so a cancelled collector actually stops.
+     * between lines so a cancelled collector actually stops. Large unchunked lines
+     * are split at [MAX_STREAM_LINE_LENGTH] so minified or binary data cannot exhaust memory.
      */
-    private suspend fun readLines(stream: InputStream, onLine: suspend (String) -> Unit) {
+    private suspend fun readLines(
+        stream: InputStream,
+        maxLineLength: Int = MAX_STREAM_LINE_LENGTH,
+        onLine: suspend (String) -> Unit,
+    ) {
         val reader = stream.bufferedReader()
+        val chunk = CharArray(4096)
+        val lineBuilder = StringBuilder()
         while (true) {
-            val line = try {
-                runInterruptible(ioDispatcher) { reader.readLine() }
+            val count = try {
+                runInterruptible(ioDispatcher) { reader.read(chunk) }
             } catch (_: java.io.IOException) {
-                // The channel closing under a blocking read is a normal end of output.
-                null
-            } ?: break
-            onLine(line)
+                -1
+            }
+            if (count == -1) {
+                if (lineBuilder.isNotEmpty()) onLine(lineBuilder.toString())
+                break
+            }
+            for (i in 0 until count) {
+                val c = chunk[i]
+                if (c == '\n') {
+                    if (lineBuilder.isNotEmpty() && lineBuilder.last() == '\r') {
+                        lineBuilder.setLength(lineBuilder.length - 1)
+                    }
+                    onLine(lineBuilder.toString())
+                    lineBuilder.setLength(0)
+                } else {
+                    lineBuilder.append(c)
+                    if (lineBuilder.length >= maxLineLength) {
+                        onLine(lineBuilder.toString())
+                        lineBuilder.setLength(0)
+                    }
+                }
+            }
         }
     }
 
@@ -351,6 +376,7 @@ class SshSession internal constructor(
         const val TAG = "SshSession"
         const val DEFAULT_TERM = "xterm-256color"
         const val READ_CHUNK = 8 * 1024
+        const val MAX_STREAM_LINE_LENGTH = 64 * 1024
     }
 }
 

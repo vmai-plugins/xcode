@@ -324,6 +324,12 @@ private fun TerminalInputBar(
             BasicTextField(
                 value = value,
                 onValueChange = { newValue ->
+                    // Defer resetting until IME active composition completes to prevent duplicated keystrokes
+                    val hasActiveComposition = newValue.composition != null && !newValue.composition!!.collapsed
+                    if (hasActiveComposition) {
+                        value = newValue
+                        return@BasicTextField
+                    }
                     val added = newValue.text.removePrefix(value.text).replace("\u200B", "")
                     // The field always holds one invisible character, so the keyboard's
                     // Backspace has something to delete; in an empty field it changed
@@ -361,6 +367,7 @@ private fun TerminalInputBar(
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(
                     autoCorrectEnabled = false,
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii,
                     capitalization = KeyboardCapitalization.None,
                     imeAction = ImeAction.Send,
                 ),

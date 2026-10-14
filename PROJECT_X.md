@@ -778,6 +778,94 @@ ull (existingSha = null). Only HTTP 404 indicates a truly new file; treating aut
   2. **Smart Full Screen Focus Mode**: Dedicated button in the top bar (`Icons.Default.AutoAwesome`) toggles an immersive, distraction-free Antigravity canvas. When active, top bar collapses, padding becomes 0.dp, and a sleek floating pill allows quick exit.
   3. **Scroll-To-Bottom FAB**: An intuitive floating circle button appears when scrolled away from the live tail to immediately jump back to model output.
 
+### Bug 101: Concurrency Race Condition on MessageDao Sequence Assignment
+- **Severity**: MEDIUM (Duplicate Message Sequences in WAL Database)
+- **Files**: [`AiDao.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/dao/AiDao.kt)
+- **Root Cause**: `insertWithNextSequence()` overrode any explicit sequence previously set on a message and calculated `maxSequence() + 1` unconditionally, risking duplicate sequences when messages with predetermined ordering were inserted.
+- **Fix**: Updated `insertWithNextSequence()` to check `if (message.sequence > 0) message.sequence else maxSequence(...) + 1`, preserving caller-assigned monotonic sequence ordering while keeping atomic transaction safety.
+
+### Bug 102: Orphaned Physical Disk Files When Clearing Project File Cache
+- **Severity**: LOW/MEDIUM (Storage Leak in Android App Cache Directory)
+- **Files**: [`ProjectDao.kt`](file:///d:/Dev/x-codes/core/database/src/main/kotlin/digital/vmstudio/code/core/database/dao/ProjectDao.kt)
+- **Root Cause**: `FileCacheDao` contained `clearForProject(projectId)` which executed `DELETE FROM file_cache`, but lacked a query to retrieve the cached entries (`getForProject`) prior to deletion. Any cache cleanup routine had no way to know which local files were on disk, leaving orphaned files behind.
+- **Fix**: Added `@Query("SELECT * FROM file_cache WHERE projectId = :projectId") suspend fun getForProject(projectId: String): List<FileCacheEntity>` to `FileCacheDao`.
+
+### Bug 103: Arbitrary StringSet Truncation Causing Spurious Agent Run Re-Announcements
+- **Severity**: MEDIUM (Spurious Duplicate Sound/Vibration Notifications)
+- **Files**: [`AgentRunWatcher.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/background/AgentRunWatcher.kt)
+- **Root Cause**: `merge(existing, incoming)` loaded `existing` (an unordered `HashSet` from DataStore) and did `(existing + incoming).toList().takeLast(MAX_REMEMBERED).toSet()`. Because `HashSet` iteration is hash-bucket ordered rather than insertion ordered, `takeLast` randomly dropped recently added run IDs. On the next polling cycle, `watcher.poll()` treated the dropped IDs as newly finished and re-announced them.
+- **Fix**: Replaced set concatenation with `LinkedHashSet`. Duplicates of `incoming` are removed from `merged` so that incoming IDs are appended at the very end (newest), and only excess items from the front (oldest) are trimmed when exceeding `MAX_REMEMBERED`.
+
+### Bug 104: Temporary Test Server Deletion Leaked on Screen Exit via Cancelled ViewModelScope
+- **Severity**: MEDIUM (Leaked Temporary Servers and SSH Credentials in Database)
+- **Files**: [`ServerEditViewModel.kt`](file:///d:/Dev/x-codes/feature/servers/src/main/kotlin/digital/vmstudio/code/feature/servers/ServerEditViewModel.kt)
+- **Root Cause**: In `onCleared()`, `temporaryCreatedServerId` was cleaned up by launching on `viewModelScope.launch(NonCancellable)`. In Android Jetpack ViewModels, `viewModelScope` is already cancelled when `onCleared()` runs; launching a child coroutine on a cancelled scope throws `CancellationException` immediately, so `serverRepository.delete(tempId)` never executed.
+- **Fix**: Switched the cleanup coroutine to launch on `CoroutineScope(SupervisorJob() + Dispatchers.IO)` so database deletion runs independently to completion.
+
+### Bug 105: Unbounded Line Allocation in Streaming SSH Output Risking OutOfMemoryError
+- **Severity**: HIGH (Application Crash on Binary Streams or Minified Code)
+- **Files**: [`SshSession.kt`](file:///d:/Dev/x-codes/core/ssh/src/main/kotlin/digital/vmstudio/code/core/ssh/connection/SshSession.kt)
+- **Root Cause**: `readLines()` called `reader.readLine()`. If a remote command emitted a binary stream, large minified bundle, or single-line JSON without newline characters (`\n`), `readLine()` continually expanded its internal char buffer until the Android JVM threw an `OutOfMemoryError`.
+- **Fix**: Implemented chunked line reading bounded by `MAX_STREAM_LINE_LENGTH` (64 KB). Lines exceeding the limit are split and emitted in chunks, stripping `\r\n` cleanly and preventing unbounded heap growth.
+
+### Bug 106: Undo Checkpoint Eradication 500ms After User Undo Action
+- **Severity**: HIGH (Broken Undo/Redo Workflow in Code Editor)
+- **Files**: [`EditorViewModel.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: In `EditorScreen.kt`, a `LaunchedEffect(text)` debounced typing with a 500ms timer to call `viewModel.commitChange()`. When the user clicked "Undo", the editor text reverted to previous state, triggering `LaunchedEffect`. 500ms later, `commitChange()` ran and wiped `redoStack.clear()`, preventing the user from ever redoing.
+- **Fix**: Added `isUndoRedoActive` flag in `EditorViewModel`. `undo()` and `redo()` arm the flag; when `commitChange()` runs, it checks and clears the flag without wiping `redoStack`. Typing in `onTextFieldValueChange` resets the flag to re-enable typing checkpoints.
+
+### Bug 107: Editor Line Number Gutter Vertical Drift and Width Clipping on Larger Font Sizes
+- **Severity**: MEDIUM (Visual Misalignment and Number Clipping in Code Editor)
+- **Files**: [`EditorScreen.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorScreen.kt)
+- **Root Cause**: Gutter width was hardcoded to `(length * 8 + 16).dp`, which clipped line numbers when users increased font size in Settings. Furthermore, `BasicTextField` and the line number `Text` composable used different font padding metrics, causing line numbers to drift vertically away from corresponding code lines on long files.
+- **Fix**: Synchronized typography with `PlatformTextStyle(includeFontPadding = false)` across both composables, and calculated dynamic gutter width based on `baseStyle.fontSize.value`.
+
+### Bug 108: Search & Replace Collapsing Selection and Replacing Matches Sight-Unseen
+- **Severity**: MEDIUM (Unintended Text Replacement in Code Editor)
+- **Files**: [`EditorViewModel.kt`](file:///d:/Dev/x-codes/feature/editor/src/main/kotlin/digital/vmstudio/code/feature/editor/EditorViewModel.kt)
+- **Root Cause**: In `EditorViewModel.replace()`, single replacement collapsed the cursor after replacing a match. If the user clicked "Replace" again (or clicked "Replace" without first selecting a match), the method immediately replaced the next match sight-unseen without selecting or highlighting it first.
+- **Fix**: If the current selection does not match `target`, "Replace" calls `findNext()` to select the next match so the user can review it. If the selection does match, it replaces it and automatically advances the selection to highlight the next match.
+
+### Bug 109: Batch File Deletion Clearing Selection on Partial Failures
+- **Severity**: MEDIUM (Lost File Multi-Selection Context on Deletion Errors)
+- **Files**: [`FilesViewModel.kt`](file:///d:/Dev/x-codes/feature/files/src/main/kotlin/digital/vmstudio/code/feature/files/FilesViewModel.kt)
+- **Root Cause**: When deleting multiple files, if any file failed (e.g. Permission Denied), the method updated `selectedPaths = emptySet()`. The user saw an error banner but lost their entire selection, making it impossible to see which files failed or retry.
+- **Fix**: Tracked `deletedPaths` and updated `selectedPaths = current.selectedPaths - deletedPaths`. Only successfully deleted files are removed from selection; failed files remain selected so the user can inspect or re-attempt.
+
+### Bug 110: Android IME Composing Region Reset Causing Duplicated Terminal Keystrokes
+- **Severity**: HIGH (Garbled Terminal Commands on Gboard and Samsung Keyboards)
+- **Files**: [`TerminalScreen.kt`](file:///d:/Dev/x-codes/feature/terminal/src/main/kotlin/digital/vmstudio/code/feature/terminal/TerminalScreen.kt)
+- **Root Cause**: In `TerminalInputBar`, every input callback immediately reset `value = EMPTY_INPUT` with `composition = null`. Software IMEs (Gboard, Samsung Keyboard) in composing mode still believed their composing span was active, causing subsequent keystrokes to resend previous letters (e.g. typing `h-e-l` produced `hhehel`).
+- **Fix**: Configured `keyboardType = KeyboardType.Ascii` on `BasicTextField` to disable predictive composition, and deferred resetting `value` while `newValue.composition` is actively composing until the composition is committed.
+
+### Bug 111: Empty SearchRoots Bash Syntax Error in Remote Git Discovery
+- **Severity**: MEDIUM (Crash/Failure in Remote Git Repository Discovery)
+- **Files**: [`CommandGitService.kt`](file:///d:/Dev/x-codes/core/git/src/main/kotlin/digital/vmstudio/code/core/git/CommandGitService.kt)
+- **Root Cause**: In `discoverRepositories()`, `for r in $roots; do ...` evaluated with `$roots == ""` when `searchRoots` was empty, producing the invalid bash script `for r in ; do ...` and failing with a syntax error.
+- **Fix**: Filtered `validRoots = searchRoots.filter { it.isNotBlank() }` and added an early return `if (validRoots.isEmpty()) return GitResult.Success(emptyList())`.
+
+### Bug 112: Sensitive Package Manager Credentials and Keystores Accessible via File Tools
+- **Severity**: HIGH (Credential Exposure in AI File Tools)
+- **Files**: [`PathGuard.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/omniroute/agent/PathGuard.kt)
+- **Root Cause**: `isSecret()` checked `.ssh`, `.aws`, `.env`, and private keys, but omitted package manager auth tokens (`.npmrc`, `.pypirc`, `.netrc`, `_netrc`) and Android signing keystores (`*.jks`, `*.keystore`). Untrusted prompts or injected web instructions could read plaintext auth tokens or keystores.
+- **Fix**: Added `.npmrc`, `.pypirc`, `.netrc`, `_netrc`, `*.jks`, and `*.keystore` to `isSecret()`, preventing agent file tools from reading or modifying build credentials.
+
+### Architectural Fix: Android Screen-Lock Chat & Model Connection Disconnect (Doze Mode Network Suspension)
+- **Severity**: HIGH (Chat and Model SSE Stream Severed When Phone Screen Turns Off)
+- **Files**:
+  - [`AgentExecutionKeepAlive.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/background/AgentExecutionKeepAlive.kt)
+  - [`AgentWakeLockManager.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/background/AgentWakeLockManager.kt)
+  - [`AiModule.kt`](file:///d:/Dev/x-codes/core/ai/src/main/kotlin/digital/vmstudio/code/core/ai/di/AiModule.kt)
+  - [`AgentExecutionModule.kt`](file:///d:/Dev/x-codes/app/src/main/kotlin/digital/vmstudio/code/di/AgentExecutionModule.kt)
+  - [`AgentRunService.kt`](file:///d:/Dev/x-codes/app/src/main/kotlin/digital/vmstudio/code/background/AgentRunService.kt)
+  - [`AgentRunNotifications.kt`](file:///d:/Dev/x-codes/app/src/main/kotlin/digital/vmstudio/code/background/AgentRunNotifications.kt)
+  - [`NetworkModule.kt`](file:///d:/Dev/x-codes/core/network/src/main/kotlin/digital/vmstudio/code/core/network/di/NetworkModule.kt)
+- **Root Cause**: In modern Android (API 26+ through Android 15), locking the screen puts the device in Doze mode. In Doze mode, Android suspends all outgoing network sockets and ignores CPU `PARTIAL_WAKE_LOCK`s held by standard background apps. Because `AgentRunService` (`foregroundServiceType="dataSync"`) was previously only started for detached CLI runs on SSH servers, local and general OmniRoute chat streaming had no active foreground service. When the screen locked, the OS severed the OkHttp SSE stream with `SocketException: Connection reset` or `SocketTimeoutException`. Additionally, long model reasoning pauses (o1, DeepSeek R1, Claude thinking) caused carrier NAT state timeouts on idle TCP connections.
+- **Fix**:
+  1. Created `AgentExecutionKeepAlive` in `core:ai` and bound an implementation in `:app` calling `AgentRunService.startExecution()` / `stopExecution()`.
+  2. Promoted `AgentRunService` to an active Foreground Service with an ongoing notification (`"AI is generating response - Active connection preserved in background"`) whenever `AgentWakeLockManager.acquire()` is called during chat generation.
+  3. Added `.pingInterval(20, TimeUnit.SECONDS)` to `OkHttpClient` to keep HTTP/2 connections and carrier NAT mappings alive during extended thinking pauses.
+
 ---
 ## 6. Developer Runbook & Operations
 

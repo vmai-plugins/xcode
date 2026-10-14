@@ -173,22 +173,31 @@ class EditorViewModel @Inject constructor(
         }
     }
 
+    private var isUndoRedoActive = false
+
     fun onTextFieldValueChange(newValue: TextFieldValue) {
+        isUndoRedoActive = false
         editor?.updateTextFieldValue(newValue)
         publishSnapshot()
     }
 
     fun commitChange() {
+        if (isUndoRedoActive) {
+            isUndoRedoActive = false
+            return
+        }
         editor?.commitChange()
         publishSnapshot()
     }
 
     fun undo() {
+        isUndoRedoActive = true
         editor?.undo()
         publishSnapshot()
     }
 
     fun redo() {
+        isUndoRedoActive = true
         editor?.redo()
         publishSnapshot()
     }
@@ -229,16 +238,18 @@ class EditorViewModel @Inject constructor(
             val range = current.selection
             if (range.length > 0 && text.substring(range.min, range.max).equals(target, ignoreCase = true)) {
                 val replaced = text.replaceRange(range.min, range.max, replacement)
-                newSelection = androidx.compose.ui.text.TextRange(range.min + replacement.length)
+                val searchStart = range.min + replacement.length
+                val nextMatch = replaced.indexOf(target, searchStart, ignoreCase = true).takeIf { it >= 0 }
+                    ?: replaced.indexOf(target, 0, ignoreCase = true).takeIf { it >= 0 }
+                newSelection = if (nextMatch != null) {
+                    androidx.compose.ui.text.TextRange(nextMatch, nextMatch + target.length)
+                } else {
+                    androidx.compose.ui.text.TextRange(searchStart.coerceIn(0, replaced.length))
+                }
                 replaced
             } else {
-                val index = text.indexOf(target, range.max, ignoreCase = true).takeIf { it >= 0 }
-                    ?: text.indexOf(target, 0, ignoreCase = true)
-                if (index >= 0) {
-                    val replaced = text.replaceRange(index, index + target.length, replacement)
-                    newSelection = androidx.compose.ui.text.TextRange(index + replacement.length)
-                    replaced
-                } else text
+                findNext(target, forward = true)
+                return
             }
         }
         if (newText != text) {

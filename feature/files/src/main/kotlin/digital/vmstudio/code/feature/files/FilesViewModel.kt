@@ -242,6 +242,7 @@ class FilesViewModel @Inject constructor(
         _uiState.update { it.copy(isLoading = true, pendingAction = null) }
         viewModelScope.launch {
             var failure: VmError? = null
+            val deletedPaths = mutableSetOf<String>()
             entries.forEach { entry ->
                 val result = remoteFileSystem.delete(
                     serverId = server,
@@ -250,9 +251,18 @@ class FilesViewModel @Inject constructor(
                 )
                 // Keep going after a failure so one permission-denied file does not
                 // abandon the rest of a multi-select delete, then report the first.
-                if (result is VmResult.Failure && failure == null) failure = result.error
+                if (result is VmResult.Success) {
+                    deletedPaths += entry.path
+                } else if (result is VmResult.Failure && failure == null) {
+                    failure = result.error
+                }
             }
-            _uiState.update { it.copy(selectedPaths = emptySet(), error = failure) }
+            _uiState.update { current ->
+                current.copy(
+                    selectedPaths = current.selectedPaths - deletedPaths,
+                    error = failure,
+                )
+            }
             refresh()
         }
     }

@@ -233,7 +233,7 @@ class ServerEditViewModel @Inject constructor(
 
     override fun onCleared() {
         temporaryCreatedServerId?.let { tempId ->
-            viewModelScope.launch(kotlinx.coroutines.NonCancellable) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO).launch {
                 serverRepository.delete(tempId)
             }
         }

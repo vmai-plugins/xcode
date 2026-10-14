@@ -22,6 +22,9 @@ object NetworkModule {
         // would cancel legitimate generations mid-answer.
         .readTimeout(READ_TIMEOUT_MINUTES, TimeUnit.MINUTES)
         .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        // Periodic ping keeps HTTP/2 connections and carrier NAT mappings alive during
+        // extended model reasoning and while the device screen is locked.
+        .pingInterval(20, TimeUnit.SECONDS)
         // OkHttp's own retry only covers connection-level failures; request retry is
         // handled by VmHttpClient, which knows which status codes deserve it.
         .retryOnConnectionFailure(true)

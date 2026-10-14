@@ -52,6 +52,7 @@ class AgentRunService : Service() {
      */
     private val watchedServersLock = Any()
     private val watchedServers = linkedSetOf<String>()
+    private var activeChatExecutions = 0
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
@@ -71,6 +72,27 @@ class AgentRunService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        if (action == ACTION_START_EXECUTION) {
+            val watchedCount = synchronized(watchedServersLock) {
+                activeChatExecutions++
+                watchedServers.size
+            }
+            notifications.ensureChannels()
+            startForegroundSafely(runningCount = watchedCount)
+            return START_STICKY
+        } else if (action == ACTION_STOP_EXECUTION) {
+            val shouldStop = synchronized(watchedServersLock) {
+                if (activeChatExecutions > 0) activeChatExecutions--
+                activeChatExecutions == 0 && watchedServers.isEmpty()
+            }
+            if (shouldStop) {
+                stopForegroundSafely()
+                stopSelf()
+            }
+            return START_NOT_STICKY
+        }
+
         val serverId = intent?.getStringExtra(EXTRA_SERVER_ID)
         val watchedCount = synchronized(watchedServersLock) {
             if (serverId != null) watchedServers += serverId
@@ -150,11 +172,16 @@ class AgentRunService : Service() {
             // A couple of empty rounds before quitting, so a run that is briefly
             // between states does not cause the service to stop and immediately
             // need restarting.
-            val stillWatching = synchronized(watchedServersLock) { watchedServers.isNotEmpty() }
-            if (!stillWatching || idleRounds >= MAX_IDLE_ROUNDS) {
-                VmLog.i(LogCategory.AI, TAG, "No agent runs left to watch; stopping")
-                stopSelf()
-                return
+            val (stillWatching, activeChat) = synchronized(watchedServersLock) {
+                watchedServers.isNotEmpty() to (activeChatExecutions > 0)
+            }
+            if ((!stillWatching && !activeChat) || (idleRounds >= MAX_IDLE_ROUNDS && !activeChat)) {
+                if (synchronized(watchedServersLock) { watchedServers.isEmpty() && activeChatExecutions == 0 }) {
+                    VmLog.i(LogCategory.AI, TAG, "No agent runs or chat executions left; stopping")
+                    stopForegroundSafely()
+                    stopSelf()
+                    return
+                }
             }
 
             delay(POLL_INTERVAL_MILLIS)
@@ -171,7 +198,12 @@ class AgentRunService : Service() {
     private var inForeground = false
 
     private fun startForegroundSafely(runningCount: Int) {
-        val notification = notifications.progressNotification(runningCount.coerceAtLeast(1))
+        val isChatOnly = synchronized(watchedServersLock) { activeChatExecutions > 0 && watchedServers.isEmpty() }
+        val notification = if (isChatOnly) {
+            notifications.executionNotification()
+        } else {
+            notifications.progressNotification(runningCount.coerceAtLeast(1))
+        }
         runCatching {
             ServiceCompat.startForeground(
                 this,
@@ -192,6 +224,13 @@ class AgentRunService : Service() {
             // daily data-sync limit is used up), stop instead; the user can still
             // check runs in the chat.
             if (!inForeground) stopSelf()
+        }
+    }
+
+    private fun stopForegroundSafely() {
+        runCatching {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            inForeground = false
         }
     }
 
@@ -216,14 +255,11 @@ class AgentRunService : Service() {
         private const val PREFS_NAME = "agent_run_service"
         private const val KEY_WATCHED_SERVERS = "watched_servers"
 
-        /**
-         * Frequent enough that a short task is announced promptly, sparse enough not
-         * to hold an SSH channel open continuously.
-         */
+        const val ACTION_START_EXECUTION = "digital.vmstudio.code.action.START_EXECUTION"
+        const val ACTION_STOP_EXECUTION = "digital.vmstudio.code.action.STOP_EXECUTION"
+
         private const val POLL_INTERVAL_MILLIS = 20_000L
         private const val MAX_IDLE_ROUNDS = 2
-
-        /** About ten minutes of failed polls before a server is given up on. */
         private const val MAX_FAILED_POLLS = 30
 
         /** Starts watching [serverId]; safe to call for a server already watched. */
@@ -234,6 +270,26 @@ class AgentRunService : Service() {
             val intent = Intent(context, AgentRunService::class.java)
                 .putExtra(EXTRA_SERVER_ID, serverId)
             runCatching { context.startForegroundService(intent) }
+        }
+
+        fun startExecution(context: Context) {
+            val intent = Intent(context, AgentRunService::class.java).apply {
+                action = ACTION_START_EXECUTION
+            }
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            }
+        }
+
+        fun stopExecution(context: Context) {
+            val intent = Intent(context, AgentRunService::class.java).apply {
+                action = ACTION_STOP_EXECUTION
+            }
+            runCatching { context.startService(intent) }
         }
     }
 }

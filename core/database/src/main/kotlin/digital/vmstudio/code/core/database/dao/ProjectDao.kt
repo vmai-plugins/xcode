@@ -132,6 +132,9 @@ interface RecentFileDao {
 @Dao
 interface FileCacheDao {
 
+    @Query("SELECT * FROM file_cache WHERE projectId = :projectId")
+    suspend fun getForProject(projectId: String): List<FileCacheEntity>
+
     @Query("SELECT * FROM file_cache WHERE projectId = :projectId AND remotePath = :remotePath")
     suspend fun find(projectId: String, remotePath: String): FileCacheEntity?
 

@@ -39,4 +39,6 @@ abstract class AiModule {
         impl: DefaultFileEditApprovalGate,
     ): FileEditApprovalGate
 
+    @dagger.BindsOptionalOf
+    abstract fun bindAgentExecutionKeepAlive(): digital.vmstudio.code.core.ai.background.AgentExecutionKeepAlive
 }

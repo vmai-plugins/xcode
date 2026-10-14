@@ -85,7 +85,8 @@ interface MessageDao {
      */
     @Transaction
     suspend fun insertWithNextSequence(message: MessageEntity) {
-        upsert(message.copy(sequence = maxSequence(message.conversationId) + 1))
+        val nextSeq = if (message.sequence > 0) message.sequence else maxSequence(message.conversationId) + 1
+        upsert(message.copy(sequence = nextSeq))
     }
 
     @Query("DELETE FROM message WHERE id = :id")

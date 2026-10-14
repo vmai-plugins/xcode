@@ -133,7 +133,9 @@ internal object PathGuard {
             (name.startsWith(".env") && templateSuffixes.none(name::endsWith)) ||
             name.startsWith("id_rsa") || name.startsWith("id_ed25519") || name.startsWith("id_ecdsa") ||
             name == "local.properties" || name == "google-services.json" ||
+            name == ".npmrc" || name == ".pypirc" || name == ".netrc" || name == "_netrc" ||
             (segments.contains(".git") && name == "config") ||
+            name.endsWith(".jks") || name.endsWith(".keystore") ||
             secretSuffixes.any(name::endsWith)
     }
 }

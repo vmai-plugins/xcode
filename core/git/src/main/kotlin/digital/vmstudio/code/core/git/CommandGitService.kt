@@ -112,7 +112,9 @@ class CommandGitService @Inject constructor(
         searchRoots: List<String>,
         maxDepth: Int,
     ): GitResult<List<DiscoveredGitRepo>> {
-        val roots = searchRoots.joinToString(" ") { shellQuotePath(it) }
+        val validRoots = searchRoots.filter { it.isNotBlank() }
+        if (validRoots.isEmpty()) return GitResult.Success(emptyList())
+        val roots = validRoots.joinToString(" ") { shellQuotePath(it) }
         val script = "for r in $roots; do if [ -d \"\$r\" ]; then find \"\$r\" -maxdepth $maxDepth -name .git -type d 2>/dev/null; fi; done"
         return when (val outcome = connectionManager.withSession(serverId) { session ->
             session.execute(script)
