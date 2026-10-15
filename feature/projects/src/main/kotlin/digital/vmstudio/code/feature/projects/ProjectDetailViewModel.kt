@@ -340,32 +340,19 @@ class ProjectDetailViewModel @Inject constructor(
                 val destFile = File(destDir, safeName)
                 val locationName = if (destDir == publicDownloads) "Downloads" else "App Downloads"
 
-                if (proj.isRemote) {
-                    var lastEvent: TransferEvent? = null
-                    remoteFileSystem.download(srvId, artifact.path, destFile, resume = false)
-                        .collect { event ->
-                            lastEvent = event
-                            if (event is TransferEvent.Failed) {
-                                error.value = event.error
-                            }
+                var lastEvent: TransferEvent? = null
+                remoteFileSystem.download(srvId, artifact.path, destFile, resume = false)
+                    .collect { event ->
+                        lastEvent = event
+                        if (event is TransferEvent.Failed) {
+                            error.value = event.error
                         }
-                    val failure = apkTransferFailure(lastEvent)
-                    if (failure != null) {
-                        error.value = failure
-                    } else {
-                        notificationMessage.value = "Saved $safeName to $locationName"
                     }
+                val failure = apkTransferFailure(lastEvent)
+                if (failure != null) {
+                    error.value = failure
                 } else {
-                    val file = File(artifact.path)
-                    if (file.exists()) {
-                        file.copyTo(destFile, overwrite = true)
-                        notificationMessage.value = "Saved $safeName to $locationName"
-                    } else {
-                        error.value = VmError.Storage(
-                            summary = "APK file not found on phone",
-                            reason = artifact.path,
-                        )
-                    }
+                    notificationMessage.value = "Saved $safeName to $locationName"
                 }
             } catch (e: Exception) {
                 error.value = VmError.Storage(
