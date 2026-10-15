@@ -81,9 +81,15 @@ object DatabaseModule {
                 object : androidx.room.RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
                         db.execSQL("PRAGMA foreign_keys = ON")
+                        try {
+                            db.execSQL("ALTER TABLE message ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0")
+                        } catch (_: Exception) {
+                            // Column already exists
+                        }
                     }
                 },
             )
+            .fallbackToDestructiveMigrationOnDowngrade()
             // No fallbackToDestructiveMigration: losing a user's servers and
             // projects on upgrade is never an acceptable outcome. Every schema
             // change ships a real migration.
