@@ -127,8 +127,8 @@ class ProjectCreateViewModel @Inject constructor(
                     ?: state.selectedServerId ?: RemoteFileSystem.LOCAL_SERVER_ID
             }
             val newPath = when (source) {
-                ProjectSource.LOCAL -> "/sdcard/VMStudio/Projects/${state.name.ifBlank { "my-app" }}"
-                ProjectSource.GDRIVE -> "/sdcard/VMStudio/GoogleDrive/${state.name.ifBlank { "cloud-app" }}"
+                ProjectSource.LOCAL -> defaultProjectPath(isLocal = true, state.name)
+                ProjectSource.GDRIVE -> defaultProjectPath(isLocal = true, state.name)
                 ProjectSource.VPS -> "~/projects/${state.name.ifBlank { "vps-app" }}"
                 ProjectSource.GITHUB -> defaultProjectPath(RemoteFileSystem.isLocalServer(targetServerId), state.name)
                 else -> state.remotePath
