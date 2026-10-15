@@ -18,7 +18,11 @@
 - [x] Bug 143: Expanded home tilde (`~` and `~/`) paths to the local projects directory in `LocalFileSystemDelegate` on-device phone workspaces.
 - [x] Bug 144: Hardened `DefaultCommandGuard` to safely intercept commands targeting phone, local, and virtual workspaces without throwing unhandled exceptions.
 - [x] Bug 146: Refactored `EditorViewModel.goToLine` text selection to avoid character-limit overflow and maintain syntax cursor alignment.
+- [x] Bug 147: Aggregated multiple failure names in `FilesViewModel.delete` so partial multi-selection delete failures clearly report all skipped files.
 - [x] Bug 148: Session Deliverables Shelf now uses `associateBy` to accurately retain the latest rollback/reverted status across repeated file edits.
+- [x] Bug 149: Replaced hardcoded `/sdcard/VMStudio` paths with `context.getExternalFilesDir(null)` in `ProjectCreateViewModel` for full Android 11+ scoped storage compatibility.
+- [x] Bug 150: Streamlined APK installation in `ProjectDetailViewModel` using `RemoteFileSystem.download` to handle both remote SFTP and local SAF tree URIs.
+- [x] Fluid Chat: Optimized code block syntax highlighting to cap heavy regex scanning for large code blocks, avoiding frame drops during high-speed LLM streaming.
 - [x] Cleaned Detekt violations (`maxIssues`, line length wrapping, unsafe `!!` assertions) and configured `ignoreFailures = true` so static analysis uploads reports without blocking APK compilation.
 
 ## Known limitations / follow-up
