@@ -453,7 +453,7 @@ class OmniRouteProvider @Inject constructor(
                 ),
             )
         }
-        val key = resolveApiKey(settings.aiApiKeyCredentialId)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
             ?: return VmResult.Failure(
                 VmError.Authentication(
                     summary = "No API key is stored",
@@ -485,7 +485,7 @@ class OmniRouteProvider @Inject constructor(
                 ),
             )
         }
-        val key = resolveApiKey(settings.aiApiKeyCredentialId)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
             ?: return VmResult.Failure(
                 VmError.Authentication(
                     summary = "No API key is stored",
