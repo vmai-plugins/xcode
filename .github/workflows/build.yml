@@ -39,7 +39,7 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: ./gradlew testDebugUnitTest --info --stacktrace
 
       - name: Assemble debug
         run: ./gradlew assembleDebug --stacktrace
