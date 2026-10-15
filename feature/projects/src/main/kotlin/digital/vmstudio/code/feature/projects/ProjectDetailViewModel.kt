@@ -287,48 +287,25 @@ class ProjectDetailViewModel @Inject constructor(
                 val downloadsDir = File(context.cacheDir, "downloads").apply { mkdirs() }
                 val localApkFile = File(downloadsDir, safeName)
 
-                if (proj.isRemote) {
-                    notificationMessage.value = "Downloading APK from server..."
-                    var lastEvent: TransferEvent? = null
-                    remoteFileSystem.download(srvId, artifact.path, localApkFile, resume = false)
-                        .collect { event ->
-                            lastEvent = event
-                            when (event) {
-                                is TransferEvent.Completed -> Unit
-                                is TransferEvent.Failed -> error.value = event.error
-                                else -> Unit
-                            }
-                        }
-                    val failure = apkTransferFailure(lastEvent)
-                    if (failure != null) {
-                        error.value = failure
-                    } else if (localApkFile.exists()) {
-                        notificationMessage.value = "Installing $safeName..."
-                        val installResult = apkInstaller.install(localApkFile)
-                        if (installResult is VmResult.Failure) {
-                            error.value = installResult.error
+                notificationMessage.value = "Preparing $safeName..."
+                var lastEvent: TransferEvent? = null
+                remoteFileSystem.download(srvId, artifact.path, localApkFile, resume = false)
+                    .collect { event ->
+                        lastEvent = event
+                        when (event) {
+                            is TransferEvent.Completed -> Unit
+                            is TransferEvent.Failed -> error.value = event.error
+                            else -> Unit
                         }
                     }
-                } else {
-                    val file = File(artifact.path)
-                    if (file.exists()) {
-                        try {
-                            file.copyTo(localApkFile, overwrite = true)
-                            notificationMessage.value = "Installing $safeName..."
-                            val installResult = apkInstaller.install(localApkFile)
-                            if (installResult is VmResult.Failure) {
-                                error.value = installResult.error
-                            }
-                        } catch (e: Exception) {
-                            error.value = VmError.Storage(
-                                summary = "Could not stage APK for installation",
-                                reason = e.message,
-                                cause = e,
-                            )
-                        }
-                    } else {
-                        val msg = "APK file not found on phone"
-                        error.value = VmError.Storage(summary = msg, reason = artifact.path)
+                val failure = apkTransferFailure(lastEvent)
+                if (failure != null) {
+                    error.value = failure
+                } else if (localApkFile.exists()) {
+                    notificationMessage.value = "Installing $safeName..."
+                    val installResult = apkInstaller.install(localApkFile)
+                    if (installResult is VmResult.Failure) {
+                        error.value = installResult.error
                     }
                 }
             } finally {
