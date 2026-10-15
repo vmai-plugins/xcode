@@ -135,7 +135,7 @@ class DefaultCommandGuard @Inject constructor(
         limits: CommandLimits,
         requestedByAgent: Boolean,
     ): VmResult<CommandResult> {
-        if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub") {
+        if (isNonSshWorkspace(serverId)) {
             return VmResult.Failure(
                 VmError.Command(
                     summary = "Cannot execute remote shell commands on local or virtual workspace",
@@ -152,7 +152,7 @@ class DefaultCommandGuard @Inject constructor(
     }
 
     private suspend fun resolveServer(serverId: String): VmResult<Server> {
-        if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub") {
+        if (isNonSshWorkspace(serverId)) {
             return VmResult.Success(
                 Server(
                     id = serverId.ifBlank { "local" },
@@ -167,6 +167,15 @@ class DefaultCommandGuard @Inject constructor(
         }
         return serverRepository.get(serverId)
     }
+
+    private fun isNonSshWorkspace(serverId: String): Boolean =
+        serverId.isBlank() ||
+            serverId == "local" ||
+            serverId == "device" ||
+            serverId == "github" ||
+            serverId == "vmhub" ||
+            serverId == "phone" ||
+            serverId.startsWith("content://")
 
     /**
      * Builds the policy context for a command.
