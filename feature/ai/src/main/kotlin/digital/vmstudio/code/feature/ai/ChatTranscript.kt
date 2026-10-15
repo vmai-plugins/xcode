@@ -681,32 +681,83 @@ private val FILE_CHANGING_TOOLS = setOf(
 internal fun isWebPage(path: String): Boolean =
     path.endsWith(".html", ignoreCase = true) || path.endsWith(".htm", ignoreCase = true)
 
-/** A reply as plain text on the page, with a copy button under it like Claude's apps. */
+/** A reply as plain text on the page, with copy and voice TTS read-out buttons. */
 @Composable
 private fun AssistantReply(text: String) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    var isSpeaking by remember { mutableStateOf(false) }
+    var ttsInstance by remember { mutableStateOf<TextToSpeech?>(null) }
+
+    DisposableEffect(context) {
+        var tts: TextToSpeech? = null
+        tts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.getDefault()
+            }
+        }
+        ttsInstance = tts
+        onDispose {
+            tts?.stop()
+            tts?.shutdown()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
     ) {
         MarkdownText(markdown = text)
-        IconButton(
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                clipboard.setText(AnnotatedString(text))
-                Toast.makeText(context, "Copied reply", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.size(32.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Icon(
-                imageVector = Icons.Default.ContentCopy,
-                contentDescription = "Copy reply",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
-            )
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    clipboard.setText(AnnotatedString(text))
+                    Toast.makeText(context, "Copied reply", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy reply",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val tts = ttsInstance
+                    if (tts != null) {
+                        if (isSpeaking) {
+                            tts.stop()
+                            isSpeaking = false
+                        } else {
+                            val cleanText = text
+                                .replace(Regex("[#*`_~>\\[\\]]"), "")
+                                .replace(Regex("\\(https?://[^)]+\\)"), "")
+                                .take(1500)
+                            tts.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "tts_reply")
+                            isSpeaking = true
+                        }
+                    }
+                },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
+                    contentDescription = if (isSpeaking) "Stop voice" else "Read out loud",
+                    tint = if (isSpeaking) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
     }
 }
