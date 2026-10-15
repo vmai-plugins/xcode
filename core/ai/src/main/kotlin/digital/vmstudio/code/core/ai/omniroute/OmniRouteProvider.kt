@@ -60,6 +60,7 @@ class OmniRouteProvider @Inject constructor(
     private val credentialStore: SecureCredentialStore,
     private val preferences: UserPreferencesSource,
     private val agentLoop: OmniRouteAgentLoop,
+    private val wakeLockManager: digital.vmstudio.code.core.ai.background.AgentWakeLockManager,
 ) : AiProvider {
 
     override val kind: AiProviderKind = AiProviderKind.OMNIROUTE
