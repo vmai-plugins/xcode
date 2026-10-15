@@ -509,14 +509,20 @@ class OmniRouteProvider @Inject constructor(
 
     // --- internals ---------------------------------------------------------------
 
-    private suspend fun resolveApiKey(credentialId: String?): Secret? {
+    private suspend fun resolveApiKey(credentialId: String?, baseUrl: String = ""): Secret? {
         if (credentialId != null) {
             when (val result = credentialStore.read(credentialId)) {
                 is VmResult.Success -> return result.value.registerForRedaction()
                 is VmResult.Failure -> Unit
             }
         }
-        return Secret.of(DEFAULT_GATEWAY_API_KEY).registerForRedaction()
+        val isDefaultGateway = baseUrl.isBlank() ||
+            baseUrl.contains("vmstudio.digital", ignoreCase = true)
+        return if (isDefaultGateway) {
+            Secret.of(DEFAULT_GATEWAY_API_KEY).registerForRedaction()
+        } else {
+            null
+        }
     }
 
     private suspend fun fetchModels(baseUrl: String, key: Secret): VmResult<GatewayModelList> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fetchModelsInternal(baseUrl, key) }
