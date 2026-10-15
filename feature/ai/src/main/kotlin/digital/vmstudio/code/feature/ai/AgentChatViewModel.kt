@@ -144,6 +144,7 @@ data class AgentChatUiState(
     val queuedMessages: List<QueuedMessage> = emptyList(),
     val githubFileTree: List<GitHubTreeItem> = emptyList(),
     val isLoadingGithubFileTree: Boolean = false,
+    val squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL,
 ) {
     /**
      * Claude Code runs on a server, in a folder. A gateway model needs neither: with
