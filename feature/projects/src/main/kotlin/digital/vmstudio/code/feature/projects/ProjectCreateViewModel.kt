@@ -78,6 +78,7 @@ class ProjectCreateViewModel @Inject constructor(
     private val servers: ServerRepository,
     private val commandGuard: CommandGuard,
     private val gitRepositoryDao: GitRepositoryDao,
+    @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
