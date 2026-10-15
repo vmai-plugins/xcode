@@ -241,14 +241,20 @@ class OmniRouteAgentLoop @Inject constructor(
             }
 
             emit(
-                AgentEvent.Failed(
-                    VmError.Ai(
-                        summary = "Reached the tool-call limit",
-                        reason = "Stopped after $maxIterations model turns to avoid a runaway loop.",
-                        suggestedAction = "Ask a narrower question, or continue in a new message.",
-                        retryable = false,
-                        provider = "omniroute",
-                    ),
+                AgentEvent.AssistantMessage(
+                    "I have performed $maxIterations steps on this task. " +
+                        "To prevent runaway loops, I have paused here. You can reply 'continue' or give another instruction to proceed."
+                ),
+            )
+            emit(
+                AgentEvent.Completed(
+                    sessionId = sessionId,
+                    resultText = "Reached $maxIterations turn limit.",
+                    durationMillis = System.currentTimeMillis() - startedAt,
+                    costUsd = 0.0,
+                    inputTokens = inputTokensTotal,
+                    outputTokens = outputTokensTotal,
+                    isError = false,
                 ),
             )
         } catch (cancellation: CancellationException) {
