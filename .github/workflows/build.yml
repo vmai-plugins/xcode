@@ -41,8 +41,12 @@ jobs:
       - name: Unit tests
         run: |
           ./gradlew testDebugUnitTest --continue || {
-            echo "::error::Unit tests failed! Printing failed test details:"
-            find . -name "*.xml" -path "*/test-results/testDebugUnitTest/*" -exec grep -H -n -C 5 "<failure" {} + || true
+            for f in $(find . -name "*.xml" -path "*/test-results/testDebugUnitTest/*"); do
+              if grep -q "<failure" "$f"; then
+                msg=$(grep -m 1 'message=' "$f" | sed -E 's/.*message="([^"]*)".*/\1/')
+                echo "::error file=$f::$msg"
+              fi
+            done
             exit 1
           }
 
