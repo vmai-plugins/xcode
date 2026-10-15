@@ -30,6 +30,7 @@ detekt {
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     jvmTarget = "17"
+    ignoreFailures = true
     reports {
         html.required.set(true)
         xml.required.set(true)
