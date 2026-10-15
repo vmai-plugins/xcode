@@ -482,9 +482,11 @@ private fun ComposerPlusMenu(
     isStartingBackgroundRun: Boolean,
     folderName: String,
     permissionMode: AgentPermissionMode,
+    squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL,
     onAttach: (Uri) -> Unit,
     onEditDirectory: () -> Unit,
     onPermissionModeChange: (AgentPermissionMode) -> Unit,
+    onSquadPresetChange: (digital.vmstudio.code.core.ai.model.AgentSquadPreset) -> Unit = {},
     onSendInBackground: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
