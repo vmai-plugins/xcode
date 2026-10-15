@@ -2,31 +2,45 @@ package digital.vmstudio.code.feature.servers
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ssh.connection.ServerInfo
@@ -65,6 +79,17 @@ fun ServerDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (state.isConnected) {
+                        IconButton(onClick = viewModel::refreshTelemetry) {
+                            if (state.isLoadingTelemetry) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh telemetry")
+                            }
+                        }
                     }
                 },
             )
@@ -172,10 +197,156 @@ fun ServerDetailScreen(
                     }
                 }
 
+                state.telemetry?.let { tel ->
+                    item { VmSectionHeader(title = "Live Resource Telemetry") }
+                    item {
+                        VmCard {
+                            if (tel.uptime.isNotBlank()) {
+                                InfoRow("Uptime", tel.uptime)
+                                Spacer(modifier = Modifier.height(spacing.xs))
+                            }
+                            if (tel.ramSummary.isNotBlank()) {
+                                Text(
+                                    text = "RAM: ${tel.ramSummary}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { tel.ramUsedPercent / 100f },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    color = if (tel.ramUsedPercent > 85) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(modifier = Modifier.height(spacing.sm))
+                            }
+                            if (tel.diskSummary.isNotBlank()) {
+                                Text(
+                                    text = "Disk (/): ${tel.diskSummary}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { tel.diskUsedPercent / 100f },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    color = if (tel.diskUsedPercent > 90) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (state.hasDocker) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            VmSectionHeader(title = "Docker Containers (${state.containers.size})")
+                        }
+                    }
+                    if (state.containers.isEmpty()) {
+                        item {
+                            VmCard {
+                                Text(
+                                    text = "Docker is installed on this host, but no containers are currently found.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    } else {
+                        items(state.containers, key = { it.name }) { container ->
+                            VmCard {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(if (container.isRunning) Color(0xFF4CAF50) else Color(0xFFE53935)),
+                                        )
+                                        Column {
+                                            Text(
+                                                text = container.name,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                            )
+                                            Text(
+                                                text = container.image,
+                                                style = VmTheme.code.mono,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 11.sp,
+                                            )
+                                            Text(
+                                                text = container.status,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        IconButton(onClick = { viewModel.restartContainer(container.name) }) {
+                                            Icon(
+                                                Icons.Default.RestartAlt,
+                                                contentDescription = "Restart container",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                        VmButton(
+                                            text = "Logs",
+                                            style = VmButtonStyle.Tertiary,
+                                            onClick = { viewModel.viewContainerLogs(container.name) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 state.serverInfo?.let { info ->
-                    item { VmSectionHeader(title = "System") }
+                    item { VmSectionHeader(title = "System Details") }
                     item { ServerInfoCard(info) }
                 }
+            }
+        }
+    }
+
+    state.containerLogs?.let { (name, logs) ->
+        VmDialog(
+            title = "Logs: $name",
+            onDismiss = viewModel::dismissContainerLogs,
+            confirmLabel = "Close",
+            onConfirm = viewModel::dismissContainerLogs,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1E1F22))
+                    .padding(8.dp),
+            ) {
+                Text(
+                    text = logs,
+                    style = VmTheme.code.mono,
+                    color = Color(0xFFE2E2E5),
+                    fontSize = 11.sp,
+                )
             }
         }
     }
@@ -202,8 +373,6 @@ private fun ServerInfoCard(info: ServerInfo) {
 
         if (info.operatingSystem == null) {
             Text(
-                // Better to say the probe found nothing than to show a plausible
-                // guess the user might rely on.
                 text = "The host did not report system details. This is normal on " +
                     "restricted shells and minimal containers.",
                 style = MaterialTheme.typography.bodySmall,
@@ -232,22 +401,11 @@ private fun InfoRow(label: String, value: String) {
             style = VmTheme.code.mono,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Unweighted, "maxLines = 1" alone let a long probed value (a full
-            // `uname -a` string, a deep home directory path) size past the card
-            // and get clipped by its shape with no ellipsis. Bounding it to the
-            // remaining row width is what lets the ellipsis actually take effect.
             modifier = Modifier.weight(1f, fill = false),
         )
     }
 }
 
-/**
- * The host-key decision.
- *
- * Deliberately not dismissible by tapping outside, and the accept action is styled
- * as destructive for a changed key: this is the one prompt in the app where habitual
- * confirmation would defeat the entire purpose of host verification.
- */
 @Composable
 private fun HostKeyDialog(
     verdict: HostKeyVerdict,
