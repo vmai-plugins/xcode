@@ -177,6 +177,8 @@ data class AgentRunConfig(
     val maxIterations: Int? = null,
     /** Maximum command tool invocations allowed per run. */
     val maxCommandsPerRun: Int? = null,
+    /** Pre-configured squad preset defining specialized system instructions. */
+    val squadPreset: AgentSquadPreset = AgentSquadPreset.FULL_STACK,
 ) {
     companion object {
         /**
