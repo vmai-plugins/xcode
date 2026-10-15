@@ -88,6 +88,8 @@ internal fun ModernComposer(
     isStartingBackgroundRun: Boolean,
     permissionMode: AgentPermissionMode,
     onPermissionModeChange: (AgentPermissionMode) -> Unit,
+    squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL,
+    onSquadPresetChange: (digital.vmstudio.code.core.ai.model.AgentSquadPreset) -> Unit = {},
     selectedModel: String,
     onModelChange: (String) -> Unit,
     omniModels: OmniRouteModels,
