@@ -209,7 +209,9 @@ fun AgentChatScreen(
                     SessionArtifact(filePath = path, isReverted = item.isReverted)
                 }
             }
-            .distinctBy { it.filePath }
+            .associateBy { it.filePath }
+            .values
+            .toList()
     }
     var showArtifactsSheet by remember { mutableStateOf(false) }
 
