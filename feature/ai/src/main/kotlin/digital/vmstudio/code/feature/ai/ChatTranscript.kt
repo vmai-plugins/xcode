@@ -763,15 +763,21 @@ internal fun FollowTail(listState: LazyListState, transcript: List<TranscriptIte
                 if (scrolling) following = !canScrollForward
             }
     }
+    val isStreaming = transcript.lastOrNull() is TranscriptItem.StreamingText
     val tailLength = (transcript.lastOrNull() as? TranscriptItem.StreamingText)?.text?.length ?: 0
-    val tailChunk = tailLength / 80
+    val tailChunk = tailLength / 60
+
     LaunchedEffect(transcript.size, tailChunk) {
         if (!following) return@LaunchedEffect
         val last = listState.layoutInfo.totalItemsCount - 1
         if (last >= 0) {
-            val visibleLast = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            if (visibleLast < last) {
-                listState.animateScrollToItem(last)
+            if (isStreaming) {
+                listState.scrollToItem(last)
+            } else {
+                val visibleLast = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                if (visibleLast < last) {
+                    listState.animateScrollToItem(last)
+                }
             }
         }
     }
