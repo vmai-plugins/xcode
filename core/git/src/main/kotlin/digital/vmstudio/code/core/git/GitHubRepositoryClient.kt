@@ -345,13 +345,23 @@ class GitHubRepositoryClient @Inject constructor(
         commitMessage: String,
         branch: String? = null,
     ): VmResult<Unit> {
+        val cleanPath = path.trim().removePrefix("/")
+        if (cleanPath.isEmpty()) {
+            return VmResult.Failure(
+                VmError.FileSystem(
+                    summary = "Cannot write repository root as a file",
+                    reason = "Target path resolves to the repository root directory.",
+                    path = path,
+                ),
+            )
+        }
         val secret = when (val result = readToken()) {
             is VmResult.Success -> result.value
             is VmResult.Failure -> return result
         }
         return try {
             val token = secret.useAsString { it }
-            val encodedPath = encodePath(path)
+            val encodedPath = encodePath(cleanPath)
             val refQuery = if (!branch.isNullOrBlank()) "?ref=${encodeParam(branch)}" else ""
             val metaRequest = Request.Builder()
                 .url("https://api.github.com/repos/$repoFullName/contents/$encodedPath$refQuery")
