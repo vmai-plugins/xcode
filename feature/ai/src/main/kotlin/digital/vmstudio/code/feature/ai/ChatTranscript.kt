@@ -83,28 +83,28 @@ internal sealed interface TranscriptRowItem {
 
 internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowItem> {
     if (items.isEmpty()) return emptyList()
-    val result = mutableListOf<TranscriptRowItem>()
-    val toolBuffer = mutableListOf<TranscriptItem.ToolCall>()
+    val result = ArrayList<TranscriptRowItem>(items.size)
+    var toolBuffer: ArrayList<TranscriptItem.ToolCall>? = null
 
     fun flushToolBuffer() {
-        if (toolBuffer.isEmpty()) return
-        if (toolBuffer.size == 1) {
-            result += TranscriptRowItem.Single(toolBuffer.first())
+        val buffer = toolBuffer ?: return
+        if (buffer.isEmpty()) return
+        if (buffer.size == 1) {
+            result.add(TranscriptRowItem.Single(buffer[0]))
         } else {
-            result += TranscriptRowItem.ToolBatch(
-                id = "batch-${toolBuffer.first().id}",
-                tools = toolBuffer.toList(),
-            )
+            result.add(TranscriptRowItem.ToolBatch("batch-${buffer[0].id}", buffer))
         }
-        toolBuffer.clear()
+        toolBuffer = null
     }
 
-    for (item in items) {
+    for (i in items.indices) {
+        val item = items[i]
         if (item is TranscriptItem.ToolCall) {
-            toolBuffer += item
+            if (toolBuffer == null) toolBuffer = ArrayList(4)
+            toolBuffer.add(item)
         } else {
             flushToolBuffer()
-            result += TranscriptRowItem.Single(item)
+            result.add(TranscriptRowItem.Single(item))
         }
     }
     flushToolBuffer()
