@@ -266,7 +266,13 @@ class EditorViewModel @Inject constructor(
         for (i in 0 until targetLine) {
             offset += lines[i].length + 1
         }
-        onTextFieldValueChange(current.copy(selection = androidx.compose.ui.text.TextRange(offset.coerceIn(0, current.text.length)), composition = null))
+        val newOffset = offset.coerceIn(0, current.text.length)
+        onTextFieldValueChange(
+            current.copy(
+                selection = androidx.compose.ui.text.TextRange(newOffset),
+                composition = null,
+            ),
+        )
     }
 
     /** [overwrite] saves even though the file changed on the server since it was loaded. */
