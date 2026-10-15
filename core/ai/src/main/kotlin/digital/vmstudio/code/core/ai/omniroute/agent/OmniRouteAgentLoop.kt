@@ -167,7 +167,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     )
                     currentModel = fallbackModel
                     target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
-                    nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, config.systemPrompt)
+                    nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, effectivePrompt)
                 }
 
                 val (turn, streamedText) =
