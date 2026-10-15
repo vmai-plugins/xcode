@@ -41,12 +41,12 @@ class VaultCrypto @Inject constructor() {
             System.arraycopy(iv, 0, combined, salt.size, iv.size)
             System.arraycopy(ciphertext, 0, combined, salt.size + iv.size, ciphertext.size)
 
-            Base64.encodeToString(combined, Base64.NO_WRAP)
+            Base64.getEncoder().encodeToString(combined)
         }
 
     fun importEncryptedVault(vaultBase64: String, passphrase: CharArray): VmResult<String> =
         vmCatching(::mapVaultError) {
-            val combined = Base64.decode(vaultBase64.trim(), Base64.DEFAULT)
+            val combined = Base64.getDecoder().decode(vaultBase64.trim())
             require(combined.size >= SALT_BYTES + IV_BYTES + 16) {
                 "Encrypted vault package is corrupt or too short."
             }
