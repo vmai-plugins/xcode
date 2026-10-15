@@ -213,6 +213,7 @@ class OmniRouteProvider @Inject constructor(
         }
         val effectiveFallback = selectFallbackModel(effectiveModel, settings.aiAvailableModelIds, canUseTools)
 
+        wakeLockManager.acquire()
         try {
             if (canUseTools) {
                 runToolAgent(baseUrl, key, dialect, effectiveModel, effectiveFallback, config, settings.agentAutonomyLevel)
@@ -220,6 +221,7 @@ class OmniRouteProvider @Inject constructor(
                 runPlainChat(baseUrl, key, dialect, model, effectiveFallback, config)
             }
         } finally {
+            wakeLockManager.release()
             key.wipe()
         }
     }
