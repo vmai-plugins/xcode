@@ -355,6 +355,10 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(gitDiscoveryError = null) }
     }
 
+    fun setSquadPreset(preset: digital.vmstudio.code.core.ai.model.AgentSquadPreset) {
+        _uiState.update { it.copy(squadPreset = preset) }
+    }
+
     private fun mapGitError(error: GitError): VmError = when (error) {
         is GitError.NotARepository -> VmError.Git(
             summary = "Not a Git repository",
