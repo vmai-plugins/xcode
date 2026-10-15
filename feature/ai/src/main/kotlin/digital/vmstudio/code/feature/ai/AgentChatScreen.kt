@@ -512,6 +512,8 @@ fun AgentChatScreen(
                 isStartingBackgroundRun = state.isStartingBackgroundRun,
                 permissionMode = state.permissionMode,
                 onPermissionModeChange = viewModel::setPermissionMode,
+                squadPreset = state.squadPreset,
+                onSquadPresetChange = viewModel::setSquadPreset,
                 selectedModel = state.selectedModel,
                 onModelChange = viewModel::selectModel,
                 omniModels = state.omniModels,
