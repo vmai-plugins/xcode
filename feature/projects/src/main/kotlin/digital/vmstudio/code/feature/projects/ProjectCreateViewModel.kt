@@ -591,12 +591,20 @@ class ProjectCreateViewModel @Inject constructor(
     }
 
     private fun isDefaultOrBlankPath(path: String): Boolean =
-        path.isBlank() || path.startsWith("~/projects/") || path.startsWith("/sdcard/VMStudio/")
+        path.isBlank() ||
+            path.startsWith("~/projects/") ||
+            path.startsWith("/sdcard/VMStudio/") ||
+            path.contains("/projects/")
+
+    private fun localProjectsDir(): File {
+        val base = context.getExternalFilesDir(null) ?: context.filesDir
+        return File(base, "projects").apply { mkdirs() }
+    }
 
     private fun defaultProjectPath(isLocal: Boolean, name: String): String {
         val safeName = name.ifBlank { "my-project" }
         return if (isLocal) {
-            "/sdcard/VMStudio/Projects/$safeName"
+            File(localProjectsDir(), safeName).absolutePath
         } else {
             "~/projects/$safeName"
         }
