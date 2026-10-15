@@ -233,7 +233,8 @@ class ProjectDetailViewModel @Inject constructor(
             isBuildingApk.value = true
             try {
                 buildStatusMessage.value = "Running Gradle assembleDebug on server..."
-                val cmd = "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(proj.remotePath)} && chmod +x ./gradlew && ./gradlew assembleDebug"
+                val safePath = digital.vmstudio.code.core.ssh.command.shellQuotePath(proj.remotePath)
+                val cmd = "cd $safePath && chmod +x ./gradlew && ./gradlew assembleDebug"
                 when (val res = commandGuard.run(srvId, cmd, CommandLimits(timeoutMillis = 300_000L))) {
                     is VmResult.Success -> {
                         if (res.value.isSuccess) {
