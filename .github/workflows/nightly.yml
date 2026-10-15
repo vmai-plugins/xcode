@@ -95,3 +95,16 @@ jobs:
             --prerelease \
             --title "Nightly (${SHORT_SHA})" \
             --notes "Debug build of main at ${SHA}. Installs next to a release build. On your phone: tap the .apk below, then allow installs from your browser if asked. Stable link to the latest: https://github.com/${GITHUB_REPOSITORY}/releases/download/nightly/xcodes-nightly.apk"
+
+      - name: Deploy APK to apps.vmstudio.digital
+        if: env.DEPLOY_SSH_KEY != ''
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
+          TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
+        run: |
+          mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
+          scp -i ~/.ssh/id_rsa xcodes-nightly.apk "${DEPLOY_HOST}:${TARGET_DIR}/.xcodes-latest.uploading.apk"
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $TARGET_DIR && mv -f .xcodes-latest.uploading.apk xcodes-latest.apk && chmod 644 xcodes-latest.apk"
+          echo "Successfully published xcodes-latest.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
