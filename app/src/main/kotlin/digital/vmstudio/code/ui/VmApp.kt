@@ -1,18 +1,18 @@
 package digital.vmstudio.code.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
@@ -29,6 +29,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.PermanentDrawerSheet
+import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,9 +39,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -48,6 +52,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import digital.vmstudio.code.crash.CrashReportDialog
+import digital.vmstudio.code.feature.ai.AgentConversationsUiState
 import digital.vmstudio.code.feature.ai.AgentConversationsViewModel
 import digital.vmstudio.code.feature.ai.ConversationAction
 import digital.vmstudio.code.feature.ai.ConversationActionDialogs
@@ -58,15 +63,8 @@ import digital.vmstudio.code.navigation.VmNavHost
 import digital.vmstudio.code.navigation.navigateToNewChat
 import kotlinx.coroutines.launch
 
-/** How many recent chats the drawer lists; the rest live behind "All chats". */
 private const val DRAWER_RECENT_CHATS = 15
 
-/**
- * Root layout.
- *
- * One surface, no tab bar: the app opens on a chat and everything else is reached
- * from a slide-out drawer, the way Claude's own apps are laid out.
- */
 @Composable
 fun VmApp(
     isOnline: Boolean,
@@ -97,13 +95,10 @@ fun VmApp(
         onRename = conversationsViewModel::rename,
         onDelete = { id ->
             conversationsViewModel.delete(id)
-            // The open chat is gone; leave it instead of showing a deleted transcript.
             if (id == currentConversationId) navigateToNewChat(navController)
         },
     )
 
-    // Forms and detail screens own the full screen; swiping the drawer open
-    // mid-edit would invite an accidental context switch.
     val drawerAvailable = currentRoute in DRAWER_ROUTES
 
     fun closeDrawerThen(action: () -> Unit) {
@@ -115,10 +110,6 @@ fun VmApp(
 
     fun openTopLevel(destination: VmDestination) {
         closeDrawerThen {
-            // Pushed over the current screen so Back returns to the chat. Clearing
-            // the whole stack made Back exit the app, and saved/restored stacks could
-            // reopen an old chat when "Servers" was tapped. Any earlier copy of the
-            // destination is removed so each appears once.
             navController.navigate(destination.route) {
                 popUpTo(destination.route) { inclusive = true }
                 launchSingleTop = true
@@ -127,114 +118,68 @@ fun VmApp(
     }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            gesturesEnabled = drawerAvailable,
-            drawerContent = {
-                ModalDrawerSheet {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Dns,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "X-codes Workspace",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            )
-                            Text(
-                                text = "Cloud IDE & Autonomous Agent",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val isTabletOrDex = maxWidth >= 840.dp
 
-                    NavigationDrawerItem(
-                        label = { Text("New chat", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) },
-                        icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                        selected = false,
-                        onClick = { closeDrawerThen { navigateToNewChat(navController) } },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
-
-                    Text(
-                        text = "Recents & History",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 6.dp),
-                    )
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(
-                            conversations.conversations.take(DRAWER_RECENT_CHATS),
-                            key = { it.id },
-                        ) { chat ->
-                            NavigationDrawerItem(
-                                label = {
-                                    Column {
-                                        Text(
-                                            text = chat.title.ifBlank { "Untitled chat" },
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        chat.workingDirectory?.let { dir ->
-                                            Text(
-                                                text = dir.substringAfterLast('/'),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                            )
+            if (isTabletOrDex) {
+                // Adaptive Dual-Pane layout for Tablets, Foldables and Samsung DeX Mode
+                PermanentNavigationDrawer(
+                    drawerContent = {
+                        PermanentDrawerSheet(modifier = Modifier.width(320.dp)) {
+                            DrawerWorkspaceHeader()
+                            DrawerNavigationItems(
+                                currentRoute = currentRoute,
+                                currentConversationId = currentConversationId,
+                                conversations = conversations,
+                                chatMenuFor = chatMenuFor,
+                                onChatMenuClick = { chatMenuFor = it },
+                                onChatMenuDismiss = { chatMenuFor = null },
+                                onChatAction = { pendingChatAction = it },
+                                onNewChat = { navigateToNewChat(navController) },
+                                onSelectChat = { id ->
+                                    if (id != currentConversationId) {
+                                        navController.navigate(VmDestination.AgentConversation.routeFor(id)) {
+                                            popUpTo(VmDestination.AgentConversation.ROUTE_PATTERN) {
+                                                inclusive = true
+                                            }
                                         }
                                     }
                                 },
-                                selected = chat.id == currentConversationId,
-                                badge = {
-                                    Box {
-                                        IconButton(
-                                            onClick = { chatMenuFor = chat.id },
-                                            modifier = Modifier.size(32.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Default.MoreVert,
-                                                contentDescription = "Rename or delete chat",
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        }
-                                        ConversationMenu(
-                                            expanded = chatMenuFor == chat.id,
-                                            onDismiss = { chatMenuFor = null },
-                                            onAction = { action -> pendingChatAction = chat to action },
-                                        )
-                                    }
-                                },
-                                onClick = {
+                                onNavigate = { openTopLevel(it) },
+                            )
+                        }
+                    },
+                ) {
+                    AppMainContent(
+                        navController = navController,
+                        isOnline = isOnline,
+                        onOpenMenu = { scope.launch { drawerState.open() } },
+                        hasCompletedOnboarding = hasCompletedOnboarding,
+                        hasSignedIn = hasSignedIn,
+                        appViewModel = appViewModel,
+                    )
+                }
+            } else {
+                // Phone single-column layout with Slide-Out Navigation Drawer
+                ModalNavigationDrawer(
+                    drawerState = drawerState,
+                    gesturesEnabled = drawerAvailable,
+                    drawerContent = {
+                        ModalDrawerSheet {
+                            DrawerWorkspaceHeader()
+                            DrawerNavigationItems(
+                                currentRoute = currentRoute,
+                                currentConversationId = currentConversationId,
+                                conversations = conversations,
+                                chatMenuFor = chatMenuFor,
+                                onChatMenuClick = { chatMenuFor = it },
+                                onChatMenuDismiss = { chatMenuFor = null },
+                                onChatAction = { pendingChatAction = it },
+                                onNewChat = { closeDrawerThen { navigateToNewChat(navController) } },
+                                onSelectChat = { id ->
                                     closeDrawerThen {
-                                        // Single-top reused the open chat's screen with
-                                        // the old chat still in it; another chat
-                                        // replaces it instead.
-                                        if (chat.id != currentConversationId) {
-                                            navController.navigate(
-                                                VmDestination.AgentConversation.routeFor(chat.id),
-                                            ) {
+                                        if (id != currentConversationId) {
+                                            navController.navigate(VmDestination.AgentConversation.routeFor(id)) {
                                                 popUpTo(VmDestination.AgentConversation.ROUTE_PATTERN) {
                                                     inclusive = true
                                                 }
@@ -242,76 +187,207 @@ fun VmApp(
                                         }
                                     }
                                 },
-                                modifier = Modifier.padding(horizontal = 12.dp),
+                                onNavigate = { openTopLevel(it) },
                             )
                         }
-                        // Always reachable: it is where every chat can be found, renamed or deleted.
-                        if (conversations.conversations.isNotEmpty()) {
-                            item(key = "all-chats") {
-                                NavigationDrawerItem(
-                                    label = { Text("All chats") },
-                                    selected = false,
-                                    onClick = { openTopLevel(VmDestination.Chats) },
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                )
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    NavigationDrawerItem(
-                        label = { Text("Projects") },
-                        icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                        selected = currentRoute == VmDestination.Projects.route,
-                        onClick = { openTopLevel(VmDestination.Projects) },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
-                    NavigationDrawerItem(
-                        label = { Text("Files") },
-                        icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
-                        selected = currentRoute == VmDestination.Files.route,
-                        onClick = { openTopLevel(VmDestination.Files) },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
-                    NavigationDrawerItem(
-                        label = { Text("Cloud & Connectors Hub") },
-                        icon = { Icon(Icons.Default.Cloud, contentDescription = null) },
-                        selected = currentRoute == VmDestination.Connectors.route,
-                        onClick = { openTopLevel(VmDestination.Connectors) },
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
-                    NavigationDrawerItem(
-                        label = { Text("Settings") },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                        selected = currentRoute == VmDestination.Settings.route,
-                        onClick = { openTopLevel(VmDestination.Settings) },
-                        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                    )
-                }
-            },
-        ) {
-            Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-                // Consumed so each screen's own top bar does not add the status bar
-                // height a second time (it showed as a tall empty band above headers).
-                Box(modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
-                    VmNavHost(
+                    },
+                ) {
+                    AppMainContent(
                         navController = navController,
                         isOnline = isOnline,
                         onOpenMenu = { scope.launch { drawerState.open() } },
                         hasCompletedOnboarding = hasCompletedOnboarding,
                         hasSignedIn = hasSignedIn,
-                        onFinishOnboarding = appViewModel::completeOnboarding,
+                        appViewModel = appViewModel,
                     )
-
-                    // Above the graph so an approval raised by background work
-                    // reaches the user wherever they currently are.
-                    CommandApprovalHost()
-                    FileEditApprovalHost()
-                    CrashReportDialog()
                 }
             }
         }
     }
+}
+
+@Composable
+private fun AppMainContent(
+    navController: NavHostController,
+    isOnline: Boolean,
+    onOpenMenu: () -> Unit,
+    hasCompletedOnboarding: Boolean,
+    hasSignedIn: Boolean,
+    appViewModel: VmAppViewModel,
+) {
+    Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
+        Box(modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
+            VmNavHost(
+                navController = navController,
+                isOnline = isOnline,
+                onOpenMenu = onOpenMenu,
+                hasCompletedOnboarding = hasCompletedOnboarding,
+                hasSignedIn = hasSignedIn,
+                onFinishOnboarding = appViewModel::completeOnboarding,
+            )
+
+            CommandApprovalHost()
+            FileEditApprovalHost()
+            CrashReportDialog()
+        }
+    }
+}
+
+@Composable
+private fun DrawerWorkspaceHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(40.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Dns,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "X-codes Workspace",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Cloud IDE & Autonomous Agent",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawerNavigationItems(
+    currentRoute: String?,
+    currentConversationId: String?,
+    conversations: AgentConversationsUiState,
+    chatMenuFor: String?,
+    onChatMenuClick: (String) -> Unit,
+    onChatMenuDismiss: () -> Unit,
+    onChatAction: (Pair<ConversationSummary, ConversationAction>) -> Unit,
+    onNewChat: () -> Unit,
+    onSelectChat: (String) -> Unit,
+    onNavigate: (VmDestination) -> Unit,
+) {
+    NavigationDrawerItem(
+        label = { Text("New chat", fontWeight = FontWeight.SemiBold) },
+        icon = { Icon(Icons.Default.Add, contentDescription = null) },
+        selected = false,
+        onClick = onNewChat,
+        modifier = Modifier.padding(horizontal = 12.dp),
+    )
+
+    Text(
+        text = "Recents & History",
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 6.dp),
+    )
+    LazyColumn(modifier = Modifier.weight(1f)) {
+        items(
+            conversations.conversations.take(DRAWER_RECENT_CHATS),
+            key = { it.id },
+        ) { chat ->
+            NavigationDrawerItem(
+                label = {
+                    Column {
+                        Text(
+                            text = chat.title.ifBlank { "Untitled chat" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        chat.workingDirectory?.let { dir ->
+                            Text(
+                                text = dir.substringAfterLast('/'),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                        }
+                    }
+                },
+                selected = chat.id == currentConversationId,
+                badge = {
+                    Box {
+                        IconButton(
+                            onClick = { onChatMenuClick(chat.id) },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "Rename or delete chat",
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        ConversationMenu(
+                            expanded = chatMenuFor == chat.id,
+                            onDismiss = onChatMenuDismiss,
+                            onAction = onChatAction,
+                        )
+                    }
+                },
+                onClick = { onSelectChat(chat.id) },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
+        if (conversations.conversations.isNotEmpty()) {
+            item(key = "all-chats") {
+                NavigationDrawerItem(
+                    label = { Text("All chats") },
+                    selected = false,
+                    onClick = { onNavigate(VmDestination.Chats) },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
+    }
+
+    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+    NavigationDrawerItem(
+        label = { Text("Projects") },
+        icon = { Icon(Icons.Default.Folder, contentDescription = null) },
+        selected = currentRoute == VmDestination.Projects.route,
+        onClick = { onNavigate(VmDestination.Projects) },
+        modifier = Modifier.padding(horizontal = 12.dp),
+    )
+    NavigationDrawerItem(
+        label = { Text("Files") },
+        icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
+        selected = currentRoute == VmDestination.Files.route,
+        onClick = { onNavigate(VmDestination.Files) },
+        modifier = Modifier.padding(horizontal = 12.dp),
+    )
+    NavigationDrawerItem(
+        label = { Text("Cloud & Connectors Hub") },
+        icon = { Icon(Icons.Default.Cloud, contentDescription = null) },
+        selected = currentRoute == VmDestination.Connectors.route,
+        onClick = { onNavigate(VmDestination.Connectors) },
+        modifier = Modifier.padding(horizontal = 12.dp),
+    )
+    NavigationDrawerItem(
+        label = { Text("Settings") },
+        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+        selected = currentRoute == VmDestination.Settings.route,
+        onClick = { onNavigate(VmDestination.Settings) },
+        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+    )
 }
 
 private val DRAWER_ROUTES = setOf(
@@ -324,10 +400,3 @@ private val DRAWER_ROUTES = setOf(
     VmDestination.ServerAgent.ROUTE_PATTERN,
     VmDestination.AgentConversation.ROUTE_PATTERN,
 )
-
-
-
-
-
-
-
