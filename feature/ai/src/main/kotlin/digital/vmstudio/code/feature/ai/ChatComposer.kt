@@ -258,9 +258,11 @@ internal fun ModernComposer(
                     folderName = workingDirectory.trimEnd('/').substringAfterLast('/')
                         .ifBlank { "Set folder" },
                     permissionMode = permissionMode,
+                    squadPreset = squadPreset,
                     onAttach = onAttach,
                     onEditDirectory = onEditDirectory,
                     onPermissionModeChange = onPermissionModeChange,
+                    onSquadPresetChange = onSquadPresetChange,
                     // The box is cleared only once the run really started, so a refusal
                     // ("Python 3 is needed", a production server) never eats the message.
                     onSendInBackground = { onSendInBackground(text) { onTextChange("") } },
@@ -271,6 +273,14 @@ internal fun ModernComposer(
                         text = permissionMode.chatLabel(),
                         style = MaterialTheme.typography.labelMedium,
                         color = VmTheme.colors.warning,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
+                if (squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL) {
+                    Text(
+                        text = squadPreset.displayName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 4.dp),
                     )
                 }
