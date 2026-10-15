@@ -565,6 +565,20 @@ private fun ComposerPlusMenu(
                     },
                 )
             }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            MenuSectionLabel("Squad Role")
+            digital.vmstudio.code.core.ai.model.AgentSquadPreset.entries.forEach { preset ->
+                DropdownMenuItem(
+                    text = { Text(preset.displayName) },
+                    leadingIcon = {
+                        if (preset == squadPreset) Icon(Icons.Default.Check, contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        onSquadPresetChange(preset)
+                    },
+                )
+            }
         }
     }
 }
