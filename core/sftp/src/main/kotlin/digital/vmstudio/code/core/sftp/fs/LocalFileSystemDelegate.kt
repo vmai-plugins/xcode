@@ -33,8 +33,15 @@ internal class LocalFileSystemDelegate(
     private val ioDispatcher: CoroutineDispatcher,
 ) {
     private fun resolveLocalFile(path: String): File {
+        val base = context.getExternalFilesDir(null) ?: context.filesDir
+        val projectsDir = File(base, "projects")
+        if (path == "~" || path == "~/") {
+            return projectsDir
+        }
+        if (path.startsWith("~/")) {
+            return File(projectsDir, path.removePrefix("~/"))
+        }
         if (path.startsWith("/vmhub/") || path.startsWith("/github/")) {
-            val base = context.getExternalFilesDir(null) ?: context.filesDir
             return File(base, "projects$path")
         }
         return File(path)
