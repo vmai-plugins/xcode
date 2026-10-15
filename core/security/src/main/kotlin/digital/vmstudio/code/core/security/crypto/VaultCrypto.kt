@@ -1,6 +1,6 @@
 package digital.vmstudio.code.core.security.crypto
 
-import android.util.Base64
+import java.util.Base64
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.vmCatching
