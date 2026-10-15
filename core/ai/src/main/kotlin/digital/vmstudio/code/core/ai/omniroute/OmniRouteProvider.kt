@@ -101,7 +101,7 @@ class OmniRouteProvider @Inject constructor(
             )
         }
 
-        val key = resolveApiKey(settings.aiApiKeyCredentialId)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
             ?: return VmResult.Success(
                 AiProviderHealth(
                     kind = kind,
