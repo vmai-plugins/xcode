@@ -132,9 +132,9 @@ class OmniRouteAgentLoop @Inject constructor(
                 var target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
                 val effectivePrompt = buildString {
                     config.systemPrompt?.let { append(it) }
-                    if (config.squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL) {
+                    if (config.squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK) {
                         if (isNotEmpty()) append("\n\n")
-                        append(config.squadPreset.systemPromptInstruction)
+                        append(config.squadPreset.promptInstruction)
                     }
                 }.ifBlank { null }
                 var nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, effectivePrompt)
