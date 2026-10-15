@@ -37,48 +37,21 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
           ACTION: ${{ github.event.inputs.action }}
         run: |
-          mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
           echo "==> Running action '$ACTION' on $DEPLOY_HOST..."
 
           if [ "$ACTION" = "inspect-disk-usage" ]; then
-            ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" bash -c "'
-              echo \"=== Overall Disk Usage ===\"
-              df -h /
-              echo \"\"
-              echo \"=== Website & Application Sizes (Protected) ===\"
-              du -sh /home/vmstudio-apps/htdocs/* 2>/dev/null || true
-              echo \"\"
-              echo \"=== Build Cache Sizes (Candidates to clean) ===\"
-              du -sh /root/.gradle ~/.gradle /opt/android-sdk /opt/vmstudio/builds 2>/dev/null || true
-            '"
+            ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_rsa "$DEPLOY_HOST" \
+              "df -h /; echo ''; du -sh /home/vmstudio-apps/htdocs/* 2>/dev/null || true; du -sh /root/.gradle /opt/android-sdk 2>/dev/null || true"
 
           elif [ "$ACTION" = "safe-clean-android-caches" ]; then
-            ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" bash -c "'
-              echo \"=== Before Cleanup ===\"
-              df -h /
-              echo \"\"
-              echo \"Removing old Gradle build caches...\"
-              rm -rf /root/.gradle/caches /root/.gradle/daemon ~/.gradle/caches ~/.gradle/daemon 2>/dev/null || true
-              echo \"Cleaning system package installer archives...\"
-              apt-get clean 2>/dev/null || true
-              echo \"\"
-              echo \"=== After Cleanup (Websites and databases untouched) ===\"
-              df -h /
-            '"
+            ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_rsa "$DEPLOY_HOST" \
+              "rm -rf /root/.gradle/caches /root/.gradle/daemon ~/.gradle/caches 2>/dev/null || true; apt-get clean 2>/dev/null || true; df -h /"
 
           elif [ "$ACTION" = "refresh-apps-hub" ]; then
-            ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" bash -c "'
-              python3 - << \"PYEOF\"
-import os, glob
-
-apps_dir = \"/home/vmstudio-apps/htdocs/apps.vmstudio.digital\"
-xcode_apk = os.path.join(apps_dir, \"x-codes\", \"xcodes-latest.apk\")
-if os.path.exists(xcode_apk):
-    size_mb = os.path.getsize(xcode_apk) / (1024 * 1024)
-    print(f\"Found latest APK: {size_mb:.1f} MB\")
-else:
-    print(\"No APK found in x-codes/ yet.\")
-PYEOF
-            '"
+            ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_rsa "$DEPLOY_HOST" \
+              "ls -lh /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/ || true"
           fi
