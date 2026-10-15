@@ -96,6 +96,42 @@ enum class AgentPermissionMode {
     BYPASS,
 }
 
+/** Pre-configured Agent Squad roles with specialized system prompts and workflows. */
+enum class AgentSquadPreset(
+    val id: String,
+    val title: String,
+    val description: String,
+    val promptInstruction: String,
+) {
+    FULL_STACK(
+        id = "full_stack",
+        title = "Full-Stack Dev",
+        description = "Balanced coding, debugging, and terminal operations",
+        promptInstruction = "",
+    ),
+    ARCHITECT(
+        id = "architect",
+        title = "Architect",
+        description = "High-level design, specifications, and planning",
+        promptInstruction = "Role: Principal Software Architect. Focus on architecture, clean modular design, " +
+            "contracts, and scalability before proposing code modifications.",
+    ),
+    SECURITY_AUDITOR(
+        id = "auditor",
+        title = "Auditor",
+        description = "Security review, vulnerability scanning, and hardening",
+        promptInstruction = "Role: Senior Security Auditor. Actively audit all targeted files for security " +
+            "vulnerabilities (injection, leaking secrets, unsafe operations) and propose hardened solutions.",
+    ),
+    TEST_ENGINEER(
+        id = "tester",
+        title = "Test QA",
+        description = "TDD, unit testing, and test coverage automation",
+        promptInstruction = "Role: Lead QA Engineer. Prioritize test coverage: verify all edge cases and " +
+            "generate unit/integration tests for every function modified.",
+    ),
+}
+
 @Suppress("LongParameterList")
 data class AgentRunConfig(
     val serverId: String,
