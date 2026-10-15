@@ -185,7 +185,7 @@ class OmniRouteProvider @Inject constructor(
             return@flow
         }
 
-        val key = resolveApiKey(settings.aiApiKeyCredentialId)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
         if (key == null) {
             emit(noApiKeyError())
             return@flow
