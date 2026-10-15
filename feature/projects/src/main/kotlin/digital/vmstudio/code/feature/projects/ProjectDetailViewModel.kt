@@ -496,7 +496,9 @@ class ProjectDetailViewModel @Inject constructor(
         }
     }
 
-    fun showTerminalNotice(message: String = "Terminal is only available for remote SSH servers. Local device shell requires Termux or ADB.") {
+    fun showTerminalNotice(
+        message: String = "Terminal is only available for remote SSH servers. Local shell requires Termux.",
+    ) {
         notificationMessage.value = message
     }
 
