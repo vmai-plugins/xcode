@@ -47,6 +47,7 @@ class TerminalViewModel @Inject constructor(
     private val sessionManager: TerminalSessionManager,
     private val commandGuard: CommandGuard,
     private val preferencesRepository: UserPreferencesRepository,
+    private val serverRepository: ServerRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
