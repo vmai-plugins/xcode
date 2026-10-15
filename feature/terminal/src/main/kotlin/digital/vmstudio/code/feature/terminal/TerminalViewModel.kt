@@ -101,19 +101,30 @@ class TerminalViewModel @Inject constructor(
      * prompt is drawn at the correct width instead of at 80x24 and then reflowed.
      */
     fun openSession(columns: Int, rows: Int) {
-        val server = serverId ?: return
         if (_uiState.value.isOpening) return
 
         _uiState.value = _uiState.value.copy(isOpening = true, error = null)
         viewModelScope.launch {
             try {
+                val targetServer = serverId ?: serverRepository.servers.first().firstOrNull()?.id
+                if (targetServer == null) {
+                    _uiState.value = _uiState.value.copy(
+                        error = VmError.NotFound(
+                            summary = "No SSH servers configured",
+                            reason = "Add an SSH server before opening a terminal.",
+                            suggestedAction = "Go to Servers and configure a remote connection.",
+                        ),
+                    )
+                    return@launch
+                }
                 val scrollback = preferencesRepository.preferences.first().terminalScrollbackLines
-                when (val result = sessionManager.open(server, columns, rows, scrollback)) {
+                when (val result = sessionManager.open(targetServer, columns, rows, scrollback)) {
                     is VmResult.Success -> {
                         selectSession(result.value.id)
                         // Opened from a project: start there, once, not in the home folder.
                         startPath?.takeIf {
-                            !it.startsWith("/github/") && !it.startsWith("/vmhub/") && !it.startsWith("content://")
+                            !it.startsWith("/github/") && !it.startsWith("/vmhub/") &&
+                                !it.startsWith("content://")
                         }?.let { path ->
                             result.value.send("cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(path)}\r")
                             startPath = null
