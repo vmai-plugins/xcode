@@ -122,10 +122,12 @@ class OmniRouteAgentLoop @Inject constructor(
             var inputTokensTotal = 0L
             var outputTokensTotal = 0L
             val maxIterations = config.maxIterations ?: MAX_ITERATIONS
-            val maxCommands = config.maxCommandsPerRun ?: 50
+            val maxCommands = config.maxCommandsPerRun ?: 500
             val commandCount = java.util.concurrent.atomic.AtomicInteger(0)
+            var currentIteration = 0
 
-            repeat(maxIterations) {
+            while (currentCoroutineContext().isActive && currentIteration < maxIterations) {
+                currentIteration++
                 currentCoroutineContext().ensureActive()
 
                 val budget = config.contextChars ?: MAX_HISTORY_CHARS
