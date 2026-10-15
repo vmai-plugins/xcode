@@ -39,7 +39,12 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --info --stacktrace
+        run: |
+          ./gradlew testDebugUnitTest --continue || {
+            echo "::error::Unit tests failed! Printing failed test details:"
+            find . -name "*.xml" -path "*/test-results/testDebugUnitTest/*" -exec grep -H -n -C 5 "<failure" {} + || true
+            exit 1
+          }
 
       - name: Assemble debug
         run: ./gradlew assembleDebug --stacktrace
