@@ -251,9 +251,13 @@ private val CODE_KEYWORDS = Regex(
 private val CODE_STRINGS = Regex("\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'")
 private val CODE_COMMENTS = Regex("(//.*$|#.*$)", RegexOption.MULTILINE)
 private val CODE_NUMBERS = Regex("\\b\\d+(\\.\\d+)?\\b")
+private const val MAX_SYNTAX_HIGHLIGHT_CHARS = 5000
 
 private fun highlightCodeSyntax(code: String): AnnotatedString = buildAnnotatedString {
     append(code)
+    if (code.length > MAX_SYNTAX_HIGHLIGHT_CHARS) {
+        return@buildAnnotatedString
+    }
     CODE_KEYWORDS.findAll(code).forEach { match ->
         addStyle(
             SpanStyle(color = Color(0xFFC792EA), fontWeight = FontWeight.SemiBold),
