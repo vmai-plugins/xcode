@@ -8,6 +8,7 @@ import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.ssh.command.CommandGuard
+import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import digital.vmstudio.code.core.terminal.session.TerminalKey
 import digital.vmstudio.code.core.terminal.session.TerminalKeyEncoder
 import digital.vmstudio.code.core.terminal.session.TerminalScreen
