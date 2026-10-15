@@ -1,3 +1,13 @@
 package digital.vmstudio.code.core.security.crypto
 
-// Unit test moved to androidTest where Android JCE security providers are available
+import org.junit.Assert.assertNotNull
+import org.junit.Test
+
+class VaultCryptoTest {
+
+    @Test
+    fun instanceCanBeCreated() {
+        val vault = VaultCrypto()
+        assertNotNull(vault)
+    }
+}
