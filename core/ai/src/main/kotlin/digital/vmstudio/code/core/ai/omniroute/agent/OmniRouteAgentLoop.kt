@@ -130,7 +130,14 @@ class OmniRouteAgentLoop @Inject constructor(
 
                 val budget = config.contextChars ?: MAX_HISTORY_CHARS
                 var target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
-                var nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, config.systemPrompt)
+                val effectivePrompt = buildString {
+                    config.systemPrompt?.let { append(it) }
+                    if (config.squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL) {
+                        if (isNotEmpty()) append("\n\n")
+                        append(config.squadPreset.systemPromptInstruction)
+                    }
+                }.ifBlank { null }
+                var nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, effectivePrompt)
 
                 val shouldFailover = when {
                     nextTurnResult is VmResult.Failure -> isFailoverCandidate(nextTurnResult.error)
