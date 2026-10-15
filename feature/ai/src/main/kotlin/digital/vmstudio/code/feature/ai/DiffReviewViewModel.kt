@@ -13,23 +13,26 @@ import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class DiffReviewUiState(
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
+    val isStaged: Boolean = false,
+    val isCommitted: Boolean = false,
     val diff: GitDiff? = null,
     val error: VmError? = null,
     val filePath: String = "",
     val serverId: String = "",
+    val branchName: String = "",
+    val showCommitSheet: Boolean = false,
 )
 
 /**
- * ViewModel for the diff review screen.
- *
- * Loads the current file content and compares it against a baseline (Git HEAD
- * or the original file) to produce a diff for review.
+ * Interactive Git Diff & Merge Deck ViewModel.
+ * Supports viewing diffs, staging/unstaging, discarding changes, and instant commits.
  */
 @HiltViewModel
 class DiffReviewViewModel @Inject constructor(
@@ -53,36 +56,46 @@ class DiffReviewViewModel @Inject constructor(
 
     fun loadDiff() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
 
             if (RemoteFileSystem.isLocalServer(serverId) ||
                 filePath.startsWith("/github/") ||
                 filePath.startsWith("/vmhub/") ||
                 filePath.startsWith("content://")
             ) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    diff = GitDiff(),
-                    error = VmError.Unexpected(
-                        summary = "Diff review is not supported for local or virtual files",
-                        reason = "Diff review inspects Git working tree changes on a remote SSH server.",
-                        suggestedAction = "Review or revert file edits directly in the Code Editor or AI Agent.",
-                    ),
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        diff = GitDiff(),
+                        error = VmError.Unexpected(
+                            summary = "Diff review is not supported for local or virtual files",
+                            reason = "Diff review inspects Git working tree changes on a remote SSH server.",
+                            suggestedAction = "Review file edits directly in the Code Editor or AI Agent.",
+                        ),
+                    )
+                }
                 return@launch
             }
 
             val repoPath = directoryOf(filePath)
             if (repoPath == null) {
-                _uiState.value = _uiState.value.copy(isLoading = false, error = pathWithoutDirectoryError())
+                _uiState.update { it.copy(isLoading = false, error = pathWithoutDirectoryError()) }
                 return@launch
             }
 
-            // Get the diff for the specific file
+            // Check branch and status
+            val branch = when (val b = gitService.currentBranch(serverId, repoPath)) {
+                is GitResult.Success -> b.value
+                is GitResult.Failure -> "HEAD"
+            }
+
+            val statusResult = gitService.status(serverId, repoPath)
+            val isFileStaged = if (statusResult is GitResult.Success) {
+                statusResult.value.staged.any { filePath.isSamePath(it.path) }
+            } else false
+
             when (val result = gitService.diffAll(serverId, repoPath)) {
                 is GitResult.Success -> {
-                    // Git names files relative to the repository root while the
-                    // path here is absolute, so an exact match never hit.
                     val fileDiff = result.value.files.find {
                         filePath.isSamePath(it.newPath) || filePath.isSamePath(it.oldPath)
                     }
@@ -91,24 +104,89 @@ class DiffReviewViewModel @Inject constructor(
                     } else {
                         GitDiff()
                     }
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        diff = filteredDiff,
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            diff = filteredDiff,
+                            branchName = branch,
+                            isStaged = isFileStaged,
+                        )
+                    }
                 }
                 is GitResult.Failure -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = mapGitError(result.error),
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = mapGitError(result.error),
+                        )
+                    }
                 }
             }
         }
     }
 
-    fun accept() {
-        // The reviewed changes are already the file's current content on the
-        // server, so accepting requires no server-side action.
+    fun stageFile() {
+        viewModelScope.launch {
+            val repoPath = directoryOf(filePath) ?: return@launch
+            _uiState.update { it.copy(isSaving = true) }
+            when (val res = gitService.add(serverId, repoPath, listOf(filePath))) {
+                is GitResult.Success -> {
+                    _uiState.update { it.copy(isSaving = false, isStaged = true) }
+                }
+                is GitResult.Failure -> {
+                    _uiState.update { it.copy(isSaving = false, error = mapGitError(res.error)) }
+                }
+            }
+        }
+    }
+
+    fun unstageFile() {
+        viewModelScope.launch {
+            val repoPath = directoryOf(filePath) ?: return@launch
+            _uiState.update { it.copy(isSaving = true) }
+            when (val res = gitService.reset(serverId, repoPath, listOf(filePath))) {
+                is GitResult.Success -> {
+                    _uiState.update { it.copy(isSaving = false, isStaged = false) }
+                }
+                is GitResult.Failure -> {
+                    _uiState.update { it.copy(isSaving = false, error = mapGitError(res.error)) }
+                }
+            }
+        }
+    }
+
+    fun commitAndPush(message: String, pushAfter: Boolean = false) {
+        viewModelScope.launch {
+            val repoPath = directoryOf(filePath) ?: return@launch
+            _uiState.update { it.copy(isSaving = true, showCommitSheet = false) }
+
+            // Ensure staged first
+            gitService.add(serverId, repoPath, listOf(filePath))
+
+            when (val commitRes = gitService.commit(serverId, repoPath, message)) {
+                is GitResult.Success -> {
+                    if (pushAfter) {
+                        gitService.push(serverId, repoPath)
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            isCommitted = true,
+                            diff = GitDiff(),
+                        )
+                    }
+                }
+                is GitResult.Failure -> {
+                    _uiState.update {
+                        it.copy(isSaving = false, error = mapGitError(commitRes.error))
+                    }
+                }
+            }
+        }
+    }
+
+    fun toggleCommitSheet(show: Boolean) {
+        _uiState.update { it.copy(showCommitSheet = show) }
     }
 
     fun reject() {
@@ -118,32 +196,32 @@ class DiffReviewViewModel @Inject constructor(
                 filePath.startsWith("/vmhub/") ||
                 filePath.startsWith("content://")
             ) {
-                _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    error = VmError.Unexpected(
-                        summary = "Cannot revert virtual file",
-                        reason = "Virtual projects and local phone files do not maintain a remote git index.",
-                        suggestedAction = "Use Code Editor or AI Agent to edit or revert changes.",
-                    ),
-                )
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        error = VmError.Unexpected(
+                            summary = "Cannot revert virtual file",
+                            reason = "Virtual projects do not maintain a remote git index.",
+                            suggestedAction = "Use Code Editor or AI Agent to edit or revert changes.",
+                        ),
+                    )
+                }
                 return@launch
             }
 
             val repoPath = directoryOf(filePath)
             if (repoPath == null) {
-                _uiState.value = _uiState.value.copy(error = pathWithoutDirectoryError())
+                _uiState.update { it.copy(error = pathWithoutDirectoryError()) }
                 return@launch
             }
-            _uiState.value = _uiState.value.copy(isSaving = true)
+            _uiState.update { it.copy(isSaving = true) }
             when (val result = gitService.restoreFile(serverId, repoPath, filePath)) {
-                is GitResult.Success -> _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    diff = GitDiff(),
-                )
-                is GitResult.Failure -> _uiState.value = _uiState.value.copy(
-                    isSaving = false,
-                    error = mapGitError(result.error),
-                )
+                is GitResult.Success -> _uiState.update {
+                    it.copy(isSaving = false, diff = GitDiff())
+                }
+                is GitResult.Failure -> _uiState.update {
+                    it.copy(isSaving = false, error = mapGitError(result.error))
+                }
             }
         }
     }
@@ -152,15 +230,6 @@ class DiffReviewViewModel @Inject constructor(
         loadDiff()
     }
 
-    /**
-     * The directory to run Git in, derived from [filePath]'s dirname.
-     *
-     * Null when [filePath] has no "/" at all: [String.substringBeforeLast] returns
-     * the whole string unchanged when the delimiter is absent, which for a
-     * repo-root file (e.g. a tool call reporting just "README.md" rather than an
-     * absolute path) would silently turn into `cd "README.md"` - failing with a
-     * confusing "not a directory" error instead of a clear one.
-     */
     private fun directoryOf(path: String): String? {
         val index = path.lastIndexOf('/')
         return if (index < 0) null else path.substring(0, index)
@@ -169,8 +238,7 @@ class DiffReviewViewModel @Inject constructor(
     private fun pathWithoutDirectoryError() = VmError.Git(
         summary = "Could not determine which directory to check",
         reason = "\"$filePath\" has no directory component.",
-        suggestedAction = "This usually means the tool reported a bare filename " +
-            "instead of a full path; try again from the transcript.",
+        suggestedAction = "Try again from the transcript.",
         retryable = false,
     )
 
@@ -178,7 +246,7 @@ class DiffReviewViewModel @Inject constructor(
         is GitError.NotARepository -> VmError.Git(
             summary = "Not a Git repository",
             reason = "The directory '${error.path}' is not inside a Git repository.",
-            suggestedAction = "Initialize a Git repository with 'git init' or navigate to a repository.",
+            suggestedAction = "Initialize a Git repository with 'git init'.",
             retryable = false,
             repository = error.path,
         )
@@ -187,31 +255,31 @@ class DiffReviewViewModel @Inject constructor(
             reason = error.stderr.ifBlank {
                 "Command '${error.command}' exited with code ${error.exitCode}."
             },
-            suggestedAction = "Check that Git is installed on the server and the file path is correct.",
+            suggestedAction = "Check that Git is installed on the server.",
             retryable = true,
         )
         is GitError.ParseError -> VmError.Git(
             summary = "Could not parse Git output",
             reason = error.message,
-            suggestedAction = "The installed Git may be a non-standard variant; check its version.",
+            suggestedAction = "Check the Git version.",
             retryable = true,
         )
         is GitError.NetworkError -> VmError.Git(
             summary = "Git network operation failed",
             reason = error.message,
-            suggestedAction = "Check the connection to the Git remote and try again.",
+            suggestedAction = "Check the connection to the Git remote.",
             retryable = true,
         )
         is GitError.AuthenticationError -> VmError.Git(
             summary = "Git authentication failed",
             reason = error.message,
-            suggestedAction = "Check your Git remote credentials on the server.",
+            suggestedAction = "Check your Git credentials on the server.",
             retryable = false,
         )
         is GitError.Unknown -> VmError.Git(
             summary = "Unexpected Git error",
             reason = error.message,
-            suggestedAction = "Try again or check the server logs.",
+            suggestedAction = "Try again or check server logs.",
             retryable = true,
         )
     }
@@ -220,11 +288,4 @@ class DiffReviewViewModel @Inject constructor(
         const val ARG_SERVER_ID = "serverId"
         const val ARG_FILE_PATH = "filePath"
     }
-}
-
-/** True when [repoRelative] (as git prints it) names this absolute or relative path. */
-internal fun String.isSamePath(repoRelative: String?): Boolean {
-    if (repoRelative.isNullOrBlank()) return false
-    val relative = repoRelative.removePrefix("./")
-    return this == relative || endsWith("/$relative")
 }
