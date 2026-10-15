@@ -39,14 +39,18 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --continue --stacktrace
-
-      - name: Inspect test failures
-        if: failure()
         run: |
-          echo "=== SEARCHING FOR FAILING TEST XMLs ==="
-          find . -name "TEST-*.xml" -exec grep -H -n -C 5 "<failure" {} + || true
-          echo "=== DONE ==="
+          ./gradlew testDebugUnitTest --continue || true
+          FAILURES=$(find . -name "TEST-*.xml" -exec grep -l "<failure" {} + || true)
+          if [ -n "$FAILURES" ]; then
+            for f in $FAILURES; do
+              CLASS=$(basename "$f" .xml | sed 's/TEST-//')
+              MSG=$(grep -m 1 '<failure' "$f" | sed -E 's/.*message="([^"]*)".*/\1/')
+              echo "::error file=$f,title=Test Failure in $CLASS::$MSG"
+              cat "$f"
+            done
+            exit 1
+          fi
 
       - name: Assemble debug
         run: ./gradlew assembleDebug --stacktrace
