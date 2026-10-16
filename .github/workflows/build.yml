@@ -40,11 +40,13 @@ jobs:
 
       - name: Assemble debug
         run: |
-          set -o pipefail
-          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log || {
-            ERR=$(grep -E "^e: " build.log | head -n 5 | tr '\n' ' ')
+          ./gradlew assembleDebug --stacktrace > build.log 2>&1 || {
+            ERR=$(grep -o "e: .*" build.log | head -n 5 | paste -sd "; " - || true)
             if [ -z "$ERR" ]; then
-              ERR=$(grep -E "FAILURE:|Caused by:" build.log | head -n 3 | tr '\n' ' ')
+              ERR=$(grep -o "FAILURE: .*" build.log | head -n 3 | paste -sd "; " - || true)
+            fi
+            if [ -z "$ERR" ]; then
+              ERR=$(tail -n 20 build.log | tr '\n' ' ' || true)
             fi
             echo "::error::Assemble debug failed: $ERR"
             exit 1
