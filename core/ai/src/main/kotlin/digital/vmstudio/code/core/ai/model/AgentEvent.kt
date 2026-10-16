@@ -157,7 +157,7 @@ data class AgentRunConfig(
     /**
      * Optional system prompt appended to the session.
      */
-    val systemPrompt: String? = DEFAULT_MOBILE_PROMPT,
+    val systemPrompt: String? = null,
     /**
      * Earlier turns of this chat as plain text, oldest first. Lets a backend
      * without its own server-side session (the HTTP gateway) continue a chat
