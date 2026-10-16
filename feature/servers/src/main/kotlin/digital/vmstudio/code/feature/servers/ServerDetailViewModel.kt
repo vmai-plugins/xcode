@@ -129,25 +129,30 @@ class ServerDetailViewModel @Inject constructor(
                 val session = sessionResult.value
                 try {
                     // System resources
-                    val res = session.execute(
+                    val resResult = session.execute(
                         "uptime; echo '---'; free -m; echo '---'; df -h /",
-                        CommandLimits(timeoutSeconds = 8),
+                        CommandLimits(timeoutMillis = 8_000),
                     )
-                    if (res.exitCode == 0) {
-                        val tel = parseTelemetry(res.stdout)
+                    if (resResult is VmResult.Success && resResult.value.exitCode == 0) {
+                        val tel = parseTelemetry(resResult.value.stdout)
                         _uiState.update { it.copy(telemetry = tel) }
                     }
 
                     // Docker containers
-                    val dockerRes = session.execute(
+                    val dockerResResult = session.execute(
                         "docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}' 2>/dev/null",
-                        CommandLimits(timeoutSeconds = 8),
+                        CommandLimits(timeoutMillis = 8_000),
                     )
-                    if (dockerRes.exitCode == 0 && dockerRes.stdout.isNotBlank()) {
-                        val conts = parseContainers(dockerRes.stdout)
-                        _uiState.update { it.copy(hasDocker = true, containers = conts) }
-                    } else if (dockerRes.exitCode == 0) {
-                        _uiState.update { it.copy(hasDocker = true, containers = emptyList()) }
+                    if (dockerResResult is VmResult.Success) {
+                        val dockerRes = dockerResResult.value
+                        if (dockerRes.exitCode == 0 && dockerRes.stdout.isNotBlank()) {
+                            val conts = parseContainers(dockerRes.stdout)
+                            _uiState.update { it.copy(hasDocker = true, containers = conts) }
+                        } else if (dockerRes.exitCode == 0) {
+                            _uiState.update { it.copy(hasDocker = true, containers = emptyList()) }
+                        } else {
+                            _uiState.update { it.copy(hasDocker = false) }
+                        }
                     } else {
                         _uiState.update { it.copy(hasDocker = false) }
                     }
