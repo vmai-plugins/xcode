@@ -236,6 +236,10 @@ class SftpRemoteFileSystem @Inject constructor(
         if (isLocalOrVirtual(serverId, path)) return localFs.writeText(path, content)
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
+            val parent = RemotePath.parent(normalised)
+            if (parent.isNotBlank() && parent != "/") {
+                runCatching { sftp.mkdirs(parent) }
+            }
             val bytes = content.toByteArray(Charsets.UTF_8)
             // TRUNC so a shorter replacement does not leave the tail of the old file.
             val modes = setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
