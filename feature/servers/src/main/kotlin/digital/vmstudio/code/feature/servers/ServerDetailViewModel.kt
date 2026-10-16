@@ -11,11 +11,11 @@ import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import digital.vmstudio.code.core.ssh.connection.SshConnectionState
 import digital.vmstudio.code.core.ssh.host.HostKeyVerdict
 import digital.vmstudio.code.core.ssh.model.Server
+import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -55,7 +55,7 @@ data class ServerDetailUiState(
 @HiltViewModel
 class ServerDetailViewModel @Inject constructor(
     private val connectionManager: SshConnectionManager,
-    serverRepository: digital.vmstudio.code.core.ssh.repository.ServerRepository,
+    private val serverRepository: ServerRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -63,93 +63,66 @@ class ServerDetailViewModel @Inject constructor(
         "ServerDetail requires a serverId"
     }
 
-    private val transientError = MutableStateFlow<VmError?>(null)
-    private val busy = MutableStateFlow(false)
-    private val telemetry = MutableStateFlow<VpsTelemetry?>(null)
-    private val loadingTelemetry = MutableStateFlow(false)
-    private val containers = MutableStateFlow<List<DockerContainerInfo>>(emptyList())
-    private val hasDocker = MutableStateFlow(false)
-    private val containerLogs = MutableStateFlow<Pair<String, String>?>(null)
-
-    val uiState: StateFlow<ServerDetailUiState> = combine(
-        serverRepository.observe(serverId),
-        connectionManager.state(serverId),
-        connectionManager.pendingHostKeys,
-        transientError,
-        busy,
-        telemetry,
-        loadingTelemetry,
-        containers,
-        hasDocker,
-    ) { params ->
-        val server = params[0] as? Server
-        val connectionState = params[1] as SshConnectionState
-        @Suppress("UNCHECKED_CAST")
-        val pendingKeys = params[2] as Map<String, HostKeyVerdict>
-        val error = params[3] as? VmError
-        val isBusy = params[4] as Boolean
-        val tel = params[5] as? VpsTelemetry
-        val isLoadingTel = params[6] as Boolean
-        @Suppress("UNCHECKED_CAST")
-        val conts = params[7] as List<DockerContainerInfo>
-        val dockerAvailable = params[8] as Boolean
-
-        ServerDetailUiState(
-            server = server,
-            connectionState = connectionState,
-            pendingHostKey = pendingKeys[serverId],
-            error = if (pendingKeys[serverId] != null) null else error,
-            isBusy = isBusy,
-            telemetry = tel,
-            isLoadingTelemetry = isLoadingTel,
-            containers = conts,
-            hasDocker = dockerAvailable,
-            containerLogs = containerLogs.value,
-        )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = ServerDetailUiState(),
-    )
+    private val _uiState = MutableStateFlow(ServerDetailUiState())
+    val uiState: StateFlow<ServerDetailUiState> = _uiState.asStateFlow()
 
     init {
+        // Observe server configuration
+        viewModelScope.launch {
+            serverRepository.observe(serverId).collect { s ->
+                _uiState.update { it.copy(server = s) }
+            }
+        }
+
+        // Observe connection state
         viewModelScope.launch {
             connectionManager.state(serverId).collect { state ->
+                _uiState.update { it.copy(connectionState = state) }
                 if (state.isConnected) {
                     refreshTelemetry()
                 }
             }
         }
+
+        // Observe pending host keys
+        viewModelScope.launch {
+            connectionManager.pendingHostKeys.collect { keys ->
+                val key = keys[serverId]
+                _uiState.update { it.copy(pendingHostKey = key) }
+            }
+        }
     }
 
     fun connect() {
-        if (busy.value) return
-        busy.value = true
-        transientError.value = null
+        if (_uiState.value.isBusy) return
+        _uiState.update { it.copy(isBusy = true, error = null) }
         viewModelScope.launch {
             when (val result = connectionManager.session(serverId)) {
-                is VmResult.Failure -> transientError.value = result.error
+                is VmResult.Failure -> _uiState.update { it.copy(error = result.error, isBusy = false) }
                 is VmResult.Success -> {
-                    transientError.value = null
+                    _uiState.update { it.copy(error = null, isBusy = false) }
                     refreshTelemetry()
                 }
             }
-            busy.value = false
         }
     }
 
     fun disconnect() {
         viewModelScope.launch {
             connectionManager.disconnect(serverId)
-            telemetry.value = null
-            containers.value = emptyList()
-            hasDocker.value = false
+            _uiState.update {
+                it.copy(
+                    telemetry = null,
+                    containers = emptyList(),
+                    hasDocker = false,
+                )
+            }
         }
     }
 
     fun refreshTelemetry() {
-        if (loadingTelemetry.value) return
-        loadingTelemetry.value = true
+        if (_uiState.value.isLoadingTelemetry) return
+        _uiState.update { it.copy(isLoadingTelemetry = true) }
         viewModelScope.launch {
             val sessionResult = connectionManager.session(serverId)
             if (sessionResult is VmResult.Success) {
@@ -161,7 +134,8 @@ class ServerDetailViewModel @Inject constructor(
                         CommandLimits(timeoutSeconds = 8),
                     )
                     if (res.exitCode == 0) {
-                        telemetry.value = parseTelemetry(res.stdout)
+                        val tel = parseTelemetry(res.stdout)
+                        _uiState.update { it.copy(telemetry = tel) }
                     }
 
                     // Docker containers
@@ -170,19 +144,18 @@ class ServerDetailViewModel @Inject constructor(
                         CommandLimits(timeoutSeconds = 8),
                     )
                     if (dockerRes.exitCode == 0 && dockerRes.stdout.isNotBlank()) {
-                        hasDocker.value = true
-                        containers.value = parseContainers(dockerRes.stdout)
+                        val conts = parseContainers(dockerRes.stdout)
+                        _uiState.update { it.copy(hasDocker = true, containers = conts) }
                     } else if (dockerRes.exitCode == 0) {
-                        hasDocker.value = true
-                        containers.value = emptyList()
+                        _uiState.update { it.copy(hasDocker = true, containers = emptyList()) }
                     } else {
-                        hasDocker.value = false
+                        _uiState.update { it.copy(hasDocker = false) }
                     }
                 } catch (_: Exception) {
                     // Non-fatal telemetry probe
                 }
             }
-            loadingTelemetry.value = false
+            _uiState.update { it.copy(isLoadingTelemetry = false) }
         }
     }
 
@@ -200,14 +173,18 @@ class ServerDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val sessionResult = connectionManager.session(serverId)
             if (sessionResult is VmResult.Success) {
-                val res = sessionResult.value.execute("docker logs --tail 100 '$name'", CommandLimits(timeoutSeconds = 10))
-                containerLogs.value = name to (res.stdout.ifBlank { res.stderr }.ifBlank { "No logs found." })
+                val res = sessionResult.value.execute(
+                    "docker logs --tail 100 '$name'",
+                    CommandLimits(timeoutSeconds = 10),
+                )
+                val output = res.stdout.ifBlank { res.stderr }.ifBlank { "No logs found." }
+                _uiState.update { it.copy(containerLogs = name to output) }
             }
         }
     }
 
     fun dismissContainerLogs() {
-        containerLogs.value = null
+        _uiState.update { it.copy(containerLogs = null) }
     }
 
     private fun parseTelemetry(output: String): VpsTelemetry {
@@ -269,16 +246,15 @@ class ServerDetailViewModel @Inject constructor(
 
     /** Records the user's acceptance of the presented key, then connects. */
     fun trustHostKeyAndConnect() {
-        busy.value = true
+        _uiState.update { it.copy(isBusy = true) }
         viewModelScope.launch {
             when (val result = connectionManager.trustPendingHostKey(serverId)) {
-                is VmResult.Failure -> transientError.value = result.error
+                is VmResult.Failure -> _uiState.update { it.copy(error = result.error, isBusy = false) }
                 is VmResult.Success -> {
-                    transientError.value = null
+                    _uiState.update { it.copy(error = null, isBusy = false) }
                     refreshTelemetry()
                 }
             }
-            busy.value = false
         }
     }
 
@@ -287,7 +263,7 @@ class ServerDetailViewModel @Inject constructor(
     }
 
     fun dismissError() {
-        transientError.value = null
+        _uiState.update { it.copy(error = null) }
     }
 
     companion object {
