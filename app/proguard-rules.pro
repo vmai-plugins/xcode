@@ -26,3 +26,7 @@
 
 # Never strip the structured error types: their names appear in diagnostics.
 -keep class digital.vmstudio.code.core.common.error.** { *; }
+
+# Allow shrinking without halting on optional dependencies
+-dontwarn **
+
