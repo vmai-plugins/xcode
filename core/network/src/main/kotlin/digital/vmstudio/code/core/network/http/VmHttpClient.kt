@@ -177,7 +177,13 @@ class VmHttpClient @Inject constructor(
     fun stream(request: Request): Flow<SseEvent> = flow {
         offlineCheck()?.let { throw VmHttpException(it) }
 
-        val response = runInterruptible { client.newCall(request).execute() }
+        val response = try {
+            runInterruptible { client.newCall(request).execute() }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            throw VmHttpException(mapTransportError(throwable, request))
+        }
         response.use {
             if (!it.isSuccessful) {
                 throw VmHttpException(mapHttpError(it, it.body?.string().orEmpty(), request))
@@ -193,7 +199,13 @@ class VmHttpClient @Inject constructor(
 
             val decoder = SseDecoder()
             while (true) {
-                val line = runInterruptible { source.readUtf8Line() } ?: break
+                val line = try {
+                    runInterruptible { source.readUtf8Line() } ?: break
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    throw VmHttpException(mapTransportError(throwable, request))
+                }
                 val event = decoder.decode(line) ?: continue
                 if (event.isDone) return@use
                 emit(event)
