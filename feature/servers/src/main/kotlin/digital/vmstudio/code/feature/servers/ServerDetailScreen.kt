@@ -213,7 +213,7 @@ fun ServerDetailScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 LinearProgressIndicator(
-                                    progress = { tel.ramUsedPercent / 100f },
+                                    progress = tel.ramUsedPercent / 100f,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(8.dp)
