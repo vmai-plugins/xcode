@@ -201,14 +201,29 @@ class SftpRemoteFileSystem @Inject constructor(
                             "${formatBytes(maxBytes)} editor limit.",
                     )
                 }
-                val buffer = ByteArray(length.toInt().coerceAtLeast(0))
-                var offset = 0
-                while (offset < buffer.size) {
-                    val read = remote.read(offset.toLong(), buffer, offset, buffer.size - offset)
-                    if (read <= 0) break
-                    offset += read
+                if (length > 0L) {
+                    val buffer = ByteArray(length.toInt().coerceAtLeast(0))
+                    var offset = 0
+                    while (offset < buffer.size) {
+                        val read = remote.read(offset.toLong(), buffer, offset, buffer.size - offset)
+                        if (read <= 0) break
+                        offset += read
+                    }
+                    decodeTextStrictly(buffer, offset)
+                } else {
+                    // For dynamic Linux files (/proc, /sys) that report length 0, read in chunks.
+                    val out = java.io.ByteArrayOutputStream()
+                    val chunk = ByteArray(CHUNK_BYTES)
+                    var offset = 0L
+                    while (offset < maxBytes) {
+                        val read = remote.read(offset, chunk, 0, minOf(chunk.size.toLong(), maxBytes - offset).toInt())
+                        if (read <= 0) break
+                        out.write(chunk, 0, read)
+                        offset += read
+                    }
+                    val bytes = out.toByteArray()
+                    decodeTextStrictly(bytes, bytes.size)
                 }
-                decodeTextStrictly(buffer, offset)
             }
         }
     }
