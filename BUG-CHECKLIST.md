@@ -28,6 +28,9 @@
 - [x] Bug 154: Added a dedicated `Paste` chip to the `TerminalScreen` quick-key row to allow one-tap clipboard paste into remote SSH terminal sessions.
 - [x] Bug 155: Prevented Android Doze mode and screen locks from terminating active agent SSE streams by wiring `AgentWakeLockManager` and `AgentExecutionKeepAlive` foreground services into `OmniRouteProvider`.
 - [x] Bug 156: Removed the restrictive 25-turn model execution limit in `OmniRouteAgentLoop.kt`, unlocking long-running autonomous coding workflows with graceful pause summaries instead of hard error interruptions.
+- [x] Bug 157: Fixed parser failure on reasoning-only responses in `OmniRouteToolCodec.kt` where models like DeepSeek-R1 or Claude 3.7 with extended thinking returned empty content, by extracting `reasoning_content` and `"thinking"` blocks.
+- [x] Bug 158: Mapped unhandled raw socket and transport exceptions in `VmHttpClient.stream` to structured `VmError.Network` errors, preventing generic crashes on connection drops.
+- [x] Bug 159: Ensured clean socket disconnection on failed or aborted GitHub archive downloads in `ProjectCreateViewModel.kt` to avoid leaking HTTP connections.
 - [x] Fluid Chat: Optimized code block syntax highlighting to cap heavy regex scanning for large code blocks, avoiding frame drops during high-speed LLM streaming.
 - [x] Cleaned Detekt violations (`maxIssues`, line length wrapping, unsafe `!!` assertions) and configured `ignoreFailures = true` so static analysis uploads reports without blocking APK compilation.
 
