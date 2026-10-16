@@ -219,8 +219,23 @@ object OmniRouteToolCodec {
         }.orEmpty()
 
         val truncated = isLengthStop(choice.stringOrNull("finish_reason"))
-        val text = message.stringOrNull("content").orEmpty()
-        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated, text = text.takeIf { it.isNotBlank() })
+        val rawText = message.stringOrNull("content").orEmpty()
+        val reasoning = message.stringOrNull("reasoning_content")
+            ?: message.stringOrNull("reasoning")
+            ?: ""
+        val text = when {
+            rawText.isNotBlank() -> rawText
+            reasoning.isNotBlank() -> reasoning
+            else -> ""
+        }
+        if (toolCalls.isNotEmpty()) {
+            return OmniRouteTurn.ToolCalls(
+                calls = toolCalls,
+                usage = usage,
+                truncated = truncated,
+                text = text.takeIf { it.isNotBlank() },
+            )
+        }
 
         if (text.isBlank()) {
             return OmniRouteTurn.ParseFailed("The gateway response carried neither text nor tool calls.")
