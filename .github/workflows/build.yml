@@ -53,7 +53,12 @@ jobs:
           fi
 
       - name: Assemble debug
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build_debug.log || {
+            echo "::error::Assemble debug failed! Printing compiler error output:"
+            grep -E "e: |FAILURE:|Error:" -A 5 build_debug.log || tail -n 60 build_debug.log
+            exit 1
+          }
 
       # The release variant is built on every run because it is the one that broke
       # silently: R8 shrinking and lintVital only execute here, and a debug-only
