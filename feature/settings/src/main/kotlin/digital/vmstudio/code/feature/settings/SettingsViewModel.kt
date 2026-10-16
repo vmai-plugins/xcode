@@ -61,15 +61,16 @@ class SettingsViewModel @Inject constructor(
     private val vaultStatus = MutableStateFlow<String?>(null)
     private val isVaultBusy = MutableStateFlow(false)
 
+    private val eraseState = combine(isErasing, credentialEraseError) { erasing, error -> erasing to error }
+    private val vaultState = combine(vaultStatus, isVaultBusy) { status, busy -> status to busy }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         preferencesRepository.preferences,
         credentialStore.credentials,
-        isErasing,
+        eraseState,
         updateManager.state,
-        credentialEraseError,
-        vaultStatus,
-        isVaultBusy,
-    ) { preferences, credentials, erasing, updateState, eraseError, vStatus, vBusy ->
+        vaultState,
+    ) { preferences, credentials, (erasing, eraseError), updateState, (vStatus, vBusy) ->
         SettingsUiState(
             preferences = preferences,
             storedCredentialCount = credentials.size,
