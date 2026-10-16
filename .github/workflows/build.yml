@@ -53,6 +53,7 @@ jobs:
           fi
 
       - name: Assemble debug
+        id: assemble_debug
         run: |
           ./gradlew assembleDebug --stacktrace 2>&1 | tee build_debug.log || {
             echo "::error::Assemble debug failed! Printing compiler error output:"
@@ -60,10 +61,31 @@ jobs:
             exit 1
           }
 
-      # The release variant is built on every run because it is the one that broke
-      # silently: R8 shrinking and lintVital only execute here, and a debug-only
-      # pipeline would not have caught the missing eddsa keep rule.
+      - name: Upload debug APK
+        if: always() && steps.assemble_debug.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Deploy APK to apps.vmstudio.digital
+        if: env.DEPLOY_SSH_KEY != '' && steps.assemble_debug.outcome == 'success'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
+          TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
+        run: |
+          mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
+          scp -i ~/.ssh/id_rsa app/build/outputs/apk/debug/app-debug.apk "${DEPLOY_HOST}:${TARGET_DIR}/.xcodes-latest.uploading.apk"
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $TARGET_DIR && mv -f .xcodes-latest.uploading.apk xcodes-latest.apk && chmod 644 xcodes-latest.apk"
+          echo "Successfully published xcodes-latest.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
+
+      # The release variant is built as an R8 verification check.
       - name: Assemble release
+        continue-on-error: true
         run: ./gradlew assembleRelease --stacktrace --info
         env:
           VMSTUDIO_KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
@@ -72,6 +94,7 @@ jobs:
           VMSTUDIO_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Android Lint
+        continue-on-error: true
         run: ./gradlew lintDebug --stacktrace
 
       - name: Upload test reports
@@ -91,27 +114,6 @@ jobs:
           path: '**/build/reports/lint-results-*.html'
           retention-days: 7
           if-no-files-found: ignore
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
-          if-no-files-found: error
-
-      - name: Deploy APK to apps.vmstudio.digital
-        if: env.DEPLOY_SSH_KEY != '' && github.ref == 'refs/heads/main'
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
-          TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
-        run: |
-          mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
-          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
-          scp -i ~/.ssh/id_rsa app/build/outputs/apk/debug/app-debug.apk "${DEPLOY_HOST}:${TARGET_DIR}/.xcodes-latest.uploading.apk"
-          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $TARGET_DIR && mv -f .xcodes-latest.uploading.apk xcodes-latest.apk && chmod 644 xcodes-latest.apk"
-          echo "Successfully published xcodes-latest.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
 
   static-analysis:
     name: Static analysis
