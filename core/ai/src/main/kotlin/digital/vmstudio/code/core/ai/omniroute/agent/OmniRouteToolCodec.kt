@@ -373,6 +373,9 @@ object OmniRouteToolCodec {
             val block = element as? JsonObject ?: continue
             when (block.stringOrNull("type")) {
                 "text" -> block.stringOrNull("text")?.let(text::append)
+                "thinking" -> block.stringOrNull("thinking")?.let { thinkingContent ->
+                    if (text.isEmpty()) text.append(thinkingContent)
+                }
                 "tool_use" -> {
                     val id = block.stringOrNull("id").orEmpty()
                     val name = block.stringOrNull("name")
