@@ -22,6 +22,12 @@
 - [x] Bug 148: Session Deliverables Shelf now uses `associateBy` to accurately retain the latest rollback/reverted status across repeated file edits.
 - [x] Bug 149: Replaced hardcoded `/sdcard/VMStudio` paths with `context.getExternalFilesDir(null)` in `ProjectCreateViewModel` for full Android 11+ scoped storage compatibility.
 - [x] Bug 150: Streamlined APK installation in `ProjectDetailViewModel` using `RemoteFileSystem.download` to handle both remote SFTP and local SAF tree URIs.
+- [x] Bug 151: Fixed `NO_SUCH_FILE` error on nested remote file writes in `SftpRemoteFileSystem.writeText` by automatically creating parent directories via `sftp.mkdirs` before opening write streams.
+- [x] Bug 152: Handled zero-length Linux pseudo-filesystem files (`/proc/cpuinfo`, `/proc/meminfo`, `/sys/class/...`) in `SftpRemoteFileSystem.readText` using dynamic streaming buffers instead of truncating to 0 bytes.
+- [x] Bug 153: Optimized `TasksViewModel` project server resolution using parallel asynchronous lookups instead of sequential blocking queries inside flow combine.
+- [x] Bug 154: Added a dedicated `Paste` chip to the `TerminalScreen` quick-key row to allow one-tap clipboard paste into remote SSH terminal sessions.
+- [x] Bug 155: Prevented Android Doze mode and screen locks from terminating active agent SSE streams by wiring `AgentWakeLockManager` and `AgentExecutionKeepAlive` foreground services into `OmniRouteProvider`.
+- [x] Bug 156: Removed the restrictive 25-turn model execution limit in `OmniRouteAgentLoop.kt`, unlocking long-running autonomous coding workflows with graceful pause summaries instead of hard error interruptions.
 - [x] Fluid Chat: Optimized code block syntax highlighting to cap heavy regex scanning for large code blocks, avoiding frame drops during high-speed LLM streaming.
 - [x] Cleaned Detekt violations (`maxIssues`, line length wrapping, unsafe `!!` assertions) and configured `ignoreFailures = true` so static analysis uploads reports without blocking APK compilation.
 
