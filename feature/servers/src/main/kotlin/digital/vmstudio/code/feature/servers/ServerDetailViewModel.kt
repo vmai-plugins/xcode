@@ -168,7 +168,7 @@ class ServerDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val sessionResult = connectionManager.session(serverId)
             if (sessionResult is VmResult.Success) {
-                sessionResult.value.execute("docker restart '$name'", CommandLimits(timeoutSeconds = 20))
+                sessionResult.value.execute("docker restart '$name'", CommandLimits(timeoutMillis = 20_000))
                 refreshTelemetry()
             }
         }
@@ -180,10 +180,12 @@ class ServerDetailViewModel @Inject constructor(
             if (sessionResult is VmResult.Success) {
                 val res = sessionResult.value.execute(
                     "docker logs --tail 100 '$name'",
-                    CommandLimits(timeoutSeconds = 10),
+                    CommandLimits(timeoutMillis = 10_000),
                 )
-                val output = res.stdout.ifBlank { res.stderr }.ifBlank { "No logs found." }
-                _uiState.update { it.copy(containerLogs = name to output) }
+                if (res is VmResult.Success) {
+                    val output = res.value.stdout.ifBlank { res.value.stderr }.ifBlank { "No logs found." }
+                    _uiState.update { it.copy(containerLogs = name to output) }
+                }
             }
         }
     }
