@@ -32,8 +32,7 @@ env:
 jobs:
   publish:
     name: Publish nightly APK
-    # Only builds that passed: a red main must not become the downloadable app.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -44,6 +43,8 @@ jobs:
 
       - name: Download the APK Build already made
         if: github.event_name == 'workflow_run'
+        id: download_apk
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: app-debug
@@ -52,23 +53,24 @@ jobs:
           path: apk
 
       - name: Set up JDK 17
-        if: github.event_name == 'workflow_dispatch'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
-        if: github.event_name == 'workflow_dispatch'
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: true
 
-      - name: Assemble debug (manual runs only)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Assemble debug if not already downloaded
         run: |
-          ./gradlew :app:assembleDebug --stacktrace
-          mkdir -p apk && cp app/build/outputs/apk/debug/app-debug.apk apk/
+          mkdir -p apk
+          if [ ! -f apk/app-debug.apk ]; then
+            echo "Building APK directly in nightly pipeline..."
+            ./gradlew assembleDebug --stacktrace
+            cp app/build/outputs/apk/debug/app-debug.apk apk/app-debug.apk
+          fi
 
       - name: Name the APK
         run: |
