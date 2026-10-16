@@ -39,7 +39,13 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Assemble debug
-        run: ./gradlew assembleDebug --stacktrace --info
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log || {
+            echo "=== DETAILED COMPILER ERRORS ==="
+            grep -E "e: |FAILURE:|Exception:|Caused by:" build.log -A 5 || tail -n 100 build.log
+            exit 1
+          }
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
