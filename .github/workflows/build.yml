@@ -42,8 +42,11 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log || {
-            echo "=== DETAILED COMPILER ERRORS ==="
-            grep -E "e: |FAILURE:|Exception:|Caused by:" build.log -A 5 || tail -n 100 build.log
+            ERR=$(grep -E "^e: " build.log | head -n 5 | tr '\n' ' ')
+            if [ -z "$ERR" ]; then
+              ERR=$(grep -E "FAILURE:|Caused by:" build.log | head -n 3 | tr '\n' ' ')
+            fi
+            echo "::error::Assemble debug failed: $ERR"
             exit 1
           }
 
