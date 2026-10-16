@@ -22,7 +22,6 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             }
             lint {
                 abortOnError = false
-                checkReleaseBuilds = false
             }
             buildTypes {
                 getByName("debug") {
