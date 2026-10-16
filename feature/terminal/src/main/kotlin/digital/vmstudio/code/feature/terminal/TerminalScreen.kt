@@ -281,6 +281,7 @@ private fun TerminalInputBar(
     var controlArmed by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Column(
         modifier = Modifier
@@ -294,6 +295,9 @@ private fun TerminalInputBar(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(VmTheme.spacing.xs),
         ) {
+            KeyChip("Paste") {
+                clipboard.getText()?.text?.let { onSendText(it) }
+            }
             KeyChip("Esc") { onSendKey(TerminalKey.ESCAPE) }
             KeyChip("Tab") { onSendKey(TerminalKey.TAB) }
             KeyChip("Ctrl", isActive = controlArmed) { controlArmed = !controlArmed }
