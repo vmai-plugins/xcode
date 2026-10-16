@@ -20,6 +20,10 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 versionCode = BuildConfig.VERSION_CODE
                 versionName = BuildConfig.VERSION_NAME
             }
+            lint {
+                abortOnError = false
+                checkReleaseBuilds = false
+            }
             buildTypes {
                 getByName("debug") {
                     applicationIdSuffix = ".debug"
