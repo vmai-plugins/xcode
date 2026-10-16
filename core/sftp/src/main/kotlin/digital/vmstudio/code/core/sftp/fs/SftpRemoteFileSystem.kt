@@ -237,7 +237,7 @@ class SftpRemoteFileSystem @Inject constructor(
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
             val parent = RemotePath.parent(normalised)
-            if (parent.isNotBlank() && parent != "/") {
+            if (!parent.isNullOrBlank() && parent != "/") {
                 runCatching { sftp.mkdirs(parent) }
             }
             val bytes = content.toByteArray(Charsets.UTF_8)
