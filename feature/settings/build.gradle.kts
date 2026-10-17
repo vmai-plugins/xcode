@@ -11,5 +11,6 @@ dependencies {
     implementation(projects.core.security)
     implementation(projects.core.ai)
     implementation(projects.core.ssh)
+    implementation(projects.core.database)
     implementation(projects.core.update)
 }
