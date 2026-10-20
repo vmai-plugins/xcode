@@ -109,6 +109,10 @@ fun ConnectorsScreen(
     var driveTokenDraft by remember { mutableStateOf("") }
     var driveTokenVisible by remember { mutableStateOf(false) }
 
+    var hubExpanded by remember { mutableStateOf(false) }
+    var hubKeyDraft by remember { mutableStateOf("") }
+    var hubKeyVisible by remember { mutableStateOf(false) }
+
     var aiExpanded by remember { mutableStateOf(false) }
     var aiKeyDraft by remember { mutableStateOf("") }
     var aiKeyVisible by remember { mutableStateOf(false) }
@@ -339,18 +343,105 @@ fun ConnectorsScreen(
                         badgeBackground = Color(0xFFE1F5FE),
                         title = "VM Project Hub",
                         category = "Universal Workspace & Kanban Sync",
-                        status = VmStatus.CONNECTED,
-                        statusText = state.hubProjectCount?.let { "$it workspaces" } ?: "Online",
+                        status = if (state.hasHubKey) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.hasHubKey) {
+                            state.hubProjectCount?.let { "$it workspaces" } ?: "Paired"
+                        } else {
+                            "Not Paired"
+                        },
                         description = "Synchronizes universal project repositories and Kanban sprint tasks across local storage, GitHub, and VPS environments.",
-                        tags = listOf("Universal Portfolios", "REST JSON", "Kanban Tasks", "Auto-Mapping"),
-                        isExpanded = false,
-                        onToggleExpand = { viewModel.syncUniversalHubProjects() },
+                        tags = listOf("Universal Portfolios", "REST JSON", "Kanban Tasks", "Zero-Trust Pairing"),
+                        isExpanded = hubExpanded,
+                        onToggleExpand = { hubExpanded = !hubExpanded },
                         statusMessage = state.hubStatusMessage,
-                        primaryActionText = if (state.isSyncingHub) "Syncing Workspaces…" else "Sync Workspaces & Tasks",
-                        onPrimaryAction = { viewModel.syncUniversalHubProjects() },
-                        secondaryActionText = "Sync Credentials & APIs",
-                        onSecondaryAction = { viewModel.syncCredentialsFromHub() },
-                    ) {}
+                        primaryActionText = if (state.hasHubKey) {
+                            if (state.isSyncingHub) "Syncing Workspaces…" else "Sync Workspaces & Tasks"
+                        } else {
+                            "Pair Device"
+                        },
+                        onPrimaryAction = {
+                            if (state.hasHubKey) {
+                                viewModel.syncUniversalHubProjects()
+                            } else {
+                                hubExpanded = true
+                            }
+                        },
+                        secondaryActionText = if (state.hasHubKey) "Sync Credentials & APIs" else null,
+                        onSecondaryAction = if (state.hasHubKey) {
+                            { viewModel.syncCredentialsFromHub() }
+                        } else null,
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            Text(
+                                text = if (state.hasHubKey) "Hub Pairing Configuration" else "Pair with VM Project Hub",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = if (state.hasHubKey) {
+                                    "Your device is paired with vmstudio.digital. You can update your Hub Key or unpair this device at any time."
+                                } else {
+                                    "Enter your Hub API Key (found in WordPress Admin > VM Project Hub > Settings > API Token) to link this mobile device securely."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            OutlinedTextField(
+                                value = hubKeyDraft,
+                                onValueChange = { hubKeyDraft = it },
+                                label = { Text("Hub API Key (xc_...)") },
+                                placeholder = { Text("xc_...") },
+                                singleLine = true,
+                                visualTransformation = if (hubKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    Row {
+                                        IconButton(onClick = {
+                                            clipboardManager.getText()?.text?.let { hubKeyDraft = it.trim() }
+                                        }) {
+                                            Icon(Icons.Default.ContentPaste, contentDescription = "Paste from clipboard")
+                                        }
+                                        IconButton(onClick = { hubKeyVisible = !hubKeyVisible }) {
+                                            Icon(
+                                                imageVector = if (hubKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = null,
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                            ) {
+                                VmButton(
+                                    text = if (state.isSyncingHub) "Verifying…" else if (state.hasHubKey) "Update & Sync" else "Pair Device",
+                                    onClick = { viewModel.pairHubKey(hubKeyDraft) },
+                                    enabled = hubKeyDraft.isNotBlank() && !state.isSyncingHub,
+                                    style = VmButtonStyle.Primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (state.hasHubKey) {
+                                    VmButton(
+                                        text = "Unpair",
+                                        onClick = {
+                                            viewModel.unpairHub()
+                                            hubKeyDraft = ""
+                                        },
+                                        style = VmButtonStyle.Destructive,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

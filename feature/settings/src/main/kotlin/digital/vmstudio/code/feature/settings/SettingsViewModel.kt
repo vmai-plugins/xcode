@@ -140,6 +140,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.setConfirmDestructiveCommands(enabled) }
     }
 
+    fun setBiometricLockEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setBiometricLockEnabled(enabled) }
+    }
+
     /** Diagnostics are redacted at capture time, so this text is safe to share. */
     fun exportDiagnostics(): String = diagnosticsLogSink.exportAsText()
 

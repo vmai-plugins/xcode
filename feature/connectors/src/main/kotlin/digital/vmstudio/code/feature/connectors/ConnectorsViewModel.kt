@@ -55,6 +55,7 @@ data class ConnectorsUiState(
     // VM Project Hub
     val hubProjectCount: Int? = null,
     val hubTaskCount: Int? = null,
+    val hasHubKey: Boolean = false,
     val isSyncingHub: Boolean = false,
     val hubStatusMessage: String? = null,
     // AI Gateway
@@ -122,6 +123,7 @@ class ConnectorsViewModel @Inject constructor(
             githubStatusMessage = extra.githubStatusMessage,
             hubProjectCount = extra.hubProjectCount,
             hubTaskCount = extra.hubTaskCount,
+            hasHubKey = !prefs.hubApiKey.isNullOrBlank(),
             isSyncingHub = extra.isSyncingHub,
             hubStatusMessage = extra.hubStatusMessage,
             aiModelCount = prefs.aiAvailableModelIds.size,
@@ -139,9 +141,20 @@ class ConnectorsViewModel @Inject constructor(
 
     init {
         checkGitHubStatus()
-        refreshProjectHubStatus()
         testAiGateway()
-        syncCredentialsIfMissing()
+        viewModelScope.launch {
+            val key = preferencesRepository.preferences.first().hubApiKey
+            if (!key.isNullOrBlank()) {
+                refreshProjectHubStatus()
+                syncCredentialsIfMissing()
+            } else {
+                extraState.update {
+                    it.copy(
+                        hubStatusMessage = "Device not paired. Enter your Hub Key below to sync projects, tasks, and credentials securely."
+                    )
+                }
+            }
+        }
     }
 
     private fun syncCredentialsIfMissing() {
@@ -298,6 +311,50 @@ class ConnectorsViewModel @Inject constructor(
     }
 
     // --- VM Project Hub -----------------------------------------------------
+
+    fun pairHubKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isBlank()) {
+            extraState.update { it.copy(hubStatusMessage = "Hub Key cannot be empty") }
+            return
+        }
+        viewModelScope.launch {
+            extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Verifying Hub Key with vmstudio.digital…") }
+            when (val testRes = projectHubClient.testHubKey(trimmed)) {
+                is VmResult.Failure -> {
+                    extraState.update {
+                        it.copy(
+                            isSyncingHub = false,
+                            hubStatusMessage = "Pairing failed: ${testRes.error.summary}. Check key in WordPress Admin > VM Project Hub.",
+                        )
+                    }
+                }
+                is VmResult.Success -> {
+                    preferencesRepository.setHubApiKey(trimmed)
+                    extraState.update {
+                        it.copy(
+                            hubProjectCount = testRes.value,
+                            hubStatusMessage = "Paired successfully! Discovered ${testRes.value} projects. Syncing now…",
+                        )
+                    }
+                    syncUniversalHubProjects()
+                }
+            }
+        }
+    }
+
+    fun unpairHub() {
+        viewModelScope.launch {
+            preferencesRepository.setHubApiKey(null)
+            extraState.update {
+                it.copy(
+                    hubProjectCount = null,
+                    hubTaskCount = null,
+                    hubStatusMessage = "Device unpaired from VM Project Hub.",
+                )
+            }
+        }
+    }
 
     fun refreshProjectHubStatus() {
         viewModelScope.launch {

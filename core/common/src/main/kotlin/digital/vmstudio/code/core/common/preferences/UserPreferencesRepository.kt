@@ -95,6 +95,18 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.HAS_SIGNED_IN] = signedIn
     }
 
+    suspend fun setHubApiKey(key: String?) = edit {
+        if (key.isNullOrBlank()) {
+            it.remove(Keys.HUB_API_KEY)
+        } else {
+            it[Keys.HUB_API_KEY] = key.trim()
+        }
+    }
+
+    suspend fun setBiometricLockEnabled(enabled: Boolean) = edit {
+        it[Keys.BIOMETRIC_LOCK_ENABLED] = enabled
+    }
+
     suspend fun setAiApiKeyCredentialId(credentialId: String?) = edit {
         if (credentialId == null) {
             it.remove(Keys.AI_API_KEY_CREDENTIAL)
@@ -203,6 +215,8 @@ class UserPreferencesRepository @Inject constructor(
             githubUsername = this[Keys.GITHUB_USERNAME],
             userEmail = this[Keys.USER_EMAIL],
             userName = this[Keys.USER_NAME],
+            hubApiKey = this[Keys.HUB_API_KEY],
+            biometricLockEnabled = this[Keys.BIOMETRIC_LOCK_ENABLED] ?: defaults.biometricLockEnabled,
         )
     }
 
@@ -251,6 +265,8 @@ class UserPreferencesRepository @Inject constructor(
         val GITHUB_USERNAME = stringPreferencesKey("github_username")
         val USER_EMAIL = stringPreferencesKey("user_email")
         val USER_NAME = stringPreferencesKey("user_name")
+        val HUB_API_KEY = stringPreferencesKey("hub_api_key")
+        val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
     }
 
     private companion object {

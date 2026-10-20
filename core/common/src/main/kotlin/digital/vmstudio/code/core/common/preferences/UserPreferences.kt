@@ -40,8 +40,10 @@ data class UserPreferences(
     val terminalFontSizeSp: Float = 12.5f,
     val terminalScrollbackLines: Int = 5_000,
     val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.SAFE_AUTO,
-    val hasCompletedOnboarding: Boolean = true,
-    val hasSignedIn: Boolean = true,
+    val hasCompletedOnboarding: Boolean = false,
+    val hasSignedIn: Boolean = false,
+    val hubApiKey: String? = null,
+    val biometricLockEnabled: Boolean = false,
     /**
      * Context window at which the CLI auto-compacts.
      *

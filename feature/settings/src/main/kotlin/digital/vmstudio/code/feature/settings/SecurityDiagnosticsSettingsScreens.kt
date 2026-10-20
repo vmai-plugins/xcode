@@ -58,6 +58,33 @@ fun SecuritySettingsScreen(
     ) {
         item {
             VmCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = spacing.sm)) {
+                        Text(
+                            text = "Biometric & Screen Lock",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "Require fingerprint, face unlock, or device PIN every time X-Codes is launched.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = state.preferences.biometricLockEnabled,
+                        onCheckedChange = { viewModel.setBiometricLockEnabled(it) },
+                    )
+                }
+            }
+        }
+
+        item {
+            VmCard {
                 Text(
                     text = "Zero-Trust Encrypted Vault",
                     style = MaterialTheme.typography.titleMedium,
