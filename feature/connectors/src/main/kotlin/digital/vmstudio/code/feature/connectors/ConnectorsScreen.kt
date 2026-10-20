@@ -354,6 +354,8 @@ fun ConnectorsScreen(
                         statusMessage = state.hubStatusMessage,
                         primaryActionText = if (state.isSyncingHub) "Syncing Workspaces…" else "Sync Workspaces & Tasks",
                         onPrimaryAction = { viewModel.syncUniversalHubProjects() },
+                        secondaryActionText = "Sync Credentials & APIs",
+                        onSecondaryAction = { viewModel.syncCredentialsFromHub() },
                     ) {}
                 }
             }

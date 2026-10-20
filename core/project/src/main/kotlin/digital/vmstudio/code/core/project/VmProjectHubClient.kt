@@ -82,6 +82,16 @@ data class HubTaskItem(
     val dueDate: String?,
 )
 
+data class HubCredentials(
+    val githubToken: String?,
+    val omnirouteKey: String?,
+    val omnirouteUrl: String?,
+    val defaultModel: String?,
+    val modelsUrl: String?,
+    val kaggleUsername: String?,
+    val vpsHost: String?,
+)
+
 @Singleton
 class VmProjectHubClient @Inject constructor(
     private val httpClient: VmHttpClient,
@@ -120,6 +130,36 @@ class VmProjectHubClient @Inject constructor(
         when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
             is VmResult.Failure -> result
             is VmResult.Success -> VmResult.Success(parseTasks(result.value, projectsById))
+        }
+    }
+
+    suspend fun fetchCredentials(): VmResult<HubCredentials> = withContext(ioDispatcher) {
+        val request = Request.Builder()
+            .url("$HUB_BASE_URL/credentials")
+            .header("X-VMPJ-Key", DEFAULT_HUB_KEY)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+
+        when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+            is VmResult.Failure -> result
+            is VmResult.Success -> {
+                val root = runCatching { json.parseToJsonElement(result.value) }.getOrNull() as? JsonObject
+                if (root == null || (root["ok"] as? JsonPrimitive)?.content == "false") {
+                    VmResult.Failure(VmError.Network("Failed to retrieve credentials from Hub"))
+                } else {
+                    val creds = HubCredentials(
+                        githubToken = root.str("github_token"),
+                        omnirouteKey = root.str("omniroute_key"),
+                        omnirouteUrl = root.str("omniroute_url"),
+                        defaultModel = root.str("default_model"),
+                        modelsUrl = root.str("models_url"),
+                        kaggleUsername = root.str("kaggle_username"),
+                        vpsHost = root.str("vps_host"),
+                    )
+                    VmResult.Success(creds)
+                }
+            }
         }
     }
 

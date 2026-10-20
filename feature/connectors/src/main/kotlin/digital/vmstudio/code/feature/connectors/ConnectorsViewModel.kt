@@ -142,6 +142,27 @@ class ConnectorsViewModel @Inject constructor(
         checkGitHubStatus()
         refreshProjectHubStatus()
         testAiGateway()
+        syncCredentialsIfMissing()
+    }
+
+    private fun syncCredentialsIfMissing() {
+        viewModelScope.launch {
+            val prefs = preferencesRepository.preferences.first()
+            if (prefs.githubTokenCredentialId == null || prefs.aiApiKeyCredentialId == null) {
+                when (val credsRes = projectHubClient.fetchCredentials()) {
+                    is VmResult.Success -> {
+                        val creds = credsRes.value
+                        if (prefs.githubTokenCredentialId == null && !creds.githubToken.isNullOrBlank()) {
+                            saveGitHubToken(creds.githubToken)
+                        }
+                        if (prefs.aiApiKeyCredentialId == null && !creds.omnirouteKey.isNullOrBlank()) {
+                            saveCustomAiKey(creds.omnirouteKey)
+                        }
+                    }
+                    is VmResult.Failure -> {}
+                }
+            }
+        }
     }
 
     fun selectFilter(filter: ConnectorFilter) {
@@ -299,9 +320,23 @@ class ConnectorsViewModel @Inject constructor(
 
     fun syncUniversalHubProjects() {
         if (extraState.value.isSyncingHub) return
-        extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Syncing universal workspaces from VM Project Hub…") }
+        extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Syncing universal workspaces & credentials from VM Project Hub…") }
         viewModelScope.launch {
             try {
+                // Auto-sync credentials from Hub if present
+                when (val credsRes = projectHubClient.fetchCredentials()) {
+                    is VmResult.Success -> {
+                        val creds = credsRes.value
+                        if (!creds.githubToken.isNullOrBlank() && !githubClient.hasToken()) {
+                            saveGitHubToken(creds.githubToken)
+                        }
+                        if (!creds.omnirouteKey.isNullOrBlank() && preferencesRepository.preferences.first().aiApiKeyCredentialId == null) {
+                            saveCustomAiKey(creds.omnirouteKey)
+                        }
+                    }
+                    is VmResult.Failure -> {}
+                }
+
                 when (val res = projectHubClient.syncUniversalProjects()) {
                     is VmResult.Success -> {
                         val tCount = (projectHubClient.fetchTasks() as? VmResult.Success)?.value?.size ?: 0
@@ -326,6 +361,39 @@ class ConnectorsViewModel @Inject constructor(
                 extraState.update { it.copy(hubStatusMessage = "Sync failed: ${t.message ?: "Unknown error"}") }
             } finally {
                 extraState.update { it.copy(isSyncingHub = false) }
+            }
+        }
+    }
+
+    fun syncCredentialsFromHub() {
+        viewModelScope.launch {
+            extraState.update { it.copy(hubStatusMessage = "Pulling credentials from VM Project Hub…") }
+            try {
+                when (val credsRes = projectHubClient.fetchCredentials()) {
+                    is VmResult.Failure -> {
+                        extraState.update { it.copy(hubStatusMessage = "Credential sync failed: ${credsRes.error.summary}") }
+                    }
+                    is VmResult.Success -> {
+                        val creds = credsRes.value
+                        val syncedParts = mutableListOf<String>()
+                        if (!creds.githubToken.isNullOrBlank()) {
+                            saveGitHubToken(creds.githubToken)
+                            syncedParts += "GitHub PAT"
+                        }
+                        if (!creds.omnirouteKey.isNullOrBlank()) {
+                            saveCustomAiKey(creds.omnirouteKey)
+                            syncedParts += "OmniRoute AI key"
+                        }
+                        extraState.update {
+                            it.copy(
+                                hubStatusMessage = "Synced ${syncedParts.joinToString(" & ")} from VM Project Hub"
+                            )
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                extraState.update { it.copy(hubStatusMessage = "Credential sync error: ${t.message ?: "Unknown"}") }
             }
         }
     }
