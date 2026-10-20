@@ -151,11 +151,13 @@ class ConnectorsViewModel @Inject constructor(
                 when (val credsRes = projectHubClient.fetchCredentials()) {
                     is VmResult.Success -> {
                         val creds = credsRes.value
-                        if (prefs.githubTokenCredentialId == null && !creds.githubToken.isNullOrBlank()) {
-                            saveGitHubToken(creds.githubToken)
+                        val gh = creds.githubToken
+                        if (prefs.githubTokenCredentialId == null && !gh.isNullOrBlank()) {
+                            saveGitHubToken(gh)
                         }
-                        if (prefs.aiApiKeyCredentialId == null && !creds.omnirouteKey.isNullOrBlank()) {
-                            saveCustomAiKey(creds.omnirouteKey)
+                        val ai = creds.omnirouteKey
+                        if (prefs.aiApiKeyCredentialId == null && !ai.isNullOrBlank()) {
+                            saveCustomAiKey(ai)
                         }
                     }
                     is VmResult.Failure -> {}
@@ -326,11 +328,13 @@ class ConnectorsViewModel @Inject constructor(
                 when (val credsRes = projectHubClient.fetchCredentials()) {
                     is VmResult.Success -> {
                         val creds = credsRes.value
-                        if (!creds.githubToken.isNullOrBlank() && !githubClient.hasToken()) {
-                            saveGitHubToken(creds.githubToken)
+                        val gh = creds.githubToken
+                        if (!gh.isNullOrBlank() && !githubClient.hasToken()) {
+                            saveGitHubToken(gh)
                         }
-                        if (!creds.omnirouteKey.isNullOrBlank() && preferencesRepository.preferences.first().aiApiKeyCredentialId == null) {
-                            saveCustomAiKey(creds.omnirouteKey)
+                        val ai = creds.omnirouteKey
+                        if (!ai.isNullOrBlank() && preferencesRepository.preferences.first().aiApiKeyCredentialId == null) {
+                            saveCustomAiKey(ai)
                         }
                     }
                     is VmResult.Failure -> {}
@@ -375,12 +379,14 @@ class ConnectorsViewModel @Inject constructor(
                     is VmResult.Success -> {
                         val creds = credsRes.value
                         val syncedParts = mutableListOf<String>()
-                        if (!creds.githubToken.isNullOrBlank()) {
-                            saveGitHubToken(creds.githubToken)
+                        val gh = creds.githubToken
+                        if (!gh.isNullOrBlank()) {
+                            saveGitHubToken(gh)
                             syncedParts += "GitHub PAT"
                         }
-                        if (!creds.omnirouteKey.isNullOrBlank()) {
-                            saveCustomAiKey(creds.omnirouteKey)
+                        val ai = creds.omnirouteKey
+                        if (!ai.isNullOrBlank()) {
+                            saveCustomAiKey(ai)
                             syncedParts += "OmniRoute AI key"
                         }
                         extraState.update {
