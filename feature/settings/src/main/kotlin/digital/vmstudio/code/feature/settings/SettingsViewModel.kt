@@ -13,8 +13,6 @@ import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.version.AppVersionProvider
 import digital.vmstudio.code.core.security.crypto.KeystoreCrypto
 import digital.vmstudio.code.core.security.crypto.VaultCrypto
-import digital.vmstudio.code.core.security.model.Secret
-import digital.vmstudio.code.core.security.model.SecretType
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.model.ServerDraft

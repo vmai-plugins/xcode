@@ -274,3 +274,37 @@ fun SecuritySettingsScreen(
     }
 }
 
+@Composable
+internal fun DiagnosticsSettingsContent(viewModel: SettingsViewModel) {
+    val context = LocalContext.current
+    VmCard {
+        Text(
+            text = "Diagnostics contain sanitized telemetry and logs. " +
+                "Secrets are stripped automatically.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(VmTheme.spacing.sm)) {
+            VmButton(
+                text = "Export Diagnostics",
+                style = VmButtonStyle.Secondary,
+                onClick = {
+                    val share = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, "x-codes diagnostics")
+                        putExtra(Intent.EXTRA_TEXT, viewModel.exportDiagnostics())
+                    }
+                    context.startActivity(
+                        Intent.createChooser(share, "Share diagnostics"),
+                    )
+                },
+            )
+            VmButton(
+                text = "Clear",
+                style = VmButtonStyle.Tertiary,
+                onClick = viewModel::clearDiagnostics,
+            )
+        }
+    }
+}
+

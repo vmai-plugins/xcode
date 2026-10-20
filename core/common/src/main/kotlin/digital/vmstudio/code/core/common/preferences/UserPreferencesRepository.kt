@@ -83,10 +83,6 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.AGENT_MAX_ITERATIONS] = iterations.coerceIn(5, 100)
     }
 
-    suspend fun setAgentMaxCommandsPerRun(commands: Int) = edit {
-        it[Keys.AGENT_MAX_COMMANDS_PER_RUN] = commands.coerceIn(5, 200)
-    }
-
     suspend fun setCompletedOnboarding(completed: Boolean = true) = edit {
         it[Keys.HAS_COMPLETED_ONBOARDING] = completed
     }
