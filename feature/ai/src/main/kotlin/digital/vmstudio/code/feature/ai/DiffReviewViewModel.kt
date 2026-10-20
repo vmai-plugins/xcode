@@ -289,3 +289,10 @@ class DiffReviewViewModel @Inject constructor(
         const val ARG_FILE_PATH = "filePath"
     }
 }
+
+/** True when [repoRelative] (as git prints it) names this absolute or relative path. */
+internal fun String.isSamePath(repoRelative: String?): Boolean {
+    if (repoRelative.isNullOrBlank()) return false
+    val relative = repoRelative.removePrefix("./")
+    return this == relative || endsWith("/$relative")
+}

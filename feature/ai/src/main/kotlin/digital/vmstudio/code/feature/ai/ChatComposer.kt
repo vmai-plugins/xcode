@@ -88,7 +88,7 @@ internal fun ModernComposer(
     isStartingBackgroundRun: Boolean,
     permissionMode: AgentPermissionMode,
     onPermissionModeChange: (AgentPermissionMode) -> Unit,
-    squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL,
+    squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK,
     onSquadPresetChange: (digital.vmstudio.code.core.ai.model.AgentSquadPreset) -> Unit = {},
     selectedModel: String,
     onModelChange: (String) -> Unit,
@@ -276,9 +276,9 @@ internal fun ModernComposer(
                         modifier = Modifier.padding(horizontal = 4.dp),
                     )
                 }
-                if (squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL) {
+                if (squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK) {
                     Text(
-                        text = squadPreset.displayName,
+                        text = squadPreset.title,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 4.dp),
@@ -482,7 +482,7 @@ private fun ComposerPlusMenu(
     isStartingBackgroundRun: Boolean,
     folderName: String,
     permissionMode: AgentPermissionMode,
-    squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.GENERAL,
+    squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK,
     onAttach: (Uri) -> Unit,
     onEditDirectory: () -> Unit,
     onPermissionModeChange: (AgentPermissionMode) -> Unit,
@@ -569,7 +569,7 @@ private fun ComposerPlusMenu(
             MenuSectionLabel("Squad Role")
             digital.vmstudio.code.core.ai.model.AgentSquadPreset.entries.forEach { preset ->
                 DropdownMenuItem(
-                    text = { Text(preset.displayName) },
+                    text = { Text(preset.title) },
                     leadingIcon = {
                         if (preset == squadPreset) Icon(Icons.Default.Check, contentDescription = null)
                     },
