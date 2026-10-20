@@ -32,7 +32,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +50,6 @@ import digital.vmstudio.code.core.database.repository.ActivityRepository
 import digital.vmstudio.code.core.ui.component.VmCard
 import digital.vmstudio.code.core.ui.component.VmEmptyState
 import digital.vmstudio.code.core.ui.component.VmStatus
-import digital.vmstudio.code.core.ui.component.VmStatusBadge
 import digital.vmstudio.code.core.ui.theme.VmTheme
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

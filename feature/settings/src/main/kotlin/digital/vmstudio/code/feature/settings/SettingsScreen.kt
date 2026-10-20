@@ -13,12 +13,10 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel

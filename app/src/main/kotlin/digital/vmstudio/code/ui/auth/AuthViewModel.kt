@@ -12,10 +12,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
-import digital.vmstudio.code.core.ssh.repository.ServerRepository
-import digital.vmstudio.code.core.ssh.model.ServerDraft
-import digital.vmstudio.code.core.database.entity.SshAuthMethod
-import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -23,8 +19,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val preferencesRepository: UserPreferencesRepository,
-    private val serverRepository: ServerRepository
+    private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())

@@ -17,10 +17,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -52,8 +50,6 @@ import digital.vmstudio.code.core.ai.background.BackgroundRun
 import digital.vmstudio.code.core.ai.provider.AiProviderKind
 import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
-import digital.vmstudio.code.core.ui.component.VmCard
-import digital.vmstudio.code.core.ui.component.VmChip
 import digital.vmstudio.code.core.ui.component.VmDialog
 import digital.vmstudio.code.core.ui.theme.VmTheme
 

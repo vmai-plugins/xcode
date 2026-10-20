@@ -36,7 +36,6 @@ import digital.vmstudio.code.feature.settings.AboutSettingsScreen
 import digital.vmstudio.code.feature.settings.AgentSettingsScreen
 import digital.vmstudio.code.feature.settings.AiSettingsScreen
 import digital.vmstudio.code.feature.settings.AppearanceSettingsScreen
-import digital.vmstudio.code.feature.settings.DiagnosticsSettingsScreen
 import digital.vmstudio.code.feature.settings.EditorSettingsScreen
 import digital.vmstudio.code.feature.settings.SecuritySettingsScreen
 import digital.vmstudio.code.feature.settings.SettingsScreen

@@ -15,7 +15,6 @@ import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.preferences.AgentAutonomyLevel
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
-import digital.vmstudio.code.core.common.result.map
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.network.http.VmHttpException

@@ -51,7 +51,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.terminal.session.TerminalKey
 import digital.vmstudio.code.core.terminal.session.TerminalSessionState
-import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmEmptyState
 import digital.vmstudio.code.core.ui.component.VmErrorPanel
 import digital.vmstudio.code.core.ui.theme.VmTheme

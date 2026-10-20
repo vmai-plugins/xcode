@@ -1,9 +1,7 @@
 package digital.vmstudio.code.feature.ai
 
 import android.content.Intent
-import android.content.ActivityNotFoundException
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement

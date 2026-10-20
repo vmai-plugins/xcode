@@ -10,7 +10,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.database.dao.AgentTaskDao
-import digital.vmstudio.code.core.database.dao.GitRepositoryDao
 import digital.vmstudio.code.core.database.entity.ActivityCategory
 import digital.vmstudio.code.core.database.entity.AgentTaskEntity
 import digital.vmstudio.code.core.database.entity.AgentTaskStatus
@@ -71,7 +70,6 @@ class ProjectDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val projectRepository: ProjectRepository,
     private val agentTaskDao: AgentTaskDao,
-    private val gitRepositoryDao: GitRepositoryDao,
     private val serverRepository: ServerRepository,
     private val commandGuard: CommandGuard,
     private val gitService: GitService,
@@ -506,8 +504,6 @@ class ProjectDetailViewModel @Inject constructor(
         error.value = null
         notificationMessage.value = null
     }
-
-    private fun sh(s: String) = s.replace("'", "'\\''")
 
     companion object {
         private const val TASK_ID_LENGTH = 8

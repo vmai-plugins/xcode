@@ -2,7 +2,6 @@ package digital.vmstudio.code.core.security
 
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import digital.vmstudio.code.core.common.result.getOrNull
 import digital.vmstudio.code.core.common.result.getOrThrow
 import digital.vmstudio.code.core.security.crypto.AndroidKeystoreCrypto
 import digital.vmstudio.code.core.security.model.Secret

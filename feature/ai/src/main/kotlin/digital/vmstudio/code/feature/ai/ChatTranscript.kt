@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
@@ -557,33 +555,6 @@ private fun ToolRow(
                 }
             }
         }
-    }
-}
-
-/** Spinner while running, error mark on failure, otherwise a terminal or tool glyph. */
-@Composable
-private fun ToolStatusIcon(item: TranscriptItem.ToolCall) {
-    when {
-        item.isRunning -> CircularProgressIndicator(
-            modifier = Modifier.size(14.dp),
-            strokeWidth = 2.dp,
-        )
-        item.isError -> Icon(
-            imageVector = Icons.Default.ErrorOutline,
-            contentDescription = "Failed",
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(14.dp),
-        )
-        else -> Icon(
-            imageVector = if (item.name.contains("bash", ignoreCase = true)) {
-                Icons.Default.Terminal
-            } else {
-                Icons.Default.Build
-            },
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(14.dp),
-        )
     }
 }
 

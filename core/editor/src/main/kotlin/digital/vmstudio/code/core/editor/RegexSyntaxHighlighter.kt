@@ -16,7 +16,6 @@ class RegexSyntaxHighlighter(
     private val blockCommentStart: String? = "/*",
     private val blockCommentEnd: String? = "*/",
     private val numberPattern: Regex = Regex("""\b(0[xX][0-9a-fA-F]+|0[bB][01]+|\d+(\.\d+)?([eE][+-]?\d+)?)[fFlL]?\b"""),
-    private val functionCallPattern: Regex = Regex("""\b([A-Za-z_]\w*)\s*\("""),
     private val typePattern: Regex = Regex("""\b[A-Z][A-Za-z0-9_]*\b"""),
 ) : SyntaxHighlighter {
 

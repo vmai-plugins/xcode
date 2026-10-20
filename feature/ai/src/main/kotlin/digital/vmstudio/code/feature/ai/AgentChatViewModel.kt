@@ -26,8 +26,6 @@ import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
-import digital.vmstudio.code.core.database.dao.GitRepositoryDao
-import digital.vmstudio.code.core.database.entity.GitRepositoryEntity
 import digital.vmstudio.code.core.git.GitHubRepository
 import digital.vmstudio.code.core.git.GitHubRepositoryClient
 import digital.vmstudio.code.core.git.GitHubTreeItem
@@ -36,11 +34,7 @@ import digital.vmstudio.code.core.git.GitResult
 import digital.vmstudio.code.core.git.GitService
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.project.ProjectRepository
-import digital.vmstudio.code.core.security.model.Secret
-import digital.vmstudio.code.core.sftp.model.RemotePermissions
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
-import digital.vmstudio.code.core.ssh.command.CommandGuard
-import digital.vmstudio.code.core.ssh.command.CommandLimits
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -53,8 +47,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.net.URI
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
@@ -188,8 +180,6 @@ class AgentChatViewModel @Inject constructor(
     private val preferenceStore: UserPreferencesRepository,
     private val serverRepository: ServerRepository,
     private val githubRepositoryClient: GitHubRepositoryClient,
-    private val gitRepositoryDao: GitRepositoryDao,
-    private val commandGuard: CommandGuard,
     private val wakeLockManager: AgentWakeLockManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -788,9 +778,6 @@ class AgentChatViewModel @Inject constructor(
         refreshBackgroundRuns()
         checkHealth()
     }
-
-    private fun shellQuote(value: String): String =
-        "'" + value.replace("'", "'\\''") + "'"
 
     fun checkHealth() {
         _uiState.update { it.copy(isCheckingHealth = true) }

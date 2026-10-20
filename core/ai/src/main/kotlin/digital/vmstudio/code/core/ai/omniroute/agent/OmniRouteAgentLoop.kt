@@ -20,7 +20,6 @@ import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.command.CommandLimits
-import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

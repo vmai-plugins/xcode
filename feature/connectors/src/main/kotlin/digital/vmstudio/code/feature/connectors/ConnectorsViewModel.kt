@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
-import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveFile

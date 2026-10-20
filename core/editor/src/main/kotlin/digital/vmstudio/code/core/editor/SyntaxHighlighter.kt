@@ -2,7 +2,6 @@ package digital.vmstudio.code.core.editor
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.font.FontWeight
 
 /**
  * A token in source code with its position and style.

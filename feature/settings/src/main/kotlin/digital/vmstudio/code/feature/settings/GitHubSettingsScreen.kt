@@ -17,7 +17,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ui.component.*
-import digital.vmstudio.code.core.ui.theme.VmTheme
 import digital.vmstudio.code.core.git.codespacesUrl
 import android.widget.Toast
 
