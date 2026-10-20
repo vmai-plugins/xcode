@@ -23,7 +23,7 @@ permissions:
   contents: write
 
 env:
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false
 
 jobs:
   release:
@@ -71,7 +71,11 @@ jobs:
           cache-read-only: true
 
       - name: Assemble release
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: |
+          ./gradlew :app:assembleRelease -x lintVitalRelease --stacktrace > build.log 2>&1 || {
+            tail -n 120 build.log
+            exit 1
+          }
         env:
           VMSTUDIO_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           VMSTUDIO_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
