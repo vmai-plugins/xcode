@@ -16,8 +16,8 @@ object BuildConfig {
     const val MIN_SDK = 26
 
     const val APPLICATION_ID = "digital.vmstudio.code"
-    const val VERSION_CODE = 6
-    const val VERSION_NAME = "0.6.0"
+    const val VERSION_CODE = 7
+    const val VERSION_NAME = "0.7.0"
 
     val JAVA_VERSION = JavaVersion.VERSION_17
     const val JVM_TARGET = "17"
