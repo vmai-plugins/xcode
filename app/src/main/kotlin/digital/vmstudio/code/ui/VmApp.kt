@@ -1,8 +1,10 @@
 package digital.vmstudio.code.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -272,7 +274,7 @@ private fun DrawerWorkspaceHeader() {
 }
 
 @Composable
-private fun DrawerNavigationItems(
+private fun ColumnScope.DrawerNavigationItems(
     currentRoute: String?,
     currentConversationId: String?,
     conversations: AgentConversationsUiState,
@@ -339,7 +341,7 @@ private fun DrawerNavigationItems(
                         ConversationMenu(
                             expanded = chatMenuFor == chat.id,
                             onDismiss = onChatMenuDismiss,
-                            onAction = onChatAction,
+                            onAction = { action -> onChatAction(chat to action) },
                         )
                     }
                 },
