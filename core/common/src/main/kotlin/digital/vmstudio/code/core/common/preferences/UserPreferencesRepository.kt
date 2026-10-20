@@ -215,20 +215,31 @@ class UserPreferencesRepository @Inject constructor(
             githubUsername = this[Keys.GITHUB_USERNAME],
             userEmail = this[Keys.USER_EMAIL],
             userName = this[Keys.USER_NAME],
+            userAvatarUrl = this[Keys.USER_AVATAR_URL],
+            googleIdToken = this[Keys.GOOGLE_ID_TOKEN],
             hubApiKey = this[Keys.HUB_API_KEY],
             biometricLockEnabled = this[Keys.BIOMETRIC_LOCK_ENABLED] ?: defaults.biometricLockEnabled,
         )
     }
 
-    suspend fun setUserProfile(email: String?, name: String?) = edit {
+    suspend fun setUserProfile(
+        email: String?,
+        name: String?,
+        avatarUrl: String? = null,
+        idToken: String? = null,
+    ) = edit {
         if (email != null) it[Keys.USER_EMAIL] = email else it.remove(Keys.USER_EMAIL)
         if (name != null) it[Keys.USER_NAME] = name else it.remove(Keys.USER_NAME)
+        if (avatarUrl != null) it[Keys.USER_AVATAR_URL] = avatarUrl else it.remove(Keys.USER_AVATAR_URL)
+        if (idToken != null) it[Keys.GOOGLE_ID_TOKEN] = idToken else it.remove(Keys.GOOGLE_ID_TOKEN)
     }
 
     suspend fun signOutUser() = edit {
         it[Keys.HAS_SIGNED_IN] = false
         it.remove(Keys.USER_EMAIL)
         it.remove(Keys.USER_NAME)
+        it.remove(Keys.USER_AVATAR_URL)
+        it.remove(Keys.GOOGLE_ID_TOKEN)
     }
 
     /** Unknown stored names fall back to the default rather than throwing. */
@@ -265,6 +276,8 @@ class UserPreferencesRepository @Inject constructor(
         val GITHUB_USERNAME = stringPreferencesKey("github_username")
         val USER_EMAIL = stringPreferencesKey("user_email")
         val USER_NAME = stringPreferencesKey("user_name")
+        val USER_AVATAR_URL = stringPreferencesKey("user_avatar_url")
+        val GOOGLE_ID_TOKEN = stringPreferencesKey("google_id_token")
         val HUB_API_KEY = stringPreferencesKey("hub_api_key")
         val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
     }

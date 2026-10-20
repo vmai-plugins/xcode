@@ -100,6 +100,8 @@ data class UserPreferences(
     val githubUsername: String? = null,
     val userEmail: String? = null,
     val userName: String? = null,
+    val userAvatarUrl: String? = null,
+    val googleIdToken: String? = null,
 ) {
     companion object {
         /** The only supported AI gateway. */
