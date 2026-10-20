@@ -98,28 +98,6 @@ class SettingsViewModel @Inject constructor(
 
     fun retryInstall() = updateManager.retryInstall()
 
-    fun setGithubSettings(token: String, username: String) {
-        viewModelScope.launch {
-            val credId = if (token.isNotBlank()) {
-                val secret = Secret.of(token.trim())
-                try {
-                    val ref = credentialStore.put(
-                        SecretType.GIT_HTTP_TOKEN,
-                        "GitHub Personal Access Token",
-                        secret,
-                    )
-                    when (ref) {
-                        is VmResult.Success -> ref.value.id
-                        else -> null
-                    }
-                } finally {
-                    secret.wipe()
-                }
-            } else null
-            preferencesRepository.setGithubConnection(credId, username.trim().takeIf { it.isNotBlank() })
-        }
-    }
-
     fun setTheme(preference: ThemePreference) {
         viewModelScope.launch { preferencesRepository.setThemePreference(preference) }
     }

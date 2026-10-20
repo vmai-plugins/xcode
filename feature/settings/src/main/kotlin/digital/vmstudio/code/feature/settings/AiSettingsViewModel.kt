@@ -70,15 +70,6 @@ class AiSettingsViewModel @Inject constructor(
         runConnectionTest()
     }
 
-    /**
-     * Stores the gateway key in the Keystore-backed store and keeps only its
-     * reference in preferences. The plaintext is wiped as soon as it is encrypted.
-     */
-    fun saveApiKey(key: String) {
-        if (key.isBlank()) return
-        viewModelScope.launch { commitApiKey(key) }
-    }
-
     private suspend fun commitApiKey(key: String): Boolean {
         val previousId = uiState.value.preferences.aiApiKeyCredentialId
         val secret = Secret.of(key.trim())
@@ -155,10 +146,6 @@ class AiSettingsViewModel @Inject constructor(
 
     fun setMaxIterations(iterations: Int) {
         viewModelScope.launch { preferencesRepository.setAgentMaxIterations(iterations) }
-    }
-
-    fun setMaxCommandsPerRun(commands: Int) {
-        viewModelScope.launch { preferencesRepository.setAgentMaxCommandsPerRun(commands) }
     }
 
     /**

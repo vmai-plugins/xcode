@@ -91,15 +91,6 @@ fun VmSectionHeader(
     }
 }
 
-@Composable
-fun VmDivider(modifier: Modifier = Modifier) {
-    HorizontalDivider(
-        modifier = modifier,
-        thickness = VmTheme.spacing.hairline,
-        color = VmTheme.colors.divider,
-    )
-}
-
 /**
  * Empty state with an explicit call to action.
  *

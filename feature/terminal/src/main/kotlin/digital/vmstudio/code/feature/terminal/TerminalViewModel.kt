@@ -221,13 +221,14 @@ class TerminalViewModel @Inject constructor(
                 if (pendingLine.isNotEmpty()) pendingLine.setLength(pendingLine.length - 1)
                 activeSession()?.sendKey(key)
             }
-            // Anything that moves the cursor or edits elsewhere in the line makes the
-            // local mirror unreliable, so it is abandoned rather than trusted.
-            TerminalKey.ARROW_UP, TerminalKey.ARROW_DOWN,
+            // Up/Down recall bash/zsh history, which changes the active line.
+            TerminalKey.ARROW_UP, TerminalKey.ARROW_DOWN -> {
+                pendingLine.setLength(0)
+                activeSession()?.sendKey(key)
+            }
             TerminalKey.ARROW_LEFT, TerminalKey.ARROW_RIGHT,
             TerminalKey.HOME, TerminalKey.END,
             -> {
-                pendingLine.setLength(0)
                 activeSession()?.sendKey(key)
             }
             else -> activeSession()?.sendKey(key)

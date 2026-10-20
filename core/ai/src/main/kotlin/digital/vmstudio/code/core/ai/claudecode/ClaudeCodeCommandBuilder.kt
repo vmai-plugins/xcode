@@ -186,8 +186,6 @@ internal object ClaudeCodeCommandBuilder {
     const val DEFAULT_BINARY = "PATH=\"\$HOME/.local/bin:\$HOME/.claude/local:\$HOME/.npm-global/bin:" +
         "\$HOME/.bun/bin:\$(ls -dr \"\$HOME\"/.nvm/versions/node/*/bin 2>/dev/null | tr \"\\n\" \":\")" +
         "/usr/local/bin:\$PATH\" claude"
-    const val MISSING_MARKER = "__VM_CLAUDE_MISSING__"
-    const val AUTH_FAILED_MARKER = "__VM_CLAUDE_AUTH_FAILED__"
 
     /** The CLI documents --autocompact as accepting 100k-1M tokens. */
     const val AUTOCOMPACT_MIN = 100_000

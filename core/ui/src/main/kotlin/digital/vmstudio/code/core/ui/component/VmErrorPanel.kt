@@ -151,31 +151,6 @@ fun VmErrorPanel(
     }
 }
 
-/** Single-line variant for inline placement, e.g. under a text field. */
-@Composable
-fun VmInlineError(
-    error: VmError,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite },
-        horizontalArrangement = Arrangement.spacedBy(VmTheme.spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Default.ErrorOutline,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(14.dp),
-        )
-        Text(
-            text = cleanErrorMessage(error.reason ?: error.summary),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
-}
-
 internal fun cleanErrorMessage(text: String): String {
     val trimmed = text.trim()
     if (!trimmed.startsWith("{")) return trimmed
