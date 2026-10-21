@@ -13,6 +13,9 @@ import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.database.entity.SshAuthMethod
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
+import digital.vmstudio.code.core.security.model.Secret
+import digital.vmstudio.code.core.security.model.SecretType
+import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import digital.vmstudio.code.core.ssh.model.ServerDraft
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -104,6 +107,13 @@ data class HubCredentials(
     val vpsPassword: String? = null,
     val vpsPrivateKey: String? = null,
     val vpsName: String? = null,
+    val evolutionApiBaseUrl: String? = null,
+    val evolutionApiKey: String? = null,
+    val evolutionApiInstance: String? = null,
+    val evolutionApiRecipientNumber: String? = null,
+    val evolutionApiNotificationsEnabled: Boolean? = null,
+    val googleDriveToken: String? = null,
+    val googleDriveEmail: String? = null,
 )
 
 @Singleton
@@ -114,6 +124,7 @@ class VmProjectHubClient @Inject constructor(
     private val preferencesRepository: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
+    private val credentialStore: SecureCredentialStore,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -201,19 +212,26 @@ class VmProjectHubClient @Inject constructor(
                     VmResult.Failure(VmError.Network("Failed to retrieve credentials from Hub"))
                 } else {
                     val creds = HubCredentials(
-                        githubToken = root.str("github_token"),
-                        omnirouteKey = root.str("omniroute_key"),
-                        omnirouteUrl = root.str("omniroute_url"),
-                        defaultModel = root.str("default_model"),
-                        modelsUrl = root.str("models_url"),
-                        kaggleUsername = root.str("kaggle_username"),
-                        vpsHost = root.str("vps_host"),
-                        vpsUser = root.str("vps_user"),
-                        vpsPort = root.int("vps_port"),
-                        vpsAuthMethod = root.str("vps_auth_method"),
-                        vpsPassword = root.str("vps_password"),
-                        vpsPrivateKey = root.str("vps_private_key"),
-                        vpsName = root.str("vps_name"),
+                        githubToken = root.str("githubToken") ?: root.str("github_token"),
+                        omnirouteKey = root.str("omnirouteKey") ?: root.str("omniroute_key"),
+                        omnirouteUrl = root.str("omnirouteUrl") ?: root.str("omniroute_url"),
+                        defaultModel = root.str("defaultModel") ?: root.str("default_model"),
+                        modelsUrl = root.str("modelsUrl") ?: root.str("models_url"),
+                        kaggleUsername = root.str("kaggleUsername") ?: root.str("kaggle_username"),
+                        vpsHost = root.str("vpsHost") ?: root.str("vps_host"),
+                        vpsUser = root.str("vpsUser") ?: root.str("vps_user"),
+                        vpsPort = root.int("vpsPort") ?: root.int("vps_port"),
+                        vpsAuthMethod = root.str("vpsAuthMethod") ?: root.str("vps_auth_method"),
+                        vpsPassword = root.str("vpsPassword") ?: root.str("vps_password"),
+                        vpsPrivateKey = root.str("vpsPrivateKey") ?: root.str("vps_private_key"),
+                        vpsName = root.str("vpsName") ?: root.str("vps_name"),
+                        evolutionApiBaseUrl = root.str("evolutionApiBaseUrl") ?: root.str("evolution_api_base_url"),
+                        evolutionApiKey = root.str("evolutionApiKey") ?: root.str("evolution_api_key"),
+                        evolutionApiInstance = root.str("evolutionApiInstance") ?: root.str("evolution_api_instance"),
+                        evolutionApiRecipientNumber = root.str("evolutionApiRecipientNumber") ?: root.str("evolution_recipient"),
+                        evolutionApiNotificationsEnabled = (root["evolutionApiNotificationsEnabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true,
+                        googleDriveToken = root.str("googleDriveToken") ?: root.str("google_drive_token"),
+                        googleDriveEmail = root.str("googleDriveEmail") ?: root.str("google_drive_email"),
                     )
                     VmResult.Success(creds)
                 }
@@ -253,6 +271,102 @@ class VmProjectHubClient @Inject constructor(
         if (credsRes is VmResult.Failure) return@withContext credsRes
         val creds = (credsRes as VmResult.Success).value
 
+        // 1. Auto-save GitHub Token to Keystore and Preferences
+        val ghToken = creds.githubToken?.trim()?.takeIf { it.isNotBlank() }
+        if (ghToken != null) {
+            val secret = Secret.of(ghToken)
+            try {
+                val previous = preferencesRepository.preferences.first().githubTokenCredentialId
+                when (val putRes = credentialStore.put(SecretType.GIT_HTTP_TOKEN, "Hub GitHub Token", secret)) {
+                    is VmResult.Success -> {
+                        preferencesRepository.setGithubConnection(putRes.value.id, null)
+                        if (previous != null) {
+                            credentialStore.delete(previous)
+                        }
+                    }
+                    is VmResult.Failure -> {}
+                }
+            } finally {
+                secret.wipe()
+            }
+        }
+
+        // 2. Auto-save OmniRoute AI Key, Endpoint URL & Model
+        val aiKey = creds.omnirouteKey?.trim()?.takeIf { it.isNotBlank() }
+        if (aiKey != null) {
+            val secret = Secret.of(aiKey)
+            try {
+                val previous = preferencesRepository.preferences.first().aiApiKeyCredentialId
+                when (val putRes = credentialStore.put(SecretType.AI_API_KEY, "Hub OmniRoute Key", secret)) {
+                    is VmResult.Success -> {
+                        preferencesRepository.setAiApiKeyCredentialId(putRes.value.id)
+                        if (previous != null) {
+                            credentialStore.delete(previous)
+                        }
+                    }
+                    is VmResult.Failure -> {}
+                }
+            } finally {
+                secret.wipe()
+            }
+        }
+        creds.defaultModel?.takeIf { it.isNotBlank() }?.let { model ->
+            preferencesRepository.setAiModel(model, "custom")
+            preferencesRepository.setLastChatModel(model)
+        }
+
+        // 3. Auto-save WhatsApp / Evolution API settings & Key
+        val evoKey = creds.evolutionApiKey?.trim()?.takeIf { it.isNotBlank() }
+        val evoBase = creds.evolutionApiBaseUrl?.takeIf { it.isNotBlank() } ?: "https://wa.vmstudio.digital"
+        val evoInst = creds.evolutionApiInstance?.takeIf { it.isNotBlank() } ?: "main"
+        val evoRecipient = creds.evolutionApiRecipientNumber.orEmpty()
+        val evoNotify = creds.evolutionApiNotificationsEnabled ?: true
+
+        preferencesRepository.setEvolutionApiSettings(
+            baseUrl = evoBase,
+            instance = evoInst,
+            recipientNumber = evoRecipient,
+            notificationsEnabled = evoNotify,
+        )
+        if (evoKey != null) {
+            val secret = Secret.of(evoKey)
+            try {
+                val previous = preferencesRepository.preferences.first().evolutionApiKeyCredentialId
+                when (val putRes = credentialStore.put(SecretType.GENERIC, "Hub Evolution API Key", secret)) {
+                    is VmResult.Success -> {
+                        preferencesRepository.setEvolutionApiKeyCredential(putRes.value.id)
+                        if (previous != null) {
+                            credentialStore.delete(previous)
+                        }
+                    }
+                    is VmResult.Failure -> {}
+                }
+            } finally {
+                secret.wipe()
+            }
+        }
+
+        // 4. Auto-save Google Drive Token (webxprodigital@gmail.com)
+        val gdriveToken = creds.googleDriveToken?.trim()?.takeIf { it.isNotBlank() }
+        if (gdriveToken != null) {
+            val secret = Secret.of(gdriveToken)
+            try {
+                val previous = preferencesRepository.preferences.first().googleDriveTokenCredentialId
+                when (val putRes = credentialStore.put(SecretType.OAUTH_ACCESS_TOKEN, "Hub Google Drive Token", secret)) {
+                    is VmResult.Success -> {
+                        preferencesRepository.setGoogleDriveTokenCredential(putRes.value.id)
+                        if (previous != null) {
+                            credentialStore.delete(previous)
+                        }
+                    }
+                    is VmResult.Failure -> {}
+                }
+            } finally {
+                secret.wipe()
+            }
+        }
+
+        // 5. Auto-configure Primary Cloud VPS Server
         val host = creds.vpsHost?.trim()?.takeIf { it.isNotBlank() }
         if (host != null) {
             val existing = serverRepository.servers.first()

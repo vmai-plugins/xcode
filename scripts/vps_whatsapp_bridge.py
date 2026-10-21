@@ -26,8 +26,28 @@ EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE", "main")
 # Comma-separated list of authorized numbers with country code (e.g., "919876543210,1234567890")
 ALLOWED_NUMBERS = [n.strip() for n in os.getenv("ALLOWED_NUMBERS", "").split(",") if n.strip()]
 PROJECTS_ROOT = os.getenv("PROJECTS_ROOT", "/var/www")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 app = FastAPI(title="X-Codes Evolution WhatsApp Agent Bridge")
+
+def transcribe_voice_note(audio_bytes: bytes, filename: str = "voice.ogg") -> str:
+    """Transcribes audio notes to text via OpenAI Whisper or local speech tool."""
+    if OPENAI_API_KEY:
+        try:
+            resp = requests.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                files={"file": (filename, audio_bytes, "audio/ogg")},
+                data={"model": "whisper-1"},
+                timeout=30
+            )
+            if resp.status_code == 200:
+                return resp.json().get("text", "").strip()
+        except Exception as e:
+            print(f"[Error] Whisper transcription failed: {e}")
+    # Local fallback or return empty
+    return ""
 
 def send_whatsapp_text(recipient: str, message: str):
     """Sends a text message back via Evolution API."""
@@ -149,6 +169,22 @@ async def evolution_webhook(request: Request, bg_tasks: BackgroundTasks):
 
         msg = data.get("message", {})
         text = msg.get("conversation") or msg.get("extendedTextMessage", {}).get("text")
+
+        # Audio / Voice note handling (Voice-to-Code)
+        if not text and (msg.get("audioMessage") or msg.get("voiceMessage")):
+            import base64
+            # Attempt to extract base64 media if provided by webhook, or download via Evolution API
+            audio_base64 = data.get("base64")
+            if audio_base64:
+                try:
+                    audio_bytes = base64.b64decode(audio_base64.split(",")[-1])
+                    transcribed = transcribe_voice_note(audio_bytes)
+                    if transcribed:
+                        send_whatsapp_text(sender_number, f"🎙️ *Heard*: \"{transcribed}\"\n⚙️ Running task...")
+                        text = transcribed
+                except Exception as e:
+                    print(f"[Error] Failed to process voice note: {e}")
+
         if text:
             bg_tasks.add_task(handle_user_command, sender_number, text)
 

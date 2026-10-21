@@ -119,7 +119,20 @@ class XCodesCompanionPlugin {
         register_setting('xcodes_settings', 'xcodes_omniroute_key');
         register_setting('xcodes_settings', 'xcodes_omniroute_url');
         register_setting('xcodes_settings', 'xcodes_default_model');
+        // VPS Server
+        register_setting('xcodes_settings', 'xcodes_vps_name');
         register_setting('xcodes_settings', 'xcodes_vps_host');
+        register_setting('xcodes_settings', 'xcodes_vps_user');
+        register_setting('xcodes_settings', 'xcodes_vps_port');
+        register_setting('xcodes_settings', 'xcodes_vps_auth_method');
+        register_setting('xcodes_settings', 'xcodes_vps_password');
+        register_setting('xcodes_settings', 'xcodes_vps_private_key');
+        // Evolution API (WhatsApp)
+        register_setting('xcodes_settings', 'xcodes_evolution_base_url');
+        register_setting('xcodes_settings', 'xcodes_evolution_api_key');
+        register_setting('xcodes_settings', 'xcodes_evolution_instance');
+        register_setting('xcodes_settings', 'xcodes_evolution_recipient');
+        register_setting('xcodes_settings', 'xcodes_evolution_notifications');
         // Google Drive integration for webxprodigital@gmail.com
         register_setting('xcodes_settings', 'xcodes_gdrive_connected_email');
         register_setting('xcodes_settings', 'xcodes_gdrive_client_id');
@@ -202,6 +215,71 @@ class XCodesCompanionPlugin {
                     <tr>
                         <th scope="row"><label for="xcodes_github_token">GitHub Access Token</label></th>
                         <td><input name="xcodes_github_token" type="password" id="xcodes_github_token" value="<?php echo esc_attr(get_option('xcodes_github_token', '')); ?>" class="regular-text" /></td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top:30px;">Primary Cloud VPS Server Profile</h2>
+                <p>The primary Linux/SSH development server auto-configured in X-Codes upon pairing.</p>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="xcodes_vps_name">Server Name</label></th>
+                        <td><input name="xcodes_vps_name" type="text" id="xcodes_vps_name" value="<?php echo esc_attr(get_option('xcodes_vps_name', 'VM Studio Cloud VPS')); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_vps_host">Host / IP</label></th>
+                        <td><input name="xcodes_vps_host" type="text" id="xcodes_vps_host" value="<?php echo esc_attr(get_option('xcodes_vps_host', '')); ?>" class="regular-text" placeholder="200.234.41.231 or vps.domain.com" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_vps_user">SSH Username</label></th>
+                        <td><input name="xcodes_vps_user" type="text" id="xcodes_vps_user" value="<?php echo esc_attr(get_option('xcodes_vps_user', 'root')); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_vps_port">SSH Port</label></th>
+                        <td><input name="xcodes_vps_port" type="number" id="xcodes_vps_port" value="<?php echo esc_attr(get_option('xcodes_vps_port', '22')); ?>" class="small-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_vps_auth_method">Auth Method</label></th>
+                        <td>
+                            <select name="xcodes_vps_auth_method" id="xcodes_vps_auth_method">
+                                <option value="PASSWORD" <?php selected(get_option('xcodes_vps_auth_method', 'PASSWORD'), 'PASSWORD'); ?>>Password</option>
+                                <option value="PRIVATE_KEY" <?php selected(get_option('xcodes_vps_auth_method'), 'PRIVATE_KEY'); ?>>Private Key (SSH)</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_vps_password">SSH Password</label></th>
+                        <td><input name="xcodes_vps_password" type="password" id="xcodes_vps_password" value="<?php echo esc_attr(get_option('xcodes_vps_password', '')); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_vps_private_key">SSH Private Key (PEM/OpenSSH)</label></th>
+                        <td><textarea name="xcodes_vps_private_key" id="xcodes_vps_private_key" rows="4" class="large-text code"><?php echo esc_textarea(get_option('xcodes_vps_private_key', '')); ?></textarea></td>
+                    </tr>
+                </table>
+
+                <h2 style="margin-top:30px;">WhatsApp & Evolution API (wa.vmstudio.digital)</h2>
+                <p>Configures instant APK dispatch, remote WhatsApp coding agent, and build alerts.</p>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="xcodes_evolution_base_url">Evolution API Base URL</label></th>
+                        <td><input name="xcodes_evolution_base_url" type="url" id="xcodes_evolution_base_url" value="<?php echo esc_attr(get_option('xcodes_evolution_base_url', 'https://wa.vmstudio.digital')); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_evolution_api_key">Evolution API Key</label></th>
+                        <td><input name="xcodes_evolution_api_key" type="password" id="xcodes_evolution_api_key" value="<?php echo esc_attr(get_option('xcodes_evolution_api_key', '')); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_evolution_instance">Instance Name</label></th>
+                        <td><input name="xcodes_evolution_instance" type="text" id="xcodes_evolution_instance" value="<?php echo esc_attr(get_option('xcodes_evolution_instance', 'main')); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_evolution_recipient">Developer Recipient Number</label></th>
+                        <td><input name="xcodes_evolution_recipient" type="text" id="xcodes_evolution_recipient" value="<?php echo esc_attr(get_option('xcodes_evolution_recipient', '')); ?>" class="regular-text" placeholder="e.g. 919876543210 (with country code)" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="xcodes_evolution_notifications">Build Notifications</label></th>
+                        <td>
+                            <label><input name="xcodes_evolution_notifications" type="checkbox" id="xcodes_evolution_notifications" value="1" <?php checked(get_option('xcodes_evolution_notifications', 1), 1); ?> /> Send build alerts & APKs to WhatsApp</label>
+                        </td>
                     </tr>
                 </table>
 
@@ -551,11 +629,28 @@ class XCodesCompanionPlugin {
 
     public function handle_get_credentials($request) {
         return rest_ensure_response([
+            'ok' => true,
             'githubToken' => get_option('xcodes_github_token', ''),
             'omnirouteKey' => get_option('xcodes_omniroute_key', ''),
             'omnirouteUrl' => get_option('xcodes_omniroute_url', 'https://api.omniroute.ai/v1'),
             'defaultModel' => get_option('xcodes_default_model', 'claude-3-5-sonnet-20241022'),
+            // VPS Server Profile
+            'vpsName' => get_option('xcodes_vps_name', 'VM Studio Cloud VPS'),
             'vpsHost' => get_option('xcodes_vps_host', ''),
+            'vpsUser' => get_option('xcodes_vps_user', 'root'),
+            'vpsPort' => intval(get_option('xcodes_vps_port', 22)),
+            'vpsAuthMethod' => get_option('xcodes_vps_auth_method', 'PASSWORD'),
+            'vpsPassword' => get_option('xcodes_vps_password', ''),
+            'vpsPrivateKey' => get_option('xcodes_vps_private_key', ''),
+            // WhatsApp / Evolution API
+            'evolutionApiBaseUrl' => get_option('xcodes_evolution_base_url', 'https://wa.vmstudio.digital'),
+            'evolutionApiKey' => get_option('xcodes_evolution_api_key', ''),
+            'evolutionApiInstance' => get_option('xcodes_evolution_instance', 'main'),
+            'evolutionApiRecipientNumber' => get_option('xcodes_evolution_recipient', ''),
+            'evolutionApiNotificationsEnabled' => (bool)get_option('xcodes_evolution_notifications', 1),
+            // Google Drive (webxprodigital@gmail.com)
+            'googleDriveToken' => $this->get_valid_gdrive_access_token() ?: null,
+            'googleDriveEmail' => get_option('xcodes_gdrive_connected_email', 'webxprodigital@gmail.com'),
         ]);
     }
 

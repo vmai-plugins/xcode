@@ -11,6 +11,7 @@ android {
 dependencies {
     api(projects.core.common)
     api(projects.core.database)
+    api(projects.core.security)
     implementation(projects.core.network)
     implementation(projects.core.ssh)
     api(libs.kotlinx.serialization.json)
