@@ -530,6 +530,8 @@ fun AgentChatScreen(
                 onSyncModels = viewModel::syncModels,
                 workingDirectory = state.workingDirectory,
                 onEditDirectory = { showDirectoryDialog = true },
+                availableProjects = state.availableProjects,
+                githubRepositories = state.githubRepositories,
                 attachments = attachments,
                 onAttach = { uri -> attachments = (attachments + uri).distinct() },
                 onRemoveAttachment = { uri -> attachments = attachments - uri },

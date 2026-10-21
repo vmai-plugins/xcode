@@ -218,6 +218,9 @@ class AgentChatViewModel @Inject constructor(
     init {
         applyStoredDefaults()
         viewModelScope.launch {
+            loadGithubRepositories()
+        }
+        viewModelScope.launch {
             projectRepository.observeAll().collect { projects ->
                 _uiState.update { it.copy(availableProjects = projects) }
             }
@@ -1083,8 +1086,75 @@ class AgentChatViewModel @Inject constructor(
                     }
                 }
 
+                // Expand @project and @github mentions
+                val mentionMatches = Regex("""@"([^"]+)"|@([a-zA-Z0-9_\-\./]+)""").findAll(resolvedPrompt)
+                val mentionTokens = mentionMatches.map { it.groupValues[1].ifEmpty { it.groupValues[2] } }.distinct().toList()
+                val candidateTokens = mentionTokens.filterNot { token ->
+                    token.startsWith("file:") ||
+                        token.equals("git-diff", ignoreCase = true) ||
+                        token.equals("terminal", ignoreCase = true)
+                }
+
+                val matchedProjects = candidateTokens.mapNotNull { token ->
+                    state.availableProjects.firstOrNull { project ->
+                        project.name.equals(token, ignoreCase = true) ||
+                            project.name.replace(" ", "-").equals(token, ignoreCase = true) ||
+                            project.id.equals(token, ignoreCase = true)
+                    }
+                }.distinctBy { it.id }
+
+                val matchedRepos = candidateTokens.mapNotNull { token ->
+                    state.githubRepositories.firstOrNull { repo ->
+                        repo.fullName.equals(token, ignoreCase = true) ||
+                            repo.fullName.substringAfterLast('/').equals(token, ignoreCase = true)
+                    }
+                }.distinctBy { it.id }
+
+                if (matchedProjects.isNotEmpty() || matchedRepos.isNotEmpty()) {
+                    val summary = (matchedProjects.map { "@${it.name}" } + matchedRepos.map { "@${it.fullName}" }).joinToString(", ")
+                    append(
+                        TranscriptItem.Diagnostic(
+                            id = nextId(),
+                            text = "Mentioned Context: $summary",
+                            isStderr = false,
+                        ),
+                    )
+                }
+
                 val fullPrompt = buildString {
                     append(resolvedPrompt)
+                    if (matchedProjects.isNotEmpty() || matchedRepos.isNotEmpty()) {
+                        append("\n\n[Referenced Projects & Repositories Context]\n")
+                        append("The user explicitly referenced external workspace(s) and repository(ies) in this chat:\n")
+                        matchedProjects.forEachIndexed { idx, p ->
+                            val loc = if (p.isRemote) "Remote Server (${p.serverId})" else "Local Phone Storage"
+                            append("${idx + 1}. Project \"${p.name}\"\n")
+                            append("   - Location: $loc\n")
+                            append("   - Path: ${p.remotePath}\n")
+                            if (!p.branch.isNullOrBlank()) append("   - Branch: ${p.branch}\n")
+                            if (p.projectTypeId.isNotBlank()) append("   - Project Type: ${p.projectTypeId}\n")
+                            if (!p.runtime.isNullOrBlank()) append("   - Runtime: ${p.runtime}\n")
+                            if (!p.packageManager.isNullOrBlank()) append("   - Package Manager: ${p.packageManager}\n")
+                            if (p.isLocal) {
+                                try {
+                                    val dir = java.io.File(p.remotePath)
+                                    if (dir.exists() && dir.isDirectory) {
+                                        val files = dir.listFiles()?.take(20)?.map { if (it.isDirectory) "${it.name}/" else it.name }
+                                        if (!files.isNullOrEmpty()) {
+                                            append("   - Files: " + files.joinToString(", ") + "\n")
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                        }
+                        matchedRepos.forEachIndexed { idx, r ->
+                            append("${idx + 1}. GitHub Repository \"${r.fullName}\"\n")
+                            append("   - Clone URL: ${r.cloneUrl}\n")
+                            append("   - Default Branch: ${r.defaultBranch}\n")
+                            if (!r.description.isNullOrBlank()) append("   - Description: ${r.description}\n")
+                        }
+                        append("Cross-reference and consider all referenced projects above when answering or fulfilling instructions.\n")
+                    }
                     if (staged.remotePaths.isNotEmpty()) {
                         append("\n\nAttached files on the server:\n")
                         append(staged.remotePaths.joinToString("\n") { "- $it" })

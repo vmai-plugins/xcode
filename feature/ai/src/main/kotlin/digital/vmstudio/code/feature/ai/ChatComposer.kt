@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,10 +62,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
+import digital.vmstudio.code.core.git.GitHubRepository
+import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
 private fun AgentPermissionMode.changesThings(): Boolean =
@@ -100,6 +104,8 @@ internal fun ModernComposer(
     onRemoveAttachment: (Uri) -> Unit,
     workingDirectory: String,
     onEditDirectory: () -> Unit,
+    availableProjects: List<Project> = emptyList(),
+    githubRepositories: List<GitHubRepository> = emptyList(),
     onSend: (String) -> Unit,
     onSendInBackground: (String, () -> Unit) -> Unit,
     onStop: () -> Unit,
@@ -111,6 +117,18 @@ internal fun ModernComposer(
     val spacing = VmTheme.spacing
     val canSend = enabled && (text.isNotBlank() || attachments.isNotEmpty())
     val haptic = LocalHapticFeedback.current
+    var showMentionSheet by remember { mutableStateOf(false) }
+
+    // Detect if user is actively typing a mention (e.g. "@", "@web", @"My Proj")
+    val activeMentionQuery = remember(text) {
+        val lastAt = text.lastIndexOf('@')
+        if (lastAt >= 0) {
+            val afterAt = text.substring(lastAt + 1)
+            if (!afterAt.contains(' ') && !afterAt.contains('\n') && !afterAt.contains('"')) {
+                afterAt
+            } else null
+        } else null
+    }
 
     Surface(
         modifier = modifier
@@ -192,30 +210,95 @@ internal fun ModernComposer(
                 }
             }
 
-            // Antigravity-style @ Mention Context Helper Pill
-            val showMentions = text.endsWith("@")
+            // Dynamic @ Mention Context Helper Bar (Projects, GitHub Repos, Files, Diff)
+            val showMentions = activeMentionQuery != null
             if (showMentions) {
+                val query = activeMentionQuery.orEmpty()
+                val matchingProjects = remember(availableProjects, query) {
+                    if (query.isBlank()) availableProjects.take(6)
+                    else availableProjects.filter { it.name.contains(query, ignoreCase = true) }.take(6)
+                }
+                val matchingRepos = remember(githubRepositories, query) {
+                    if (query.isBlank()) githubRepositories.take(6)
+                    else githubRepositories.filter { it.fullName.contains(query, ignoreCase = true) }.take(6)
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 6.dp)
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // Matching projects
+                    matchingProjects.forEach { project ->
+                        val insertText = if (project.name.contains(" ")) "@\"${project.name}\" " else "@${project.name} "
+                        MentionChip(
+                            label = "@${project.name}",
+                            icon = Icons.Default.Folder,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt$insertText")
+                            },
+                        )
+                    }
+
+                    // Matching GitHub Repositories
+                    matchingRepos.forEach { repo ->
+                        val repoShortName = repo.fullName.substringAfterLast('/')
+                        MentionChip(
+                            label = "@$repoShortName",
+                            icon = Icons.Default.Code,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt@${repo.fullName} ")
+                            },
+                        )
+                    }
+
+                    // Context Helpers
+                    if (query.isBlank() || "git-diff".contains(query, ignoreCase = true)) {
+                        MentionChip(
+                            label = "@git-diff",
+                            icon = Icons.Default.Source,
+                            onClick = {
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt@git-diff ")
+                            },
+                        )
+                    }
+                    if (query.isBlank() || "file".contains(query, ignoreCase = true)) {
+                        MentionChip(
+                            label = "@file",
+                            icon = Icons.Default.Folder,
+                            onClick = {
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt@file: ")
+                            },
+                        )
+                    }
+                    if (query.isBlank() || "terminal".contains(query, ignoreCase = true)) {
+                        MentionChip(
+                            label = "@terminal",
+                            icon = Icons.Default.Terminal,
+                            onClick = {
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt@terminal ")
+                            },
+                        )
+                    }
+
+                    // Browse All button chip
                     MentionChip(
-                        label = "@file",
-                        icon = Icons.Default.Folder,
-                        onClick = { onTextChange(text + "file: ") },
-                    )
-                    MentionChip(
-                        label = "@git-diff",
-                        icon = Icons.Default.Source,
-                        onClick = { onTextChange(text + "git-diff ") },
-                    )
-                    MentionChip(
-                        label = "@terminal",
-                        icon = Icons.Default.Terminal,
-                        onClick = { onTextChange(text + "terminal ") },
+                        label = "⋯ All",
+                        icon = Icons.Default.Add,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showMentionSheet = true
+                        },
                     )
                 }
             }
@@ -294,6 +377,29 @@ internal fun ModernComposer(
                 )
 
                 Spacer(Modifier.weight(1f))
+
+                // Dedicated @ Mention Context Button
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF2B2D31),
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = enabled) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showMentionSheet = true
+                        },
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = "@",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = if (text.contains("@")) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.size(4.dp))
 
                 // Voice-to-Code Microphone Button
                 val speechLauncher = rememberLauncherForActivityResult(
@@ -426,6 +532,28 @@ internal fun ModernComposer(
                 }
             }
         }
+    }
+
+    if (showMentionSheet) {
+        ProjectMentionSheet(
+            availableProjects = availableProjects,
+            githubRepositories = githubRepositories,
+            onSelectMention = { token ->
+                val formatted = if (token.contains(" ")) "@\"$token\" " else "@$token "
+                val updated = if (text.isBlank()) {
+                    formatted
+                } else if (text.endsWith("@")) {
+                    text.dropLast(1) + formatted
+                } else if (text.endsWith(" ")) {
+                    text + formatted
+                } else {
+                    "$text $formatted"
+                }
+                onTextChange(updated)
+                showMentionSheet = false
+            },
+            onDismiss = { showMentionSheet = false },
+        )
     }
 }
 
