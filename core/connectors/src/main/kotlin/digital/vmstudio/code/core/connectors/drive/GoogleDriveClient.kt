@@ -71,6 +71,48 @@ class GoogleDriveClient @Inject constructor(
 
         return VmResult.Success(if (files.size > maxFiles) files.take(maxFiles) else files)
     }
+
+    /**
+     * Lists files and folders inside a specific Google Drive folder (defaults to root).
+     */
+    suspend fun listFolder(
+        accessToken: String,
+        folderId: String? = null,
+        pageSize: Int = 50,
+    ): VmResult<List<GoogleDriveFile>> {
+        val target = if (folderId.isNullOrBlank() || folderId.equals("root", ignoreCase = true)) {
+            "'root' in parents and trashed = false"
+        } else {
+            "'$folderId' in parents and trashed = false"
+        }
+        return listFiles(accessToken = accessToken, query = target, pageSize = pageSize, maxFiles = 150)
+    }
+
+    /**
+     * Exports a Google Doc as plain text / Markdown or a Google Sheet as CSV.
+     */
+    suspend fun exportGoogleDocOrSheet(
+        accessToken: String,
+        fileId: String,
+        mimeType: String,
+    ): VmResult<String> {
+        val exportMime = when {
+            mimeType.contains("spreadsheet") -> "text/csv"
+            mimeType.contains("document") -> "text/plain"
+            mimeType.contains("presentation") -> "text/plain"
+            else -> "text/plain"
+        }
+        val encodedFileId = URLEncoder.encode(fileId, "UTF-8")
+        val encodedExport = URLEncoder.encode(exportMime, "UTF-8")
+        val url = "$DRIVE_API_BASE/files/$encodedFileId/export?mimeType=$encodedExport"
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $accessToken")
+            .get()
+            .build()
+        return httpClient.execute(request, RetryPolicy())
+    }
+
     suspend fun uploadFile(
         accessToken: String,
         filename: String,

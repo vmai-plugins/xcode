@@ -69,6 +69,14 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "google_sheet_append",
         "Append a row of comma-separated or tab-separated values to a Google Spreadsheet by spreadsheet_id and range.",
     ),
+    GOOGLE_DRIVE_LIST(
+        "google_drive_list",
+        "Search and list files and folders in Google Drive. Optionally provide folder_id (e.g. 'root' or specific ID) or query (e.g. name contains 'plan').",
+    ),
+    GOOGLE_DRIVE_READ(
+        "google_drive_read",
+        "Read contents of a Google Drive file, code file, or export a Google Doc/Sheet to text/markdown/CSV. Requires file_id.",
+    ),
     ;
 
     companion object {
@@ -235,6 +243,36 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             add("spreadsheet_id")
             add("range")
             add("values")
+        }
+    }
+    OmniRouteTool.GOOGLE_DRIVE_LIST -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("folder_id") {
+                put("type", "string")
+                put("description", "The folder ID to list files from. Defaults to 'root'.")
+            }
+            putJsonObject("query") {
+                put("type", "string")
+                put("description", "Optional Drive query filter, e.g. name contains 'specs'.")
+            }
+        }
+        putJsonArray("required") { }
+    }
+    OmniRouteTool.GOOGLE_DRIVE_READ -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("file_id") {
+                put("type", "string")
+                put("description", "The Google Drive file ID to read.")
+            }
+            putJsonObject("mime_type") {
+                put("type", "string")
+                put("description", "Optional MIME type (e.g. application/vnd.google-apps.document).")
+            }
+        }
+        putJsonArray("required") {
+            add("file_id")
         }
     }
 }

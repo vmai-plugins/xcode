@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.connectors.drive.GoogleDriveClient
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveFile
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveManager
 import digital.vmstudio.code.core.connectors.sheets.GoogleSheetsClient
@@ -52,6 +53,15 @@ data class ConnectorsUiState(
     val driveStatusMessage: String? = null,
     val hasDriveToken: Boolean = false,
     val savedDriveToken: String? = null,
+    val isBrowsingDrive: Boolean = false,
+    val driveBrowserFolderId: String = "root",
+    val driveBrowserFolderName: String = "My Drive",
+    val driveFolderBreadcrumbs: List<Pair<String, String>> = emptyList(),
+    val driveFiles: List<GoogleDriveFile> = emptyList(),
+    val isLoadingDriveFiles: Boolean = false,
+    val drivePreviewFile: GoogleDriveFile? = null,
+    val drivePreviewContent: String? = null,
+    val isLoadingDrivePreview: Boolean = false,
     // Google Sheets
     val isTestingSheet: Boolean = false,
     val sheetStatusMessage: String? = null,
@@ -99,6 +109,15 @@ private data class MutableExtraState(
     val isBackingUpDrive: Boolean = false,
     val driveStatusMessage: String? = null,
     val savedDriveToken: String? = null,
+    val isBrowsingDrive: Boolean = false,
+    val driveBrowserFolderId: String = "root",
+    val driveBrowserFolderName: String = "My Drive",
+    val driveFolderBreadcrumbs: List<Pair<String, String>> = emptyList(),
+    val driveFiles: List<GoogleDriveFile> = emptyList(),
+    val isLoadingDriveFiles: Boolean = false,
+    val drivePreviewFile: GoogleDriveFile? = null,
+    val drivePreviewContent: String? = null,
+    val isLoadingDrivePreview: Boolean = false,
     val isTestingSheet: Boolean = false,
     val sheetStatusMessage: String? = null,
     val sheetPreviewRows: List<List<String>> = emptyList(),
@@ -128,6 +147,7 @@ private data class MutableExtraState(
 @HiltViewModel
 class ConnectorsViewModel @Inject constructor(
     private val googleDriveManager: GoogleDriveManager,
+    private val googleDriveClient: GoogleDriveClient,
     private val googleSheetsClient: GoogleSheetsClient,
     private val githubClient: GitHubRepositoryClient,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
@@ -160,6 +180,15 @@ class ConnectorsViewModel @Inject constructor(
             driveStatusMessage = extra.driveStatusMessage,
             hasDriveToken = prefs.googleDriveTokenCredentialId != null,
             savedDriveToken = extra.savedDriveToken,
+            isBrowsingDrive = extra.isBrowsingDrive,
+            driveBrowserFolderId = extra.driveBrowserFolderId,
+            driveBrowserFolderName = extra.driveBrowserFolderName,
+            driveFolderBreadcrumbs = extra.driveFolderBreadcrumbs,
+            driveFiles = extra.driveFiles,
+            isLoadingDriveFiles = extra.isLoadingDriveFiles,
+            drivePreviewFile = extra.drivePreviewFile,
+            drivePreviewContent = extra.drivePreviewContent,
+            isLoadingDrivePreview = extra.isLoadingDrivePreview,
             isTestingSheet = extra.isTestingSheet,
             sheetStatusMessage = extra.sheetStatusMessage,
             sheetPreviewRows = extra.sheetPreviewRows,
@@ -924,7 +953,139 @@ class ConnectorsViewModel @Inject constructor(
             val currentId = preferencesRepository.preferences.first().googleDriveTokenCredentialId
             preferencesRepository.setGoogleDriveTokenCredential(null)
             currentId?.let { credentialStore.delete(it) }
-            extraState.update { it.copy(savedDriveToken = null, driveBackups = emptyList(), driveStatusMessage = "Drive token removed.") }
+            extraState.update { it.copy(savedDriveToken = null, driveBackups = emptyList(), driveFiles = emptyList(), isBrowsingDrive = false, driveStatusMessage = "Drive token removed.") }
+        }
+    }
+
+    fun toggleDriveBrowser() {
+        val next = !extraState.value.isBrowsingDrive
+        extraState.update { it.copy(isBrowsingDrive = next) }
+        if (next && extraState.value.driveFiles.isEmpty()) {
+            browseDriveFolder("root", "My Drive")
+        }
+    }
+
+    fun browseDriveFolder(folderId: String = "root", folderName: String = "My Drive") {
+        viewModelScope.launch {
+            val token = getActiveDriveToken()
+            if (token.isNullOrBlank()) {
+                extraState.update { it.copy(driveStatusMessage = "Google Drive token required to browse.") }
+                return@launch
+            }
+            extraState.update { current ->
+                val updatedCrumbs = if (folderId == "root") {
+                    listOf("root" to "My Drive")
+                } else {
+                    val existingIndex = current.driveFolderBreadcrumbs.indexOfFirst { it.first == folderId }
+                    if (existingIndex >= 0) {
+                        current.driveFolderBreadcrumbs.take(existingIndex + 1)
+                    } else {
+                        current.driveFolderBreadcrumbs + (folderId to folderName)
+                    }
+                }
+                current.copy(
+                    isBrowsingDrive = true,
+                    isLoadingDriveFiles = true,
+                    driveBrowserFolderId = folderId,
+                    driveBrowserFolderName = folderName,
+                    driveFolderBreadcrumbs = updatedCrumbs,
+                )
+            }
+            when (val res = googleDriveClient.listFolder(token, folderId)) {
+                is VmResult.Success -> {
+                    val sorted = res.value.sortedWith(
+                        compareByDescending<GoogleDriveFile> { it.isFolder }
+                            .thenBy { it.name.lowercase() }
+                    )
+                    extraState.update {
+                        it.copy(
+                            isLoadingDriveFiles = false,
+                            driveFiles = sorted,
+                            driveStatusMessage = "Loaded ${sorted.size} items in $folderName",
+                        )
+                    }
+                }
+                is VmResult.Failure -> {
+                    extraState.update {
+                        it.copy(
+                            isLoadingDriveFiles = false,
+                            driveStatusMessage = "Failed to list folder: ${res.error.summary}",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun navigateDriveUp() {
+        val crumbs = extraState.value.driveFolderBreadcrumbs
+        if (crumbs.size > 1) {
+            val parent = crumbs[crumbs.size - 2]
+            browseDriveFolder(parent.first, parent.second)
+        } else if (crumbs.size == 1 && crumbs[0].first != "root") {
+            browseDriveFolder("root", "My Drive")
+        }
+    }
+
+    fun previewDriveFile(file: GoogleDriveFile) {
+        if (file.isFolder) {
+            browseDriveFolder(file.id, file.name)
+            return
+        }
+        viewModelScope.launch {
+            val token = getActiveDriveToken()
+            if (token.isNullOrBlank()) {
+                extraState.update { it.copy(driveStatusMessage = "Drive token required to read file.") }
+                return@launch
+            }
+            extraState.update {
+                it.copy(
+                    drivePreviewFile = file,
+                    isLoadingDrivePreview = true,
+                    drivePreviewContent = null,
+                )
+            }
+            val res = if (file.mimeType.contains("google-apps")) {
+                googleDriveClient.exportGoogleDocOrSheet(token, file.id, file.mimeType)
+            } else {
+                googleDriveClient.downloadFile(token, file.id)
+            }
+            when (res) {
+                is VmResult.Success -> {
+                    extraState.update {
+                        it.copy(
+                            isLoadingDrivePreview = false,
+                            drivePreviewContent = res.value,
+                        )
+                    }
+                }
+                is VmResult.Failure -> {
+                    extraState.update {
+                        it.copy(
+                            isLoadingDrivePreview = false,
+                            drivePreviewContent = "Error reading file: ${res.error.summary}",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissDrivePreview() {
+        extraState.update { it.copy(drivePreviewFile = null, drivePreviewContent = null) }
+    }
+
+    private suspend fun getActiveDriveToken(): String? {
+        val stateToken = extraState.value.savedDriveToken
+        if (!stateToken.isNullOrBlank()) return stateToken
+        val id = preferencesRepository.preferences.first().googleDriveTokenCredentialId ?: return null
+        return when (val sec = credentialStore.read(id)) {
+            is VmResult.Success -> {
+                val str = sec.value.useAsString { it }
+                sec.value.wipe()
+                str
+            }
+            is VmResult.Failure -> null
         }
     }
 

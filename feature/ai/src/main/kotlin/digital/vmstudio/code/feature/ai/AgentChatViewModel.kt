@@ -36,6 +36,7 @@ import digital.vmstudio.code.core.git.GitResult
 import digital.vmstudio.code.core.git.GitService
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.project.ProjectRepository
+import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CancellationException
@@ -183,6 +184,7 @@ class AgentChatViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
     private val githubRepositoryClient: GitHubRepositoryClient,
     private val wakeLockManager: AgentWakeLockManager,
+    private val credentialStore: SecureCredentialStore,
     @ApplicationContext private val context: Context,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     savedStateHandle: SavedStateHandle,
@@ -1207,6 +1209,17 @@ class AgentChatViewModel @Inject constructor(
                     projectId = tasks.findProjectId(server, state.workingDirectory.trim()),
                 )
 
+                val gdriveToken = preferenceStore.preferences.first().googleDriveTokenCredentialId?.let { id ->
+                    when (val secRes = credentialStore.read(id)) {
+                        is VmResult.Success -> {
+                            val token = secRes.value.useAsString { it }
+                            secRes.value.wipe()
+                            token
+                        }
+                        is VmResult.Failure -> null
+                    }
+                }
+
                 val config = AgentRunConfig(
                     serverId = server,
                     workingDirectory = state.workingDirectory.trim(),
@@ -1221,6 +1234,7 @@ class AgentChatViewModel @Inject constructor(
                     webAccessEnabled = preferences.preferences.first().aiWebAccessEnabled,
                     maxIterations = preferences.preferences.first().agentMaxIterations,
                     maxCommandsPerRun = preferences.preferences.first().agentMaxCommandsPerRun,
+                    googleDriveToken = gdriveToken,
                 )
 
                 try {

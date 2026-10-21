@@ -179,6 +179,7 @@ data class AgentRunConfig(
     val maxCommandsPerRun: Int? = null,
     /** Pre-configured squad preset defining specialized system instructions. */
     val squadPreset: AgentSquadPreset = AgentSquadPreset.FULL_STACK,
+    val googleDriveToken: String? = null,
 ) {
     companion object {
         /**

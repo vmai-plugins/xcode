@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,20 +19,27 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
@@ -41,6 +49,8 @@ import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -53,6 +63,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -638,24 +650,32 @@ fun ConnectorsScreen(
                 }
             }
 
-            // 5. Google Drive (Cloud Backups)
+            // 5. Google Drive & Docs (Cloud Backups & File Browser)
             if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.DATA_SHEETS) {
                 item(key = "card-drive") {
                     ModernConnectorCard(
                         icon = Icons.Default.Storage,
                         iconTint = Color(0xFFF57C00),
                         badgeBackground = Color(0xFFFFF3E0),
-                        title = "Google Drive",
-                        category = "Cloud Project Archives & Backups",
-                        status = if (state.driveBackups.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
-                        statusText = if (state.driveBackups.isNotEmpty()) "${state.driveBackups.size} archives" else "Ready",
-                        description = "Automates project tar.gz creation on VPS and direct upload to Google Drive for offsite disaster recovery.",
-                        tags = listOf("Drive v3", "Tarball Backups", "Multipart Upload", "Cloud Vault"),
+                        title = "Google Drive & Docs",
+                        category = "Drive Storage, Docs & Sheet Intelligence",
+                        status = if (state.driveFiles.isNotEmpty() || state.driveBackups.isNotEmpty() || state.hasDriveToken) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.driveFiles.isNotEmpty()) "${state.driveFiles.size} items" else if (state.driveBackups.isNotEmpty()) "${state.driveBackups.size} archives" else if (state.hasDriveToken) "Connected" else "Ready",
+                        description = "Browse cloud folders, inspect Google Docs & Sheets, and automate VPS project archives directly to Google Drive.",
+                        tags = listOf("Drive v3", "Docs & Sheets", "Folder Explorer", "Cloud Vault"),
                         isExpanded = driveExpanded,
                         onToggleExpand = { driveExpanded = !driveExpanded },
                         statusMessage = state.driveStatusMessage,
-                        primaryActionText = "Manage Backups",
-                        onPrimaryAction = { driveExpanded = !driveExpanded },
+                        primaryActionText = if (state.isBrowsingDrive) "Hide Browser" else "Browse Drive & Docs",
+                        onPrimaryAction = {
+                            driveExpanded = true
+                            viewModel.toggleDriveBrowser()
+                        },
+                        secondaryActionText = if (state.isBackingUpDrive) "Backing up…" else "Sync Backups",
+                        onSecondaryAction = {
+                            driveExpanded = true
+                            viewModel.refreshDriveBackups(driveTokenDraft)
+                        },
                     ) {
                         Column(
                             modifier = Modifier
@@ -664,7 +684,7 @@ fun ConnectorsScreen(
                             verticalArrangement = Arrangement.spacedBy(spacing.sm),
                         ) {
                             Text(
-                                "Google Drive Vault",
+                                "Google Drive Credentials & Vault",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -697,9 +717,15 @@ fun ConnectorsScreen(
                                     modifier = Modifier.weight(1f),
                                 )
                                 VmButton(
-                                    text = "Sync Backups",
-                                    onClick = { viewModel.refreshDriveBackups(driveTokenDraft) },
-                                    enabled = driveTokenDraft.isNotBlank(),
+                                    text = if (state.isBrowsingDrive) "Refresh Folder" else "Open Explorer",
+                                    onClick = {
+                                        if (!state.isBrowsingDrive) {
+                                            viewModel.toggleDriveBrowser()
+                                        } else {
+                                            viewModel.browseDriveFolder(state.driveBrowserFolderId, state.driveBrowserFolderName)
+                                        }
+                                    },
+                                    enabled = driveTokenDraft.isNotBlank() || state.hasDriveToken,
                                     style = VmButtonStyle.Secondary,
                                     modifier = Modifier.weight(1f),
                                 )
@@ -715,7 +741,171 @@ fun ConnectorsScreen(
                                 }
                             }
 
+                            // Drive Folder & File Browser UI
+                            if (state.isBrowsingDrive) {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        // Browser Header & Breadcrumbs
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Folder,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFF57C00),
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                                Text(
+                                                    text = "Drive",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.clickable { viewModel.browseDriveFolder("root", "My Drive") },
+                                                )
+                                                state.driveFolderBreadcrumbs.filterNot { it.first == "root" }.forEach { crumb ->
+                                                    Text("/", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    Text(
+                                                        text = crumb.second,
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        modifier = Modifier.clickable { viewModel.browseDriveFolder(crumb.first, crumb.second) },
+                                                    )
+                                                }
+                                            }
+                                            if (state.driveFolderBreadcrumbs.size > 1) {
+                                                IconButton(
+                                                    onClick = { viewModel.navigateDriveUp() },
+                                                    modifier = Modifier.size(28.dp),
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                                        contentDescription = "Navigate Up",
+                                                        modifier = Modifier.size(16.dp),
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (state.isLoadingDriveFiles) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Fetching Drive contents…", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                        } else if (state.driveFiles.isEmpty()) {
+                                            Text(
+                                                "Folder is empty.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                            )
+                                        } else {
+                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                state.driveFiles.forEach { file ->
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = MaterialTheme.colorScheme.surface,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable { viewModel.previewDriveFile(file) },
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.weight(1f),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            ) {
+                                                                val icon = when {
+                                                                    file.isFolder -> Icons.Default.Folder
+                                                                    file.isSheet -> Icons.Default.TableChart
+                                                                    file.isDoc -> Icons.Default.Description
+                                                                    else -> Icons.Default.Storage
+                                                                }
+                                                                val iconTint = when {
+                                                                    file.isFolder -> Color(0xFFFFA000)
+                                                                    file.isSheet -> Color(0xFF0F9D58)
+                                                                    file.isDoc -> Color(0xFF4285F4)
+                                                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                                }
+                                                                Icon(
+                                                                    imageVector = icon,
+                                                                    contentDescription = null,
+                                                                    tint = iconTint,
+                                                                    modifier = Modifier.size(18.dp),
+                                                                )
+                                                                Column {
+                                                                    Text(
+                                                                        text = file.name,
+                                                                        style = MaterialTheme.typography.bodySmall,
+                                                                        fontWeight = FontWeight.Medium,
+                                                                        maxLines = 1,
+                                                                    )
+                                                                    val badgeText = when {
+                                                                        file.isFolder -> "Folder"
+                                                                        file.isSheet -> "Google Sheet (Auto-CSV)"
+                                                                        file.isDoc -> "Google Doc (Plain text)"
+                                                                        file.sizeBytes > 0 -> "${file.sizeBytes / 1024} KB"
+                                                                        else -> file.mimeType.substringAfterLast("/")
+                                                                    }
+                                                                    Text(
+                                                                        text = badgeText,
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                    )
+                                                                }
+                                                            }
+                                                            if (file.isFolder) {
+                                                                Icon(
+                                                                    imageVector = Icons.AutoMirrored.Filled.NavigateNext,
+                                                                    contentDescription = "Open Folder",
+                                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                    modifier = Modifier.size(16.dp),
+                                                                )
+                                                            } else {
+                                                                Text(
+                                                                    "View",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // VPS Backups Section
                             if (state.driveBackups.isNotEmpty()) {
+                                Text(
+                                    "VPS Cloud Backups",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     state.driveBackups.take(5).forEach { file ->
                                         Surface(
@@ -1002,6 +1192,111 @@ fun ConnectorsScreen(
                 }
             }
         }
+    }
+
+    // Document / Sheet Content Preview Dialog
+    val previewFile = state.drivePreviewFile
+    if (previewFile != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDrivePreview() },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val icon = when {
+                        previewFile.isSheet -> Icons.Default.TableChart
+                        previewFile.isDoc -> Icons.Default.Description
+                        else -> Icons.Default.Storage
+                    }
+                    val iconTint = when {
+                        previewFile.isSheet -> Color(0xFF0F9D58)
+                        previewFile.isDoc -> Color(0xFF4285F4)
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                    Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+                    Text(
+                        text = previewFile.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val typeLabel = when {
+                        previewFile.isSheet -> "Google Sheet (Exported as CSV)"
+                        previewFile.isDoc -> "Google Doc (Exported as Plain Text)"
+                        else -> "File (${previewFile.mimeType})"
+                    }
+                    Text(
+                        text = typeLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                    )
+
+                    if (state.isLoadingDrivePreview) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Loading content from Google Drive…", style = MaterialTheme.typography.bodySmall)
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 350.dp),
+                        ) {
+                            SelectionContainer {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                ) {
+                                    Text(
+                                        text = state.drivePreviewContent ?: "No content available.",
+                                        style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!state.drivePreviewContent.isNullOrBlank()) {
+                        TextButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(state.drivePreviewContent.orEmpty()))
+                                Toast.makeText(context, "Copied content to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Copy")
+                        }
+                    }
+                    TextButton(onClick = { viewModel.dismissDrivePreview() }) {
+                        Text("Close")
+                    }
+                }
+            },
+        )
     }
 }
 

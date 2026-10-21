@@ -314,6 +314,12 @@ class OmniRouteAgentLoop @Inject constructor(
             add(OmniRouteTool.WEB_FETCH)
         }
         if (!isLocalWorkspace && !isGitHubWorkspace) add(OmniRouteTool.LIST_APKS)
+        if (!config.googleDriveToken.isNullOrBlank()) {
+            add(OmniRouteTool.GOOGLE_DRIVE_LIST)
+            add(OmniRouteTool.GOOGLE_DRIVE_READ)
+            add(OmniRouteTool.GOOGLE_SHEET_READ)
+            add(OmniRouteTool.GOOGLE_SHEET_APPEND)
+        }
         if (config.permissionMode != AgentPermissionMode.PLAN) {
             add(OmniRouteTool.WRITE_FILE)
             add(OmniRouteTool.EDIT_FILE)
@@ -490,6 +496,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     autonomyLevel = autonomyLevel,
                     permissionMode = config.permissionMode,
                     allowedTools = allowedTools,
+                    driveToken = config.googleDriveToken,
                 )
             }
         } else {
@@ -501,6 +508,7 @@ class OmniRouteAgentLoop @Inject constructor(
                 autonomyLevel = autonomyLevel,
                 permissionMode = config.permissionMode,
                 allowedTools = allowedTools,
+                driveToken = config.googleDriveToken,
             )
         }
 
@@ -527,6 +535,7 @@ class OmniRouteAgentLoop @Inject constructor(
         autonomyLevel: AgentAutonomyLevel,
         permissionMode: AgentPermissionMode,
         allowedTools: Set<OmniRouteTool>,
+        driveToken: String? = null,
     ): ToolOutcome {
         if (tool == null) {
             return ToolOutcome("Unknown tool \"${call.name}\".", isError = true)
@@ -535,9 +544,9 @@ class OmniRouteAgentLoop @Inject constructor(
         // restricted dropping run_command), but a call naming it anyway must still
         // be refused rather than trusting the request body kept it out.
         if (tool !in allowedTools) {
-            if (tool == OmniRouteTool.GOOGLE_SHEET_READ || tool == OmniRouteTool.GOOGLE_SHEET_APPEND) {
+            if (tool == OmniRouteTool.GOOGLE_SHEET_READ || tool == OmniRouteTool.GOOGLE_SHEET_APPEND || tool == OmniRouteTool.GOOGLE_DRIVE_LIST || tool == OmniRouteTool.GOOGLE_DRIVE_READ) {
                 return ToolOutcome(
-                    "Google Sheets operations are unavailable because this agent session has no authenticated Sheets connection.",
+                    "Google Drive/Sheets operations are unavailable because this agent session has no authenticated Google connection.",
                     isError = true,
                 )
             }
@@ -566,8 +575,10 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.RUN_BUILD -> runBuild(call, serverId, workingDirectory)
             OmniRouteTool.LIST_APKS -> listApks(call, serverId, workingDirectory)
             OmniRouteTool.WEB_FETCH -> webFetch(call)
-            OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call)
-            OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call)
+            OmniRouteTool.GOOGLE_DRIVE_LIST -> googleDriveList(call, driveToken)
+            OmniRouteTool.GOOGLE_DRIVE_READ -> googleDriveRead(call, driveToken)
+            OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call, driveToken)
+            OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call, driveToken)
         }
     }
 
@@ -580,12 +591,69 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
-    private suspend fun googleSheetRead(call: OmniRouteToolCall): ToolOutcome {
+    private suspend fun googleDriveList(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
+        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
+        if (token.isNullOrBlank()) {
+            return ToolOutcome("Google Drive operation requires an authenticated Google token.", isError = true)
+        }
+        val folderId = argument(call.argumentsJson, "folder_id")?.ifBlank { null } ?: "root"
+        val customQuery = argument(call.argumentsJson, "query")?.ifBlank { null }
+        val query = customQuery ?: "'$folderId' in parents and trashed = false"
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQuery&pageSize=50&fields=files(id,name,mimeType,size,modifiedTime)"
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $token")
+            .get()
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("Failed to list Google Drive files: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun googleDriveRead(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
+        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
+        if (token.isNullOrBlank()) {
+            return ToolOutcome("Google Drive operation requires an authenticated Google token.", isError = true)
+        }
+        val fileId = argument(call.argumentsJson, "file_id")
+            ?: return ToolOutcome("Missing required argument \"file_id\".", isError = true)
+        val mimeType = argument(call.argumentsJson, "mime_type").orEmpty()
+        val encodedFileId = java.net.URLEncoder.encode(fileId, "UTF-8")
+
+        val url = when {
+            mimeType.contains("spreadsheet") ->
+                "https://www.googleapis.com/drive/v3/files/$encodedFileId/export?mimeType=text/csv"
+            mimeType.contains("document") || mimeType.contains("presentation") ->
+                "https://www.googleapis.com/drive/v3/files/$encodedFileId/export?mimeType=text/plain"
+            else ->
+                "https://www.googleapis.com/drive/v3/files/$encodedFileId?alt=media"
+        }
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $token")
+            .get()
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> {
+                val fallbackExportUrl = "https://www.googleapis.com/drive/v3/files/$encodedFileId/export?mimeType=text/plain"
+                val fbReq = Request.Builder().url(fallbackExportUrl).addHeader("Authorization", "Bearer $token").get().build()
+                when (val fbRes = httpClient.execute(fbReq)) {
+                    is VmResult.Success -> ToolOutcome(fbRes.value, isError = false)
+                    is VmResult.Failure -> ToolOutcome("Failed to read Google Drive file: ${result.error.summaryWithReason()}", isError = true)
+                }
+            }
+        }
+    }
+
+    private suspend fun googleSheetRead(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
         val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
             ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
         val range = argument(call.argumentsJson, "range")
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
-        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token")
+        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
         val apiKey = argument(call.argumentsJson, "api_key")
         val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
         val url = if (!apiKey.isNullOrBlank()) {
@@ -608,14 +676,14 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
-    private suspend fun googleSheetAppend(call: OmniRouteToolCall): ToolOutcome {
+    private suspend fun googleSheetAppend(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
         val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
             ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
         val range = argument(call.argumentsJson, "range")
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
         val values = argument(call.argumentsJson, "values")
             ?: return ToolOutcome("Missing required argument \"values\".", isError = true)
-        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token")
+        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
         if (token.isNullOrBlank()) {
             return ToolOutcome(
                 output = "Google Sheets append requires an OAuth 'token' or 'access_token' in tool arguments.",
@@ -1184,6 +1252,8 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.RUN_BUILD -> "Build ${path ?: "project"}"
         OmniRouteTool.LIST_APKS -> "List APKs in ${path ?: "."}"
         OmniRouteTool.WEB_FETCH -> "Fetch ${path ?: "web page"}"
+        OmniRouteTool.GOOGLE_DRIVE_LIST -> "Search Google Drive ${path ?: ""}"
+        OmniRouteTool.GOOGLE_DRIVE_READ -> "Read Google Drive file ${path ?: ""}"
         OmniRouteTool.GOOGLE_SHEET_READ -> "Read spreadsheet ${path ?: "?"}"
         OmniRouteTool.GOOGLE_SHEET_APPEND -> "Append spreadsheet rows"
         null -> toolName
@@ -1358,6 +1428,10 @@ class OmniRouteAgentLoop @Inject constructor(
         )
         if (OmniRouteTool.WEB_FETCH in allowedTools) {
             append("Use web_fetch to read documentation or other public pages when you need them. ")
+        }
+        if (OmniRouteTool.GOOGLE_DRIVE_LIST in allowedTools) {
+            append("Use google_drive_list to search and list files and folders in connected Google Drive. ")
+            append("Use google_drive_read to read contents of Google Docs (converted to text), Google Sheets (converted to CSV), or text/code files. ")
         }
         if (OmniRouteTool.GOOGLE_SHEET_READ in allowedTools) {
             append("Use google_sheet_read and google_sheet_append to inspect and write to connected Google Spreadsheets. ")

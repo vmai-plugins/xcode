@@ -12,6 +12,9 @@ data class GoogleDriveFile(
 ) {
     val sizeBytes: Long get() = size?.toLongOrNull() ?: 0L
     val isFolder: Boolean get() = mimeType == "application/vnd.google-apps.folder"
+    val isDoc: Boolean get() = mimeType == "application/vnd.google-apps.document"
+    val isSheet: Boolean get() = mimeType == "application/vnd.google-apps.spreadsheet"
+    val isPresentation: Boolean get() = mimeType == "application/vnd.google-apps.presentation"
 }
 
 @Serializable
