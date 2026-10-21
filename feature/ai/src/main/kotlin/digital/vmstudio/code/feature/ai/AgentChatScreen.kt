@@ -89,6 +89,7 @@ fun AgentChatScreen(
     val listState = rememberLazyListState()
     var composerText by remember { mutableStateOf("") }
     var showDirectoryDialog by remember { mutableStateOf(false) }
+    var requestOpenProjects by remember { mutableStateOf(false) }
     var directoryServerId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val localFolderPicker = rememberLauncherForActivityResult(
@@ -297,6 +298,8 @@ fun AgentChatScreen(
                     onOpenArtifacts = { showArtifactsSheet = true },
                     onAddNewProject = onAddNewProject,
                     onOpenChatHistory = onOpenChatHistory,
+                    requestOpenProjects = requestOpenProjects,
+                    onRequestOpenProjectsConsumed = { requestOpenProjects = false },
                 )
             }
         },
@@ -364,8 +367,7 @@ fun AgentChatScreen(
                         },
                         onOpenProjectPicker = {
                             viewModel.loadGithubRepositories()
-                            directoryServerId = null
-                            showDirectoryDialog = true
+                            requestOpenProjects = true
                         },
                         onOpenServerPicker = {
                             val firstRemoteServer = state.availableServers

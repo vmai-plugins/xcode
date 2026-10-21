@@ -48,6 +48,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,9 +109,19 @@ internal fun ChatTopBar(
     onOpenArtifacts: (() -> Unit)? = null,
     onAddNewProject: (() -> Unit)? = null,
     onOpenChatHistory: (() -> Unit)? = null,
+    requestOpenProjects: Boolean = false,
+    onRequestOpenProjectsConsumed: () -> Unit = {},
 ) {
     var showProjects by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+
+    LaunchedEffect(requestOpenProjects) {
+        if (requestOpenProjects) {
+            showProjects = true
+            onOpenGithubPicker?.invoke()
+            onRequestOpenProjectsConsumed()
+        }
+    }
 
     TopAppBar(
         expandedHeight = ChatBarHeight,
