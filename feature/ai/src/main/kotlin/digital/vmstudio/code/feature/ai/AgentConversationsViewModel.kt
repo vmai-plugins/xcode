@@ -43,9 +43,14 @@ data class AgentConversationsUiState(
 @HiltViewModel
 class AgentConversationsViewModel @Inject constructor(
     private val conversations: AgentConversationRepository,
+    private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
 ) : ViewModel() {
 
     private val error = MutableStateFlow<VmError?>(null)
+
+    init {
+        syncWithHub()
+    }
 
     val uiState: StateFlow<AgentConversationsUiState> = combine(
         conversations.observeConversations().map { list ->
@@ -74,8 +79,20 @@ class AgentConversationsViewModel @Inject constructor(
         initialValue = AgentConversationsUiState(),
     )
 
+    fun syncWithHub() {
+        viewModelScope.launch {
+            when (val res = projectHubClient.syncAllChatsFromServer()) {
+                is VmResult.Failure -> error.value = res.error
+                is VmResult.Success -> Unit
+            }
+        }
+    }
+
     fun delete(id: String) {
         viewModelScope.launch {
+            try {
+                projectHubClient.deleteChatFromServer(id)
+            } catch (_: Exception) {}
             when (val result = conversations.delete(id)) {
                 is VmResult.Failure -> error.value = result.error
                 is VmResult.Success -> Unit

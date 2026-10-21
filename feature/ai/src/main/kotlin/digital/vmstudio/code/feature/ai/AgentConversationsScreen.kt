@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -85,6 +86,12 @@ fun AgentConversationsScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = viewModel::syncWithHub) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Sync chats with VPS Hub",
+                        )
+                    }
                     IconButton(onClick = onOpenTasks) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.List,

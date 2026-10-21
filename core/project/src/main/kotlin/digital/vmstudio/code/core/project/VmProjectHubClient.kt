@@ -3,6 +3,12 @@ package digital.vmstudio.code.core.project
 import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.database.dao.ConversationDao
+import digital.vmstudio.code.core.database.dao.MessageDao
+import digital.vmstudio.code.core.database.entity.ConversationEntity
+import digital.vmstudio.code.core.database.entity.MessageEntity
+import digital.vmstudio.code.core.database.entity.MessageRole
+import digital.vmstudio.code.core.database.entity.MessageStatus
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.database.entity.SshAuthMethod
 import digital.vmstudio.code.core.network.http.RetryPolicy
@@ -106,6 +112,8 @@ class VmProjectHubClient @Inject constructor(
     private val projectRepository: ProjectRepository,
     private val serverRepository: ServerRepository,
     private val preferencesRepository: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
+    private val conversationDao: ConversationDao,
+    private val messageDao: MessageDao,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -358,6 +366,182 @@ class VmProjectHubClient @Inject constructor(
         VmResult.Success(syncedCount)
     }
 
+    /**
+     * Uploads/syncs a conversation and all its messages to the VPS companion hub.
+     */
+    suspend fun syncChatToServer(conversationId: String): VmResult<Unit> = withContext(ioDispatcher) {
+        val hubKey = getEffectiveHubKey()
+            ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
+
+        val conv = conversationDao.getById(conversationId)
+            ?: return@withContext VmResult.Failure(VmError.NotFound("Conversation $conversationId not found locally"))
+
+        val messages = messageDao.observeForConversation(conversationId).first()
+
+        val convJson = buildJsonObject {
+            put("id", conv.id)
+            conv.projectId?.let { put("projectId", it) }
+            put("title", conv.title)
+            put("providerId", conv.providerId)
+            conv.providerSessionId?.let { put("providerSessionId", it) }
+            conv.serverId?.let { put("serverId", it) }
+            conv.workingDirectory?.let { put("workingDirectory", it) }
+            put("modelId", conv.modelId)
+            put("promptTokens", conv.promptTokens)
+            put("completionTokens", conv.completionTokens)
+            put("isArchived", conv.isArchived)
+            put("createdAtMillis", conv.createdAtMillis)
+            put("updatedAtMillis", conv.updatedAtMillis)
+        }
+
+        val messagesJson = JsonArray(messages.map { m ->
+            buildJsonObject {
+                put("id", m.id)
+                put("conversationId", m.conversationId)
+                put("role", m.role.name)
+                put("content", m.content)
+                m.reasoning?.let { put("reasoning", it) }
+                put("status", m.status.name)
+                m.errorText?.let { put("errorText", it) }
+                put("tokenCount", m.tokenCount)
+                m.modelId?.let { put("modelId", it) }
+                put("createdAtMillis", m.createdAtMillis)
+                put("sequence", m.sequence)
+            }
+        })
+
+        val payload = buildJsonObject {
+            put("conversation", convJson)
+            put("messages", messagesJson)
+        }
+
+        val request = Request.Builder()
+            .url("$HUB_BASE_URL/chats/sync")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Content-Type", "application/json")
+            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+            is VmResult.Failure -> result
+            is VmResult.Success -> VmResult.Success(Unit)
+        }
+    }
+
+    /**
+     * Downloads and restores all conversations from the VPS companion hub into Room SQLite.
+     * Preserves locally modified conversations while hydrating missing ones after a fresh install.
+     */
+    suspend fun syncAllChatsFromServer(): VmResult<Int> = withContext(ioDispatcher) {
+        val hubKey = getEffectiveHubKey()
+            ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
+
+        val listRequest = Request.Builder()
+            .url("$HUB_BASE_URL/chats")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+
+        val listResult = httpClient.execute(listRequest, RetryPolicy(maxAttempts = 2))
+        if (listResult is VmResult.Failure) return@withContext listResult
+
+        val jsonArray = runCatching {
+            json.parseToJsonElement((listResult as VmResult.Success).value) as? JsonArray
+        }.getOrNull() ?: return@withContext VmResult.Success(0)
+
+        var restoredCount = 0
+
+        for (item in jsonArray) {
+            val convObj = item as? JsonObject ?: continue
+            val convId = convObj.str("id") ?: continue
+            val serverUpdatedAt = convObj.long("updatedAtMillis") ?: 0L
+
+            val localConv = conversationDao.getById(convId)
+            if (localConv == null || serverUpdatedAt > localConv.updatedAtMillis) {
+                val detailRequest = Request.Builder()
+                    .url("$HUB_BASE_URL/chats/$convId")
+                    .header("X-VMPJ-Key", hubKey)
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+
+                when (val detailRes = httpClient.execute(detailRequest, RetryPolicy(maxAttempts = 2))) {
+                    is VmResult.Failure -> continue
+                    is VmResult.Success -> {
+                        val root = runCatching { json.parseToJsonElement(detailRes.value) as? JsonObject }.getOrNull()
+                            ?: continue
+                        val cObj = root["conversation"] as? JsonObject ?: continue
+                        val msgsArray = root["messages"] as? JsonArray ?: JsonArray(emptyList())
+
+                        val entity = ConversationEntity(
+                            id = cObj.str("id") ?: convId,
+                            projectId = cObj.str("projectId"),
+                            title = cObj.str("title") ?: "Chat",
+                            providerId = cObj.str("providerId") ?: "omniroute",
+                            providerSessionId = cObj.str("providerSessionId"),
+                            serverId = cObj.str("serverId"),
+                            workingDirectory = cObj.str("workingDirectory"),
+                            modelId = cObj.str("modelId") ?: "",
+                            promptTokens = cObj.long("promptTokens") ?: 0L,
+                            completionTokens = cObj.long("completionTokens") ?: 0L,
+                            isArchived = false,
+                            createdAtMillis = cObj.long("createdAtMillis") ?: System.currentTimeMillis(),
+                            updatedAtMillis = cObj.long("updatedAtMillis") ?: System.currentTimeMillis(),
+                        )
+                        conversationDao.upsert(entity)
+
+                        for (mEl in msgsArray) {
+                            val mObj = mEl as? JsonObject ?: continue
+                            val mId = mObj.str("id") ?: continue
+                            val roleStr = mObj.str("role") ?: "USER"
+                            val role = try { MessageRole.valueOf(roleStr) } catch (_: Exception) { MessageRole.USER }
+                            val statusStr = mObj.str("status") ?: "COMPLETE"
+                            val status = try { MessageStatus.valueOf(statusStr) } catch (_: Exception) { MessageStatus.COMPLETE }
+
+                            val msgEntity = MessageEntity(
+                                id = mId,
+                                conversationId = convId,
+                                role = role,
+                                content = mObj.str("content") ?: "",
+                                reasoning = mObj.str("reasoning"),
+                                status = status,
+                                errorText = mObj.str("errorText"),
+                                tokenCount = mObj.int("tokenCount") ?: 0,
+                                modelId = mObj.str("modelId"),
+                                createdAtMillis = mObj.long("createdAtMillis") ?: System.currentTimeMillis(),
+                                sequence = mObj.long("sequence") ?: 0L,
+                            )
+                            messageDao.upsert(msgEntity)
+                        }
+                        restoredCount++
+                    }
+                }
+            }
+        }
+
+        VmResult.Success(restoredCount)
+    }
+
+    /**
+     * Deletes a conversation on the VPS companion hub.
+     */
+    suspend fun deleteChatFromServer(conversationId: String): VmResult<Unit> = withContext(ioDispatcher) {
+        val hubKey = getEffectiveHubKey()
+            ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
+
+        val request = Request.Builder()
+            .url("$HUB_BASE_URL/chats/$conversationId")
+            .header("X-VMPJ-Key", hubKey)
+            .delete()
+            .build()
+
+        when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
+            is VmResult.Failure -> result
+            is VmResult.Success -> VmResult.Success(Unit)
+        }
+    }
+
     internal fun parseProjects(rawBody: String): List<HubProjectItem> {
         val root = runCatching { json.parseToJsonElement(rawBody) }.getOrNull() as? JsonObject
             ?: return emptyList()
@@ -437,4 +621,9 @@ private fun JsonObject.str(key: String): String? =
 private fun JsonObject.int(key: String): Int? {
     val raw = (this[key] as? JsonPrimitive)?.content ?: return null
     return raw.toIntOrNull() ?: raw.toDoubleOrNull()?.toInt()
+}
+
+private fun JsonObject.long(key: String): Long? {
+    val raw = (this[key] as? JsonPrimitive)?.content ?: return null
+    return raw.toLongOrNull() ?: raw.toDoubleOrNull()?.toLong()
 }

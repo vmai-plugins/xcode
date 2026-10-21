@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
@@ -255,6 +256,18 @@ internal fun ModernComposer(
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 val beforeAt = text.substring(0, text.lastIndexOf('@'))
                                 onTextChange("$beforeAt@${repo.fullName} ")
+                            },
+                        )
+                    }
+
+                    // Swarm & Agents
+                    if (query.isBlank() || "swarm".contains(query, ignoreCase = true)) {
+                        MentionChip(
+                            label = "@swarm",
+                            icon = Icons.Default.AutoAwesome,
+                            onClick = {
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt@swarm ")
                             },
                         )
                     }

@@ -118,6 +118,14 @@ fun ConnectorsScreen(
     var aiKeyDraft by remember { mutableStateOf("") }
     var aiKeyVisible by remember { mutableStateOf(false) }
 
+    var evolutionExpanded by remember { mutableStateOf(false) }
+    var evolutionBaseUrlDraft by remember(state.evolutionApiBaseUrl) { mutableStateOf(state.evolutionApiBaseUrl) }
+    var evolutionInstanceDraft by remember(state.evolutionApiInstance) { mutableStateOf(state.evolutionApiInstance) }
+    var evolutionApiKeyDraft by remember(state.savedEvolutionApiKey) { mutableStateOf(state.savedEvolutionApiKey.orEmpty()) }
+    var evolutionApiKeyVisible by remember { mutableStateOf(false) }
+    var evolutionRecipientDraft by remember(state.evolutionApiRecipientNumber) { mutableStateOf(state.evolutionApiRecipientNumber) }
+    var evolutionNotificationsDraft by remember(state.evolutionApiNotificationsEnabled) { mutableStateOf(state.evolutionApiNotificationsEnabled) }
+
     LaunchedEffect(state.savedDriveToken) {
         state.savedDriveToken?.let { if (driveTokenDraft.isBlank()) driveTokenDraft = it }
     }
@@ -210,6 +218,11 @@ fun ConnectorsScreen(
                         label = "AI Gateways",
                         selected = state.selectedFilter == ConnectorFilter.AI_GATEWAY,
                         onClick = { viewModel.selectFilter(ConnectorFilter.AI_GATEWAY) },
+                    )
+                    ConnectorFilterChip(
+                        label = "WhatsApp (Evolution)",
+                        selected = state.selectedFilter == ConnectorFilter.WHATSAPP,
+                        onClick = { viewModel.selectFilter(ConnectorFilter.WHATSAPP) },
                     )
                 }
             }
@@ -822,6 +835,167 @@ fun ConnectorsScreen(
                                 ) {
                                     Text("Revert to Built-in Free Cloud Key", color = MaterialTheme.colorScheme.error)
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 7. WhatsApp & Evolution API (Messaging & Remote Control)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.WHATSAPP) {
+                item(key = "card-whatsapp") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.SmartToy,
+                        iconTint = Color(0xFF25D366),
+                        badgeBackground = Color(0xFFE8F5E9),
+                        title = "WhatsApp (Evolution API)",
+                        category = "Messaging, APK Dispatch & Remote AI",
+                        status = when {
+                            state.evolutionApiConnected == true -> VmStatus.CONNECTED
+                            state.hasEvolutionApiKey -> VmStatus.CONNECTED
+                            else -> VmStatus.IDLE
+                        },
+                        statusText = when {
+                            state.isTestingEvolutionApi -> "Checking…"
+                            state.evolutionApiConnected == true -> "Connected"
+                            state.hasEvolutionApiKey -> "Configured"
+                            else -> "Setup Needed"
+                        },
+                        description = "Dispatch release APKs, receive build completion alerts, and trigger agent coding workflows via WhatsApp.",
+                        tags = listOf("WhatsApp", "Evolution API", "Webhook", "APK Dispatch"),
+                        isExpanded = evolutionExpanded,
+                        onToggleExpand = { evolutionExpanded = !evolutionExpanded },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            Text(
+                                text = "Connect your WhatsApp via Evolution API (wa.vmstudio.digital) to dispatch APKs to your phone and receive instant build notifications.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            OutlinedTextField(
+                                value = evolutionBaseUrlDraft,
+                                onValueChange = { evolutionBaseUrlDraft = it },
+                                label = { Text("Evolution API Host") },
+                                placeholder = { Text("https://wa.vmstudio.digital") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                            ) {
+                                OutlinedTextField(
+                                    value = evolutionInstanceDraft,
+                                    onValueChange = { evolutionInstanceDraft = it },
+                                    label = { Text("Instance Name") },
+                                    placeholder = { Text("main") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedTextField(
+                                    value = evolutionRecipientDraft,
+                                    onValueChange = { evolutionRecipientDraft = it },
+                                    label = { Text("WhatsApp Number") },
+                                    placeholder = { Text("91xxxxxxxxxx") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+
+                            OutlinedTextField(
+                                value = evolutionApiKeyDraft,
+                                onValueChange = { evolutionApiKeyDraft = it },
+                                label = { Text("Evolution API Key") },
+                                placeholder = { Text("Paste apikey from wa.vmstudio.digital") },
+                                singleLine = true,
+                                visualTransformation = if (evolutionApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { evolutionApiKeyVisible = !evolutionApiKeyVisible }) {
+                                        Icon(
+                                            imageVector = if (evolutionApiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = if (evolutionApiKeyVisible) "Hide Key" else "Show Key",
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Build & Agent Alerts",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    )
+                                    Text(
+                                        text = "Ping WhatsApp when APK builds or tasks complete",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                androidx.compose.material3.Switch(
+                                    checked = evolutionNotificationsDraft,
+                                    onCheckedChange = { evolutionNotificationsDraft = it },
+                                )
+                            }
+
+                            if (!state.evolutionApiStatusMessage.isNullOrBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = state.evolutionApiStatusMessage.orEmpty(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (state.evolutionApiConnected == false) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(spacing.sm),
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                            ) {
+                                VmButton(
+                                    text = "Save Settings",
+                                    onClick = {
+                                        viewModel.saveEvolutionApiSettings(
+                                            baseUrl = evolutionBaseUrlDraft,
+                                            instance = evolutionInstanceDraft,
+                                            apiKey = evolutionApiKeyDraft,
+                                            recipientNumber = evolutionRecipientDraft,
+                                            notificationsEnabled = evolutionNotificationsDraft,
+                                        )
+                                    },
+                                    style = VmButtonStyle.Primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                VmButton(
+                                    text = if (state.isTestingEvolutionApi) "Testing…" else "Test Connection",
+                                    onClick = {
+                                        viewModel.testEvolutionApiConnection(
+                                            baseUrl = evolutionBaseUrlDraft,
+                                            instance = evolutionInstanceDraft,
+                                            apiKey = evolutionApiKeyDraft,
+                                            recipientNumber = evolutionRecipientDraft,
+                                        )
+                                    },
+                                    enabled = !state.isTestingEvolutionApi && evolutionApiKeyDraft.isNotBlank(),
+                                    style = VmButtonStyle.Secondary,
+                                    modifier = Modifier.weight(1f),
+                                )
                             }
                         }
                     }

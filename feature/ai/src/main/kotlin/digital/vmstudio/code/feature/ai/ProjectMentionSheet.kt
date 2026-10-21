@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Folder
@@ -60,6 +61,7 @@ private enum class MentionCategory(val title: String) {
     ALL("All"),
     PROJECTS("Projects"),
     GITHUB("GitHub"),
+    SWARM("Swarm & Agents"),
     TOOLS("Tools"),
 }
 
@@ -77,7 +79,7 @@ internal fun ProjectMentionSheet(
     val haptic = LocalHapticFeedback.current
 
     val filteredProjects = remember(availableProjects, query, selectedCategory) {
-        if (selectedCategory == MentionCategory.GITHUB || selectedCategory == MentionCategory.TOOLS) {
+        if (selectedCategory == MentionCategory.GITHUB || selectedCategory == MentionCategory.TOOLS || selectedCategory == MentionCategory.SWARM) {
             emptyList()
         } else if (query.isBlank()) {
             availableProjects
@@ -91,7 +93,7 @@ internal fun ProjectMentionSheet(
     }
 
     val filteredRepos = remember(githubRepositories, query, selectedCategory) {
-        if (selectedCategory == MentionCategory.PROJECTS || selectedCategory == MentionCategory.TOOLS) {
+        if (selectedCategory == MentionCategory.PROJECTS || selectedCategory == MentionCategory.TOOLS || selectedCategory == MentionCategory.SWARM) {
             emptyList()
         } else if (query.isBlank()) {
             githubRepositories
@@ -103,6 +105,7 @@ internal fun ProjectMentionSheet(
         }
     }
 
+    val showAgents = selectedCategory == MentionCategory.ALL || selectedCategory == MentionCategory.SWARM
     val showTools = selectedCategory == MentionCategory.ALL || selectedCategory == MentionCategory.TOOLS
 
     ModalBottomSheet(
@@ -281,7 +284,79 @@ internal fun ProjectMentionSheet(
                     }
                 }
 
-                // 3. Quick System Tools
+                // 3. Swarm & Specialist Agents
+                if (showAgents && (query.isBlank() || "swarm".contains(query, ignoreCase = true) || "agent".contains(query, ignoreCase = true))) {
+                    item {
+                        Text(
+                            text = "AGENTS & SWARMS",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFFFFB74D),
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.AutoAwesome,
+                            title = "swarm",
+                            subtitle = "Run parallel agent swarm across all mentioned projects",
+                            badge = "Swarm",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("swarm")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.Code,
+                            title = "architect",
+                            subtitle = "High-level system design & specification specialist",
+                            badge = "Agent",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("architect")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.Code,
+                            title = "frontend",
+                            subtitle = "Web UI, Next.js & Jetpack Compose specialist",
+                            badge = "Agent",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("frontend")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.Terminal,
+                            title = "backend",
+                            subtitle = "Server APIs, database schema & DevOps specialist",
+                            badge = "Agent",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("backend")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.Source,
+                            title = "reviewer",
+                            subtitle = "Automated diff auditor & QA verification specialist",
+                            badge = "Agent",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("reviewer")
+                            },
+                        )
+                    }
+                }
+
+                // 4. Quick System Tools
                 if (showTools && query.isBlank()) {
                     item {
                         Text(

@@ -14,5 +14,6 @@ dependencies {
     implementation(projects.core.database)
     implementation(projects.core.update)
     implementation(projects.core.sftp)
+    implementation(projects.core.connectors)
     implementation(libs.androidx.documentfile)
 }

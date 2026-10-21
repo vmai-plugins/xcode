@@ -220,6 +220,11 @@ class UserPreferencesRepository @Inject constructor(
             biometricLockEnabled = this[Keys.BIOMETRIC_LOCK_ENABLED] ?: defaults.biometricLockEnabled,
             autoConnectServerId = this[Keys.AUTO_CONNECT_SERVER_ID],
             vpsAutoConnectEnabled = this[Keys.VPS_AUTO_CONNECT_ENABLED] ?: defaults.vpsAutoConnectEnabled,
+            evolutionApiBaseUrl = this[Keys.EVOLUTION_API_BASE_URL] ?: defaults.evolutionApiBaseUrl,
+            evolutionApiKeyCredentialId = this[Keys.EVOLUTION_API_KEY_CREDENTIAL],
+            evolutionApiInstance = this[Keys.EVOLUTION_API_INSTANCE],
+            evolutionApiRecipientNumber = this[Keys.EVOLUTION_API_RECIPIENT_NUMBER],
+            evolutionApiNotificationsEnabled = this[Keys.EVOLUTION_API_NOTIFICATIONS_ENABLED] ?: defaults.evolutionApiNotificationsEnabled,
         )
     }
 
@@ -258,6 +263,22 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setVpsAutoConnectEnabled(enabled: Boolean) = edit {
         it[Keys.VPS_AUTO_CONNECT_ENABLED] = enabled
+    }
+
+    suspend fun setEvolutionApiSettings(
+        baseUrl: String,
+        instance: String?,
+        recipientNumber: String?,
+        notificationsEnabled: Boolean,
+    ) = edit {
+        it[Keys.EVOLUTION_API_BASE_URL] = baseUrl.trim()
+        if (!instance.isNullOrBlank()) it[Keys.EVOLUTION_API_INSTANCE] = instance.trim() else it.remove(Keys.EVOLUTION_API_INSTANCE)
+        if (!recipientNumber.isNullOrBlank()) it[Keys.EVOLUTION_API_RECIPIENT_NUMBER] = recipientNumber.trim() else it.remove(Keys.EVOLUTION_API_RECIPIENT_NUMBER)
+        it[Keys.EVOLUTION_API_NOTIFICATIONS_ENABLED] = notificationsEnabled
+    }
+
+    suspend fun setEvolutionApiKeyCredential(id: String?) = edit {
+        if (id != null) it[Keys.EVOLUTION_API_KEY_CREDENTIAL] = id else it.remove(Keys.EVOLUTION_API_KEY_CREDENTIAL)
     }
 
     /** Unknown stored names fall back to the default rather than throwing. */
@@ -303,6 +324,11 @@ class UserPreferencesRepository @Inject constructor(
         val GOOGLE_SHEETS_SPREADSHEET_ID = stringPreferencesKey("google_sheets_spreadsheet_id")
         val AUTO_CONNECT_SERVER_ID = stringPreferencesKey("auto_connect_server_id")
         val VPS_AUTO_CONNECT_ENABLED = booleanPreferencesKey("vps_auto_connect_enabled")
+        val EVOLUTION_API_BASE_URL = stringPreferencesKey("evolution_api_base_url")
+        val EVOLUTION_API_KEY_CREDENTIAL = stringPreferencesKey("evolution_api_key_credential")
+        val EVOLUTION_API_INSTANCE = stringPreferencesKey("evolution_api_instance")
+        val EVOLUTION_API_RECIPIENT_NUMBER = stringPreferencesKey("evolution_api_recipient_number")
+        val EVOLUTION_API_NOTIFICATIONS_ENABLED = booleanPreferencesKey("evolution_api_notifications_enabled")
     }
 
     private companion object {

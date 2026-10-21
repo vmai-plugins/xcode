@@ -107,8 +107,14 @@ data class UserPreferences(
     val googleSheetsSpreadsheetId: String? = null,
     val autoConnectServerId: String? = null,
     val vpsAutoConnectEnabled: Boolean = true,
+    val evolutionApiBaseUrl: String = DEFAULT_EVOLUTION_API_BASE_URL,
+    val evolutionApiKeyCredentialId: String? = null,
+    val evolutionApiInstance: String? = null,
+    val evolutionApiRecipientNumber: String? = null,
+    val evolutionApiNotificationsEnabled: Boolean = false,
 ) {
     companion object {
+        const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
         /** The only supported AI gateway. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
         const val DEFAULT_AI_MODEL_ID = "auto/best-coding"

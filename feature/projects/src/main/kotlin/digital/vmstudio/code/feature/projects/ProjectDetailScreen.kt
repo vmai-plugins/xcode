@@ -173,6 +173,7 @@ fun ProjectDetailScreen(
                             onScanApks = viewModel::scanApkArtifacts,
                             onInstallApk = viewModel::downloadAndInstallApk,
                             onSaveApk = viewModel::downloadApkToPhoneDownloads,
+                            onSendWhatsApp = viewModel::sendApkViaWhatsApp,
                         )
                     }
                 }
@@ -464,6 +465,7 @@ private fun ProjectAndroidBuildCard(
     onScanApks: () -> Unit,
     onInstallApk: (ApkArtifact) -> Unit,
     onSaveApk: (ApkArtifact) -> Unit,
+    onSendWhatsApp: ((ApkArtifact) -> Unit)? = null,
 ) {
     val spacing = VmTheme.spacing
     VmCard(modifier = Modifier.fillMaxWidth()) {
@@ -542,6 +544,7 @@ private fun ProjectAndroidBuildCard(
                         isDownloading = state.isDownloadingApk,
                         onInstall = { onInstallApk(artifact) },
                         onSave = { onSaveApk(artifact) },
+                        onSendWhatsApp = onSendWhatsApp?.let { { it(artifact) } },
                     )
                 }
             }
@@ -555,6 +558,7 @@ private fun ApkArtifactItem(
     isDownloading: Boolean,
     onInstall: () -> Unit,
     onSave: () -> Unit,
+    onSendWhatsApp: (() -> Unit)? = null,
 ) {
     val spacing = VmTheme.spacing
     VmCard(modifier = Modifier.fillMaxWidth()) {
@@ -578,7 +582,7 @@ private fun ApkArtifactItem(
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
                 VmButton(
-                    text = "Install APK",
+                    text = "Install",
                     onClick = onInstall,
                     enabled = !isDownloading,
                     icon = Icons.Default.Download,
@@ -586,12 +590,21 @@ private fun ApkArtifactItem(
                     modifier = Modifier.weight(1f),
                 )
                 VmButton(
-                    text = "Save to Phone",
+                    text = "Save",
                     onClick = onSave,
                     enabled = !isDownloading,
                     style = VmButtonStyle.Secondary,
                     modifier = Modifier.weight(1f),
                 )
+                if (onSendWhatsApp != null) {
+                    VmButton(
+                        text = "WhatsApp",
+                        onClick = onSendWhatsApp,
+                        enabled = !isDownloading,
+                        style = VmButtonStyle.Secondary,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }

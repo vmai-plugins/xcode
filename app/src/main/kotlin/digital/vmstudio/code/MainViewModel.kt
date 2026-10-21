@@ -49,6 +49,7 @@ class MainViewModel @Inject constructor(
                 if (!prefs.hubApiKey.isNullOrBlank()) {
                     projectHubClient.syncHubCredentialsAndVps()
                     projectHubClient.syncUniversalProjects()
+                    projectHubClient.syncAllChatsFromServer()
                 }
 
                 val currentPrefs = preferencesRepository.preferences.first()

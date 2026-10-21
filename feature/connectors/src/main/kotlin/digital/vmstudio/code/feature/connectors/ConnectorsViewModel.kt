@@ -10,6 +10,9 @@ import digital.vmstudio.code.core.connectors.drive.GoogleDriveFile
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveManager
 import digital.vmstudio.code.core.connectors.sheets.GoogleSheetsClient
 import digital.vmstudio.code.core.git.GitHubRepositoryClient
+import digital.vmstudio.code.core.connectors.whatsapp.EvolutionApiClient
+import digital.vmstudio.code.core.connectors.whatsapp.EvolutionConfig
+import digital.vmstudio.code.core.security.model.CredentialRef
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.model.SecretType
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
@@ -36,6 +39,7 @@ enum class ConnectorFilter {
     GIT_VCS,
     DATA_SHEETS,
     AI_GATEWAY,
+    WHATSAPP,
 }
 
 data class ConnectorsUiState(
@@ -77,6 +81,16 @@ data class ConnectorsUiState(
     val isTestingAi: Boolean = false,
     val aiLatencyMillis: Long? = null,
     val aiStatusMessage: String? = null,
+    // WhatsApp (Evolution API)
+    val evolutionApiBaseUrl: String = "https://wa.vmstudio.digital",
+    val evolutionApiInstance: String = "",
+    val evolutionApiRecipientNumber: String = "",
+    val hasEvolutionApiKey: Boolean = false,
+    val savedEvolutionApiKey: String? = null,
+    val evolutionApiNotificationsEnabled: Boolean = false,
+    val isTestingEvolutionApi: Boolean = false,
+    val evolutionApiConnected: Boolean? = null,
+    val evolutionApiStatusMessage: String? = null,
 )
 
 private data class MutableExtraState(
@@ -102,6 +116,13 @@ private data class MutableExtraState(
     val isTestingAi: Boolean = false,
     val aiLatencyMillis: Long? = null,
     val aiStatusMessage: String? = null,
+    val evolutionApiInstance: String? = null,
+    val evolutionApiRecipientNumber: String? = null,
+    val savedEvolutionApiKey: String? = null,
+    val evolutionApiNotificationsEnabled: Boolean = false,
+    val isTestingEvolutionApi: Boolean = false,
+    val evolutionApiConnected: Boolean? = null,
+    val evolutionApiStatusMessage: String? = null,
 )
 
 @HiltViewModel
@@ -115,6 +136,7 @@ class ConnectorsViewModel @Inject constructor(
     private val aiProviders: AiProviderRegistry,
     private val serverRepository: ServerRepository,
     private val connectionManager: digital.vmstudio.code.core.ssh.connection.SshConnectionManager,
+    private val evolutionApiClient: EvolutionApiClient,
 ) : ViewModel() {
 
     private val extraState = MutableStateFlow(MutableExtraState())
@@ -163,6 +185,15 @@ class ConnectorsViewModel @Inject constructor(
             isTestingAi = extra.isTestingAi,
             aiLatencyMillis = extra.aiLatencyMillis,
             aiStatusMessage = extra.aiStatusMessage,
+            evolutionApiBaseUrl = prefs.evolutionApiBaseUrl,
+            evolutionApiInstance = extra.evolutionApiInstance ?: prefs.evolutionApiInstance.orEmpty(),
+            evolutionApiRecipientNumber = extra.evolutionApiRecipientNumber ?: prefs.evolutionApiRecipientNumber.orEmpty(),
+            hasEvolutionApiKey = prefs.evolutionApiKeyCredentialId != null,
+            savedEvolutionApiKey = extra.savedEvolutionApiKey,
+            evolutionApiNotificationsEnabled = extra.evolutionApiNotificationsEnabled || prefs.evolutionApiNotificationsEnabled,
+            isTestingEvolutionApi = extra.isTestingEvolutionApi,
+            evolutionApiConnected = extra.evolutionApiConnected,
+            evolutionApiStatusMessage = extra.evolutionApiStatusMessage,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -174,6 +205,7 @@ class ConnectorsViewModel @Inject constructor(
         checkGitHubStatus()
         testAiGateway()
         loadSavedGoogleTokens()
+        loadSavedEvolutionApiKey()
         viewModelScope.launch {
             val key = preferencesRepository.preferences.first().hubApiKey
             if (!key.isNullOrBlank()) {
@@ -235,6 +267,127 @@ class ConnectorsViewModel @Inject constructor(
         )
         val result = serverRepository.save(draft)
         return if (result is VmResult.Success) serverName else null
+    }
+
+    private fun loadSavedEvolutionApiKey() {
+        viewModelScope.launch {
+            val prefs = preferencesRepository.preferences.first()
+            val credId = prefs.evolutionApiKeyCredentialId
+            var keyStr: String? = null
+            if (credId != null) {
+                when (val secRes = credentialStore.read(credId)) {
+                    is VmResult.Success -> {
+                        keyStr = secRes.value.useAsString { it }
+                        secRes.value.wipe()
+                    }
+                    is VmResult.Failure -> {}
+                }
+            }
+            extraState.update {
+                it.copy(
+                    savedEvolutionApiKey = keyStr,
+                    evolutionApiInstance = prefs.evolutionApiInstance,
+                    evolutionApiRecipientNumber = prefs.evolutionApiRecipientNumber,
+                    evolutionApiNotificationsEnabled = prefs.evolutionApiNotificationsEnabled,
+                )
+            }
+        }
+    }
+
+    fun saveEvolutionApiSettings(
+        baseUrl: String,
+        instance: String,
+        apiKey: String,
+        recipientNumber: String,
+        notificationsEnabled: Boolean,
+    ) {
+        viewModelScope.launch {
+            val trimmedKey = apiKey.trim()
+            val previousId = preferencesRepository.preferences.first().evolutionApiKeyCredentialId
+            var newKeyId: String? = null
+            if (trimmedKey.isNotBlank()) {
+                val secret = Secret.of(trimmedKey)
+                try {
+                    when (val putRes = credentialStore.put(SecretType.GENERIC, "Evolution API Key", secret)) {
+                        is VmResult.Success -> {
+                            newKeyId = putRes.value.id
+                            previousId?.let { credentialStore.delete(it) }
+                        }
+                        is VmResult.Failure -> {}
+                    }
+                } finally {
+                    secret.wipe()
+                }
+            }
+
+            preferencesRepository.setEvolutionApiSettings(
+                baseUrl = baseUrl,
+                instance = instance,
+                recipientNumber = recipientNumber,
+                notificationsEnabled = notificationsEnabled,
+            )
+            if (newKeyId != null) {
+                preferencesRepository.setEvolutionApiKeyCredential(newKeyId)
+            }
+            extraState.update {
+                it.copy(
+                    evolutionApiInstance = instance,
+                    evolutionApiRecipientNumber = recipientNumber,
+                    savedEvolutionApiKey = trimmedKey.takeIf { k -> k.isNotBlank() },
+                    evolutionApiNotificationsEnabled = notificationsEnabled,
+                    evolutionApiStatusMessage = "WhatsApp (Evolution API) settings saved",
+                )
+            }
+        }
+    }
+
+    fun testEvolutionApiConnection(
+        baseUrl: String,
+        instance: String,
+        apiKey: String,
+        recipientNumber: String,
+    ) {
+        viewModelScope.launch {
+            if (apiKey.isBlank() || instance.isBlank()) {
+                extraState.update { it.copy(evolutionApiStatusMessage = "Instance name and API Key are required.") }
+                return@launch
+            }
+            extraState.update { it.copy(isTestingEvolutionApi = true, evolutionApiStatusMessage = "Checking Evolution API connection at $baseUrl...") }
+            val config = EvolutionConfig(
+                baseUrl = baseUrl,
+                apiKey = apiKey.trim(),
+                instance = instance.trim(),
+                recipientNumber = recipientNumber.trim(),
+            )
+            when (val res = evolutionApiClient.checkConnection(config)) {
+                is VmResult.Success -> {
+                    val isConnected = res.value
+                    extraState.update {
+                        it.copy(
+                            isTestingEvolutionApi = false,
+                            evolutionApiConnected = isConnected,
+                            evolutionApiStatusMessage = if (isConnected) "Instance '$instance' is online & connected to WhatsApp!" else "Instance '$instance' reached, but WhatsApp Web is not linked.",
+                        )
+                    }
+                    if (isConnected && recipientNumber.isNotBlank()) {
+                        evolutionApiClient.sendText(
+                            config,
+                            recipientNumber,
+                            "🚀 *X-Codes IDE Connected!*\n\nYour WhatsApp coding & build pipeline via Evolution API (wa.vmstudio.digital) is ready.",
+                        )
+                    }
+                }
+                is VmResult.Failure -> {
+                    extraState.update {
+                        it.copy(
+                            isTestingEvolutionApi = false,
+                            evolutionApiConnected = false,
+                            evolutionApiStatusMessage = "Connection failed: ${res.error.summary}",
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun selectFilter(filter: ConnectorFilter) {

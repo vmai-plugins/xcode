@@ -8,7 +8,11 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.connectors.whatsapp.EvolutionApiClient
+import digital.vmstudio.code.core.connectors.whatsapp.EvolutionConfig
+import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import digital.vmstudio.code.core.database.dao.AgentTaskDao
 import digital.vmstudio.code.core.database.entity.ActivityCategory
 import digital.vmstudio.code.core.database.entity.AgentTaskEntity
@@ -76,6 +80,9 @@ class ProjectDetailViewModel @Inject constructor(
     private val activityRepository: ActivityRepository,
     private val remoteFileSystem: RemoteFileSystem,
     private val apkInstaller: ApkInstaller,
+    private val evolutionApiClient: EvolutionApiClient,
+    private val preferencesRepository: UserPreferencesRepository,
+    private val credentialStore: SecureCredentialStore,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -357,6 +364,84 @@ class ProjectDetailViewModel @Inject constructor(
                     summary = "Could not save APK to Downloads",
                     reason = e.message,
                     cause = e,
+                )
+            } finally {
+                isDownloadingApk.value = false
+            }
+        }
+    }
+
+    fun sendApkViaWhatsApp(artifact: ApkArtifact) {
+        val proj = project.value ?: return
+        val srvId = proj.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+        viewModelScope.launch {
+            val prefs = preferencesRepository.preferences.first()
+            var apiKey: String? = null
+            prefs.evolutionApiKeyCredentialId?.let { credId ->
+                when (val res = credentialStore.read(credId)) {
+                    is VmResult.Success -> {
+                        apiKey = res.value.useAsString { it }
+                        res.value.wipe()
+                    }
+                    is VmResult.Failure -> {}
+                }
+            }
+            val instance = prefs.evolutionApiInstance
+            val recipient = prefs.evolutionApiRecipientNumber
+            if (apiKey.isNullOrBlank() || instance.isNullOrBlank() || recipient.isNullOrBlank()) {
+                error.value = VmError.Validation(
+                    summary = "WhatsApp not configured",
+                    reason = "Please configure your Evolution API credentials and recipient number under Settings > Connectors.",
+                )
+                return@launch
+            }
+
+            val safeName = try {
+                safeApkDisplayName(artifact.name)
+            } catch (e: IllegalArgumentException) {
+                error.value = VmError.Validation(summary = "Invalid APK filename", reason = e.message)
+                return@launch
+            }
+
+            isDownloadingApk.value = true
+            notificationMessage.value = "Preparing APK for WhatsApp..."
+            try {
+                val tempDir = File(context.cacheDir, "whatsapp_apks").apply { mkdirs() }
+                val localApkFile = File(tempDir, safeName)
+
+                var lastEvent: TransferEvent? = null
+                remoteFileSystem.download(srvId, artifact.path, localApkFile, resume = false)
+                    .collect { event ->
+                        lastEvent = event
+                        if (event is TransferEvent.Failed) {
+                            error.value = event.error
+                        }
+                    }
+                val failure = apkTransferFailure(lastEvent)
+                if (failure != null) {
+                    error.value = failure
+                    return@launch
+                }
+
+                notificationMessage.value = "Sending APK to WhatsApp ($recipient)..."
+                val config = EvolutionConfig(
+                    baseUrl = prefs.evolutionApiBaseUrl,
+                    apiKey = apiKey ?: "",
+                    instance = instance,
+                    recipientNumber = recipient,
+                )
+                when (val result = evolutionApiClient.sendApk(config, recipient, localApkFile, "📦 *Release APK*: $safeName\nProject: ${proj.name}")) {
+                    is VmResult.Success -> {
+                        notificationMessage.value = "APK sent to WhatsApp successfully!"
+                    }
+                    is VmResult.Failure -> {
+                        error.value = result.error
+                    }
+                }
+            } catch (e: Exception) {
+                error.value = VmError.Network(
+                    summary = "Could not send APK via WhatsApp",
+                    reason = e.message,
                 )
             } finally {
                 isDownloadingApk.value = false

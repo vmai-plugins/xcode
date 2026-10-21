@@ -184,6 +184,7 @@ class AgentChatViewModel @Inject constructor(
     private val githubRepositoryClient: GitHubRepositoryClient,
     private val wakeLockManager: AgentWakeLockManager,
     @ApplicationContext private val context: Context,
+    private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -248,6 +249,11 @@ class AgentChatViewModel @Inject constructor(
         // Live model sync: refresh the gateway's list whenever the chat opens on a
         // stale one. A failure here is silent; an explicit sync reports it.
         viewModelScope.launch { modelCatalog.syncIfStale() }
+        viewModelScope.launch {
+            try {
+                projectHubClient.syncAllChatsFromServer()
+            } catch (_: Exception) {}
+        }
         when {
             // Reopening a stored conversation: its own directory and session id are
             // authoritative, so nothing is probed or prefilled.
@@ -999,8 +1005,10 @@ class AgentChatViewModel @Inject constructor(
         runJob = viewModelScope.launch {
             wakeLockManager.acquire()
             val selfJob = coroutineContext[Job]
+            var activeConvId: String? = null
             try {
                 val conversationId = state.conversationId ?: createConversation(server, state, prompt)
+                activeConvId = conversationId
                 if (conversationId == null) {
                     _uiState.update { it.copy(isRunning = false) }
                     return@launch
@@ -1110,12 +1118,24 @@ class AgentChatViewModel @Inject constructor(
                     }
                 }.distinctBy { it.id }
 
-                if (matchedProjects.isNotEmpty() || matchedRepos.isNotEmpty()) {
-                    val summary = (matchedProjects.map { "@${it.name}" } + matchedRepos.map { "@${it.fullName}" }).joinToString(", ")
+                val isSwarmRequested = resolvedPrompt.contains("@swarm", ignoreCase = true)
+                val requestedRoles = buildList {
+                    if (resolvedPrompt.contains("@architect", ignoreCase = true)) add("Architect (System Design)")
+                    if (resolvedPrompt.contains("@frontend", ignoreCase = true)) add("Frontend (UI/Web/Compose)")
+                    if (resolvedPrompt.contains("@backend", ignoreCase = true)) add("Backend (APIs/Databases)")
+                    if (resolvedPrompt.contains("@reviewer", ignoreCase = true)) add("Reviewer (Diff Audit/QA)")
+                }
+
+                if (matchedProjects.isNotEmpty() || matchedRepos.isNotEmpty() || isSwarmRequested || requestedRoles.isNotEmpty()) {
+                    val elements = (matchedProjects.map { "@${it.name}" } +
+                        matchedRepos.map { "@${it.fullName}" } +
+                        (if (isSwarmRequested) listOf("@swarm") else emptyList()) +
+                        requestedRoles.map { "@${it.substringBefore(' ').lowercase()}" }
+                    ).joinToString(", ")
                     append(
                         TranscriptItem.Diagnostic(
                             id = nextId(),
-                            text = "Mentioned Context: $summary",
+                            text = "Mentioned Context: $elements",
                             isStderr = false,
                         ),
                     )
@@ -1123,6 +1143,17 @@ class AgentChatViewModel @Inject constructor(
 
                 val fullPrompt = buildString {
                     append(resolvedPrompt)
+                    if (isSwarmRequested) {
+                        append("\n\n[Swarm Coordinator Mode]\n")
+                        append("The user requested multi-agent swarm execution across projects. ")
+                        append("Act as the Lead Coordinator: decompose this task into parallel subtasks per project workspace, ")
+                        append("specify execution steps and file modifications for each project separately, and highlight dependencies.\n")
+                    }
+                    if (requestedRoles.isNotEmpty()) {
+                        append("\n\n[Active Specialist Roles]\n")
+                        append("Adopt the following specialist perspectives: ${requestedRoles.joinToString(", ")}. ")
+                        append("Structure your findings, code generation, and verification under these respective roles.\n")
+                    }
                     if (matchedProjects.isNotEmpty() || matchedRepos.isNotEmpty()) {
                         append("\n\n[Referenced Projects & Repositories Context]\n")
                         append("The user explicitly referenced external workspace(s) and repository(ies) in this chat:\n")
@@ -1250,6 +1281,13 @@ class AgentChatViewModel @Inject constructor(
                 wakeLockManager.release()
                 if (runJob === selfJob) {
                     _uiState.update { it.copy(isRunning = false) }
+                }
+                activeConvId?.let { convId ->
+                    viewModelScope.launch {
+                        try {
+                            projectHubClient.syncChatToServer(convId)
+                        } catch (_: Exception) {}
+                    }
                 }
             }
         }
