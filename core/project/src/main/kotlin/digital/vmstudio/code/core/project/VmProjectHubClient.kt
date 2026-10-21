@@ -90,6 +90,12 @@ data class HubCredentials(
     val modelsUrl: String?,
     val kaggleUsername: String?,
     val vpsHost: String?,
+    val vpsUser: String? = null,
+    val vpsPort: Int? = null,
+    val vpsAuthMethod: String? = null,
+    val vpsPassword: String? = null,
+    val vpsPrivateKey: String? = null,
+    val vpsName: String? = null,
 )
 
 @Singleton
@@ -192,6 +198,15 @@ class VmProjectHubClient @Inject constructor(
                         modelsUrl = root.str("models_url"),
                         kaggleUsername = root.str("kaggle_username"),
                         vpsHost = root.str("vps_host"),
+<<<<<<< HEAD
+=======
+                        vpsUser = root.str("vps_user"),
+                        vpsPort = root.int("vps_port"),
+                        vpsAuthMethod = root.str("vps_auth_method"),
+                        vpsPassword = root.str("vps_password"),
+                        vpsPrivateKey = root.str("vps_private_key"),
+                        vpsName = root.str("vps_name"),
+>>>>>>> Bump version to 0.8.0, add Project Creator in ChatTopBar, Hub VPS auto-sync, background network fix, and agent loop optimizations
                     )
                     VmResult.Success(creds)
                 }

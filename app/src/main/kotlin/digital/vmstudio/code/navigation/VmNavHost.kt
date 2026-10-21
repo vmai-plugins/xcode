@@ -468,6 +468,8 @@ private fun AgentChat(
         onOpenFiles = { serverId, path ->
             navController.navigate(VmDestination.ServerFiles.routeFor(serverId, path))
         },
+        onAddNewProject = { navController.navigate(VmDestination.ProjectAdd.routeFor()) },
+        onOpenChatHistory = { navController.navigate(VmDestination.Chats.route) },
     )
 }
 

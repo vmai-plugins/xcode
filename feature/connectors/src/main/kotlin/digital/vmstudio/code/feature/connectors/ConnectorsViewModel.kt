@@ -13,7 +13,11 @@ import digital.vmstudio.code.core.git.GitHubRepositoryClient
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.model.SecretType
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
+import digital.vmstudio.code.core.database.entity.ServerEnvironment
+import digital.vmstudio.code.core.database.entity.SshAuthMethod
+import digital.vmstudio.code.core.project.HubCredentials
 import digital.vmstudio.code.core.ssh.model.Server
+import digital.vmstudio.code.core.ssh.model.ServerDraft
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,7 +101,7 @@ class ConnectorsViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
     private val credentialStore: SecureCredentialStore,
     private val aiProviders: AiProviderRegistry,
-    serverRepository: ServerRepository,
+    private val serverRepository: ServerRepository,
 ) : ViewModel() {
 
     private val extraState = MutableStateFlow(MutableExtraState())
@@ -172,11 +176,37 @@ class ConnectorsViewModel @Inject constructor(
                         if (prefs.aiApiKeyCredentialId == null && !ai.isNullOrBlank()) {
                             saveCustomAiKey(ai)
                         }
+                        syncVpsServer(creds)
                     }
                     is VmResult.Failure -> {}
                 }
             }
         }
+    }
+
+    private suspend fun syncVpsServer(creds: HubCredentials): String? {
+        val host = creds.vpsHost?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val existing = serverRepository.servers.first()
+        val match = existing.firstOrNull { it.host.equals(host, ignoreCase = true) }
+        if (match != null) return null // Already configured
+        val authMethod = if (!creds.vpsPrivateKey.isNullOrBlank()) {
+            SshAuthMethod.PRIVATE_KEY
+        } else {
+            SshAuthMethod.PASSWORD
+        }
+        val serverName = creds.vpsName?.takeIf { it.isNotBlank() } ?: "VM VPS ($host)"
+        val draft = ServerDraft(
+            name = serverName,
+            host = host,
+            port = (creds.vpsPort ?: 22).toString(),
+            username = creds.vpsUser?.takeIf { it.isNotBlank() } ?: "root",
+            authMethod = authMethod,
+            password = creds.vpsPassword.orEmpty(),
+            privateKeyPem = creds.vpsPrivateKey.orEmpty(),
+            environment = ServerEnvironment.PRODUCTION,
+        )
+        val result = serverRepository.save(draft)
+        return if (result is VmResult.Success) serverName else null
     }
 
     fun selectFilter(filter: ConnectorFilter) {
@@ -393,6 +423,7 @@ class ConnectorsViewModel @Inject constructor(
                         if (!ai.isNullOrBlank() && preferencesRepository.preferences.first().aiApiKeyCredentialId == null) {
                             saveCustomAiKey(ai)
                         }
+                        syncVpsServer(creds)
                     }
                     is VmResult.Failure -> {}
                 }
@@ -446,9 +477,17 @@ class ConnectorsViewModel @Inject constructor(
                             saveCustomAiKey(ai)
                             syncedParts += "OmniRoute AI key"
                         }
+                        val vpsName = syncVpsServer(creds)
+                        if (vpsName != null) {
+                            syncedParts += "VPS ($vpsName)"
+                        }
                         extraState.update {
                             it.copy(
-                                hubStatusMessage = "Synced ${syncedParts.joinToString(" & ")} from VM Project Hub"
+                                hubStatusMessage = if (syncedParts.isEmpty()) {
+                                    "Credentials already up to date with VM Project Hub"
+                                } else {
+                                    "Synced ${syncedParts.joinToString(" & ")} from VM Project Hub"
+                                }
                             )
                         }
                     }

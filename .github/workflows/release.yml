@@ -34,6 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
       - name: Check the tag matches the app version
         run: |
           VERSION="$(sed -n 's/.*VERSION_NAME = "\(.*\)".*/\1/p' build-logic/convention/src/main/kotlin/digital/vmstudio/buildlogic/BuildConfig.kt)"

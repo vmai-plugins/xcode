@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
@@ -105,6 +106,8 @@ internal fun ChatTopBar(
     onToggleFullScreen: (() -> Unit)? = null,
     artifactsCount: Int = 0,
     onOpenArtifacts: (() -> Unit)? = null,
+    onAddNewProject: (() -> Unit)? = null,
+    onOpenChatHistory: (() -> Unit)? = null,
 ) {
     var showProjects by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
@@ -186,6 +189,12 @@ internal fun ChatTopBar(
                     onBrowseServer = { serverId ->
                         showProjects = false
                         onBrowseServer?.invoke(serverId)
+                    },
+                    onAddNewProject = onAddNewProject?.let { callback ->
+                        {
+                            showProjects = false
+                            callback()
+                        }
                     },
                 )
             }
@@ -272,6 +281,16 @@ internal fun ChatTopBar(
                             },
                         )
                     }
+                    if (onOpenChatHistory != null) {
+                        DropdownMenuItem(
+                            text = { Text("Chat History") },
+                            leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                            onClick = {
+                                showMore = false
+                                onOpenChatHistory()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Files") },
                         leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
@@ -335,6 +354,7 @@ private fun ProjectMenu(
     onChooseDirectory: (() -> Unit)? = null,
     onChooseLocalFolder: (() -> Unit)? = null,
     onBrowseServer: ((String) -> Unit)? = null,
+    onAddNewProject: (() -> Unit)? = null,
 ) {
     if (!expanded) return
 
@@ -384,6 +404,49 @@ private fun ProjectMenu(
                     .fillMaxWidth()
                     .padding(bottom = 24.dp)
             ) {
+                // 0. Quick Action: Add / Create Project
+                if (onAddNewProject != null && (searchQuery.isBlank() || "create new project".contains(searchQuery, ignoreCase = true) || "add project".contains(searchQuery, ignoreCase = true))) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onDismiss()
+                                    onAddNewProject()
+                                }
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(12.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(modifier = Modifier.size(12.dp))
+                                Column {
+                                    Text(
+                                        "Create New Project…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Text(
+                                        "Add a new local or remote workspace",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 1. General Chat (Workspace neutral)
                 if (searchQuery.isBlank() || "general chat".contains(searchQuery, ignoreCase = true)) {
                     item {

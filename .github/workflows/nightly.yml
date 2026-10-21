@@ -41,6 +41,9 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
       - name: Download the APK Build already made
         if: github.event_name == 'workflow_run'
         id: download_apk

@@ -838,7 +838,9 @@ class AgentChatViewModel @Inject constructor(
      * folder (gateway models only). New chats open the way the last one was set.
      */
     fun selectProject(project: Project?) {
-        if (_uiState.value.isRunning) return
+        if (_uiState.value.isRunning) {
+            detachToBackground()
+        }
         gitDiscoveryJob?.cancel()
         gitDiscoveryJob = null
         _uiState.update {
@@ -1217,7 +1219,9 @@ class AgentChatViewModel @Inject constructor(
 
     /** Forgets the provider session so the next prompt starts a fresh conversation. */
     fun startNewConversation() {
-        runJob?.cancel()
+        if (_uiState.value.isRunning) {
+            detachToBackground()
+        }
         deltas.clear()
         _uiState.update {
             it.copy(

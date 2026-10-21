@@ -37,7 +37,7 @@ internal fun AiLimitsSection(state: AiSettingsUiState, viewModel: AiSettingsView
             )
             VmButton(
                 text = "+5",
-                onClick = { viewModel.setMaxIterations((state.preferences.agentMaxIterations + 5).coerceAtMost(100)) },
+                onClick = { viewModel.setMaxIterations((state.preferences.agentMaxIterations + 5).coerceAtMost(200)) },
                 style = VmButtonStyle.Tertiary,
             )
         }

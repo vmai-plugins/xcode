@@ -53,8 +53,7 @@ class ConnectivityNetworkMonitor @Inject constructor(
                 network: Network,
                 capabilities: NetworkCapabilities,
             ) {
-                val usable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                val usable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 if (usable) validated += network else validated -= network
                 trySend(validated.isNotEmpty())
             }
@@ -94,7 +93,6 @@ class ConnectivityNetworkMonitor @Inject constructor(
 
     private fun ConnectivityManager.currentlyOnline(): Boolean {
         val capabilities = getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }

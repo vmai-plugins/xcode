@@ -79,6 +79,8 @@ fun AgentChatScreen(
     onWatchBackgroundRuns: (serverId: String) -> Unit = {},
     onOpenDiff: (serverId: String, filePath: String) -> Unit = { _, _ -> },
     onOpenFiles: (serverId: String, path: String) -> Unit = { _, _ -> },
+    onAddNewProject: (() -> Unit)? = null,
+    onOpenChatHistory: (() -> Unit)? = null,
     viewModel: AgentChatViewModel = hiltViewModel(),
     conversationsViewModel: AgentConversationsViewModel = hiltViewModel(),
 ) {
@@ -293,6 +295,8 @@ fun AgentChatScreen(
                     onToggleFullScreen = { isFullScreen = !isFullScreen },
                     artifactsCount = artifacts.size,
                     onOpenArtifacts = { showArtifactsSheet = true },
+                    onAddNewProject = onAddNewProject,
+                    onOpenChatHistory = onOpenChatHistory,
                 )
             }
         },
