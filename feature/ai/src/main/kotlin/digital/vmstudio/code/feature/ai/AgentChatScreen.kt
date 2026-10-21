@@ -297,6 +297,7 @@ fun AgentChatScreen(
                     artifactsCount = artifacts.size,
                     onOpenArtifacts = { showArtifactsSheet = true },
                     onAddNewProject = onAddNewProject,
+                    onQuickCreateProject = viewModel::quickCreateProject,
                     onOpenChatHistory = onOpenChatHistory,
                     requestOpenProjects = requestOpenProjects,
                     onRequestOpenProjectsConsumed = { requestOpenProjects = false },
@@ -421,6 +422,10 @@ fun AgentChatScreen(
                         workingDirectory = state.workingDirectory,
                         onSuggestionClick = { prompt ->
                             composerText = prompt
+                        },
+                        onSelectProjectClick = {
+                            viewModel.loadGithubRepositories()
+                            requestOpenProjects = true
                         },
                     )
                 }

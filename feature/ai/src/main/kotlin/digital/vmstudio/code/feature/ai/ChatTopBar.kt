@@ -108,6 +108,7 @@ internal fun ChatTopBar(
     artifactsCount: Int = 0,
     onOpenArtifacts: (() -> Unit)? = null,
     onAddNewProject: (() -> Unit)? = null,
+    onQuickCreateProject: ((name: String, isLocal: Boolean) -> Unit)? = null,
     onOpenChatHistory: (() -> Unit)? = null,
     requestOpenProjects: Boolean = false,
     onRequestOpenProjectsConsumed: () -> Unit = {},
@@ -127,87 +128,48 @@ internal fun ChatTopBar(
         expandedHeight = ChatBarHeight,
         scrollBehavior = scrollBehavior,
         title = {
-            Box {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF1E1F22))
-                        .clickable(enabled = canSwitchProject) {
-                            showProjects = true
-                            onOpenGithubPicker?.invoke()
-                        }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(androidx.compose.foundation.shape.CircleShape)
-                            .background(if (isConnecting) Color(0xFFFFB74D) else Color(0xFF4CAF50)),
-                    )
-                    Spacer(modifier = Modifier.size(7.dp))
-                    Text(
-                        text = if (isConnecting) "Connecting…" else title,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFE2E2E5),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (canSwitchProject) {
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Switch project",
-                            modifier = Modifier.size(16.dp),
-                            tint = Color(0xFF8E919A),
-                        )
+            val displayTitle = when {
+                isConnecting -> "Connectingâ€¦"
+                title.isNotBlank() && title != "Agent Chat" -> title
+                workingDirectory.isNotBlank() && workingDirectory != "/" -> workingDirectory.trimEnd('/').substringAfterLast('/')
+                else -> "Select Project"
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF1E1F22))
+                    .clickable(enabled = canSwitchProject) {
+                        showProjects = true
+                        onOpenGithubPicker?.invoke()
                     }
-                }
-                ProjectMenu(
-                    expanded = showProjects,
-                    projects = projects,
-                    workingDirectory = workingDirectory,
-                    discoveredGitRepos = discoveredGitRepos,
-                    onDismiss = { showProjects = false },
-                    onSelect = { project ->
-                        showProjects = false
-                        onSelectProject(project)
-                    },
-                    onOpenCodespace = { repo ->
-                        showProjects = false
-                        onOpenCodespace?.invoke(repo)
-                    },
-                    githubRepositories = githubRepositories,
-                    isLoadingGithubRepositories = isLoadingGithubRepositories,
-                    githubError = githubError,
-                    availableServers = availableServers,
-                    onOpenGithubPicker = onOpenGithubPicker,
-                    onRefreshGithubRepositories = onRefreshGithubRepositories,
-                    onSelectDiscoveredRepo = { repo ->
-                        showProjects = false
-                        onSelectDiscoveredRepo?.invoke(repo)
-                    },
-                    onChooseDirectory = {
-                        showProjects = false
-                        onChooseDirectory?.invoke()
-                    },
-                    onChooseLocalFolder = {
-                        showProjects = false
-                        onChooseLocalFolder?.invoke()
-                    },
-                    onBrowseServer = { serverId ->
-                        showProjects = false
-                        onBrowseServer?.invoke(serverId)
-                    },
-                    onAddNewProject = onAddNewProject?.let { callback ->
-                        {
-                            showProjects = false
-                            callback()
-                        }
-                    },
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = if (workingDirectory.isNotBlank()) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
+                    modifier = Modifier.size(15.dp),
                 )
+                Spacer(modifier = Modifier.size(6.dp))
+                Text(
+                    text = displayTitle,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFE2E2E5),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (canSwitchProject) {
+                    Spacer(modifier = Modifier.size(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Switch project",
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFF8E919A),
+                    )
+                }
             }
         },
         navigationIcon = {
@@ -343,6 +305,50 @@ internal fun ChatTopBar(
             scrolledContainerColor = MaterialTheme.colorScheme.background,
         ),
     )
+    ProjectMenu(
+        expanded = showProjects,
+        projects = projects,
+        workingDirectory = workingDirectory,
+        discoveredGitRepos = discoveredGitRepos,
+        onDismiss = { showProjects = false },
+        onSelect = { project ->
+            showProjects = false
+            onSelectProject(project)
+        },
+        onOpenCodespace = { repo ->
+            showProjects = false
+            onOpenCodespace?.invoke(repo)
+        },
+        githubRepositories = githubRepositories,
+        isLoadingGithubRepositories = isLoadingGithubRepositories,
+        githubError = githubError,
+        availableServers = availableServers,
+        onOpenGithubPicker = onOpenGithubPicker,
+        onRefreshGithubRepositories = onRefreshGithubRepositories,
+        onSelectDiscoveredRepo = { repo ->
+            showProjects = false
+            onSelectDiscoveredRepo?.invoke(repo)
+        },
+        onChooseDirectory = {
+            showProjects = false
+            onChooseDirectory?.invoke()
+        },
+        onChooseLocalFolder = {
+            showProjects = false
+            onChooseLocalFolder?.invoke()
+        },
+        onBrowseServer = { serverId ->
+            showProjects = false
+            onBrowseServer?.invoke(serverId)
+        },
+        onAddNewProject = onAddNewProject?.let { callback ->
+            {
+                showProjects = false
+                callback()
+            }
+        },
+        onQuickCreateProject = onQuickCreateProject,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -366,11 +372,81 @@ private fun ProjectMenu(
     onChooseLocalFolder: (() -> Unit)? = null,
     onBrowseServer: ((String) -> Unit)? = null,
     onAddNewProject: (() -> Unit)? = null,
+    onQuickCreateProject: ((name: String, isLocal: Boolean) -> Unit)? = null,
 ) {
     if (!expanded) return
 
     var searchQuery by remember { mutableStateOf("") }
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showQuickCreateDialog by remember { mutableStateOf(false) }
+    var quickProjectName by remember { mutableStateOf("") }
+    var isLocalWorkspace by remember { mutableStateOf(true) }
+
+    if (showQuickCreateDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showQuickCreateDialog = false },
+            title = { Text("Create New Project", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Quickly initialize a workspace to work on code directly in this chat.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = quickProjectName,
+                        onValueChange = { quickProjectName = it },
+                        label = { Text("Workspace Name") },
+                        placeholder = { Text("e.g. my-app") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        androidx.compose.material3.FilterChip(
+                            selected = isLocalWorkspace,
+                            onClick = { isLocalWorkspace = true },
+                            label = { Text("Phone Storage") },
+                        )
+                        androidx.compose.material3.FilterChip(
+                            selected = !isLocalWorkspace,
+                            onClick = { isLocalWorkspace = false },
+                            label = { Text("VPS Cloud") },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        if (quickProjectName.isNotBlank()) {
+                            onQuickCreateProject?.invoke(quickProjectName.trim(), isLocalWorkspace)
+                            showQuickCreateDialog = false
+                            onDismiss()
+                        }
+                    },
+                    enabled = quickProjectName.isNotBlank(),
+                ) {
+                    Text("Create & Select")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showQuickCreateDialog = false
+                        if (onAddNewProject != null) {
+                            onDismiss()
+                            onAddNewProject()
+                        }
+                    },
+                ) {
+                    Text("Advancedâ€¦")
+                }
+            },
+        )
+    }
 
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,

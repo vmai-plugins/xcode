@@ -43,11 +43,11 @@ enum class ProjectSource {
 }
 
 data class ProjectCreateUiState(
-    val source: ProjectSource = ProjectSource.GITHUB,
+    val source: ProjectSource = ProjectSource.LOCAL,
     val name: String = "",
     val remotePath: String = "",
     val servers: List<ServerOption> = emptyList(),
-    val selectedServerId: String? = null,
+    val selectedServerId: String? = RemoteFileSystem.LOCAL_SERVER_ID,
     val githubUrl: String = "",
     val branch: String = "main",
     val environment: ServerEnvironment = ServerEnvironment.DEVELOPMENT,

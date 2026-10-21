@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
@@ -96,6 +97,7 @@ internal fun EditDirectoryDialog(
 internal fun EmptyChatHero(
     workingDirectory: String,
     onSuggestionClick: (String) -> Unit,
+    onSelectProjectClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
@@ -154,8 +156,45 @@ internal fun EmptyChatHero(
             text = if (isGeneral) "General workspace · No project pinned" else "Active folder: $dirName",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp, bottom = 28.dp),
+            modifier = Modifier.padding(top = 6.dp, bottom = 14.dp),
         )
+
+        // Prominent interactive project switcher in empty chat
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .clickable(onClick = onSelectProjectClick)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FolderOpen,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = if (isGeneral) "Select or Add Project Workspace" else "Switch Project Workspace",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.size(18.dp))
 
         // --- Teamily & Antigravity Agent Squad Actions ---
         val actions = listOf(

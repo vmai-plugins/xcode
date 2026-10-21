@@ -1,6 +1,8 @@
 package digital.vmstudio.code.feature.ai
 
 import android.net.Uri
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -181,6 +183,7 @@ class AgentChatViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
     private val githubRepositoryClient: GitHubRepositoryClient,
     private val wakeLockManager: AgentWakeLockManager,
+    @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -837,6 +840,43 @@ class AgentChatViewModel @Inject constructor(
      * Starts a new chat in [project], or with null a general chat with no server or
      * folder (gateway models only). New chats open the way the last one was set.
      */
+    fun quickCreateProject(name: String, isLocal: Boolean, serverId: String? = null) {
+        if (_uiState.value.isRunning) return
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val effectiveServerId = if (isLocal) {
+                RemoteFileSystem.LOCAL_SERVER_ID
+            } else {
+                serverId ?: _uiState.value.availableServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }?.id
+                    ?: RemoteFileSystem.LOCAL_SERVER_ID
+            }
+            val baseDir = if (RemoteFileSystem.isLocalServer(effectiveServerId)) {
+                val base = context.getExternalFilesDir(null) ?: context.filesDir
+                java.io.File(base, "projects").apply { mkdirs() }
+            } else null
+
+            val effectivePath = if (baseDir != null) {
+                java.io.File(baseDir, trimmed).apply { mkdirs() }.absolutePath
+            } else {
+                "~/projects/$trimmed"
+            }
+            when (val created = projectRepository.create(
+                name = trimmed,
+                serverId = effectiveServerId,
+                remotePath = effectivePath,
+                branch = null,
+            )) {
+                is VmResult.Success -> {
+                    projectRepository.get(created.value)?.let(::selectProject)
+                }
+                is VmResult.Failure -> {
+                    _uiState.update { it.copy(error = created.error) }
+                }
+            }
+        }
+    }
+
     fun selectProject(project: Project?) {
         if (_uiState.value.isRunning) {
             detachToBackground()

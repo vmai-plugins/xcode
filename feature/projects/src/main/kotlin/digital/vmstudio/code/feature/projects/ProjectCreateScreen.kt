@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -116,6 +117,26 @@ fun ProjectCreateScreen(
                 },
             )
 
+            if (state.source == ProjectSource.GITHUB) {
+                OutlinedTextField(
+                    value = state.githubUrl,
+                    onValueChange = viewModel::setGithubUrl,
+                    label = { Text("GitHub Repository URL") },
+                    placeholder = { Text("https://github.com/owner/repo") },
+                    singleLine = true,
+                    isError = state.githubUrlError != null,
+                    supportingText = state.githubUrlError?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = state.branch,
+                    onValueChange = viewModel::setBranch,
+                    label = { Text("Git Branch") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             OutlinedTextField(
                 value = state.name,
                 onValueChange = viewModel::setName,
@@ -208,6 +229,13 @@ private fun SourceSelectionGrid(
             selected = currentSource == ProjectSource.LINKED,
             accentColor = Color(0xFF64748B),
             onClick = { onSelectSource(ProjectSource.LINKED) },
+        )
+        SourceChip(
+            label = "GitHub Clone",
+            icon = Icons.Default.Code,
+            selected = currentSource == ProjectSource.GITHUB,
+            accentColor = Color(0xFF6366F1),
+            onClick = { onSelectSource(ProjectSource.GITHUB) },
         )
     }
 }
