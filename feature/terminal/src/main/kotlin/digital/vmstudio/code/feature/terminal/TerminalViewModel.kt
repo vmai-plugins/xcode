@@ -106,7 +106,10 @@ class TerminalViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(isOpening = true, error = null)
         viewModelScope.launch {
             try {
-                val targetServer = serverId ?: serverRepository.servers.first().firstOrNull()?.id
+                val prefs = preferencesRepository.preferences.first()
+                val targetServer = serverId
+                    ?: prefs.autoConnectServerId?.takeIf { id -> serverRepository.servers.first().any { it.id == id } }
+                    ?: serverRepository.servers.first().firstOrNull()?.id
                 if (targetServer == null) {
                     _uiState.value = _uiState.value.copy(
                         error = VmError.NotFound(

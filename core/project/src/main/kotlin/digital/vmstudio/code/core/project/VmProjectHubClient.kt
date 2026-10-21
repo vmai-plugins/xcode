@@ -4,8 +4,10 @@ import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
+import digital.vmstudio.code.core.database.entity.SshAuthMethod
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
+import digital.vmstudio.code.core.ssh.model.ServerDraft
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
@@ -234,6 +236,53 @@ class VmProjectHubClient @Inject constructor(
     }
 
     /**
+     * Synchronizes credentials and auto-configures the VPS server directly
+     * from the VM Project Hub plugin. If the VPS was already provisioned,
+     * its credentials and endpoints are kept in sync with the Hub.
+     */
+    suspend fun syncHubCredentialsAndVps(): VmResult<HubCredentials> = withContext(ioDispatcher) {
+        val credsRes = fetchCredentials()
+        if (credsRes is VmResult.Failure) return@withContext credsRes
+        val creds = (credsRes as VmResult.Success).value
+
+        val host = creds.vpsHost?.trim()?.takeIf { it.isNotBlank() }
+        if (host != null) {
+            val existing = serverRepository.servers.first()
+            val match = existing.firstOrNull {
+                it.host.equals(host, ignoreCase = true) ||
+                    (creds.vpsName != null && it.name.equals(creds.vpsName, ignoreCase = true)) ||
+                    it.name.contains("VM Studio", ignoreCase = true)
+            }
+
+            val authMethod = if (!creds.vpsPrivateKey.isNullOrBlank()) {
+                SshAuthMethod.PRIVATE_KEY
+            } else {
+                SshAuthMethod.PASSWORD
+            }
+            val serverName = creds.vpsName?.takeIf { it.isNotBlank() } ?: "VM Studio Cloud VPS ($host)"
+
+            val draft = ServerDraft(
+                id = match?.id,
+                name = serverName,
+                host = host,
+                port = (creds.vpsPort ?: 22).toString(),
+                username = creds.vpsUser?.takeIf { it.isNotBlank() } ?: "root",
+                authMethod = authMethod,
+                password = creds.vpsPassword.orEmpty(),
+                privateKeyPem = creds.vpsPrivateKey.orEmpty(),
+                environment = ServerEnvironment.PRODUCTION,
+            )
+
+            val saveResult = serverRepository.save(draft)
+            if (saveResult is VmResult.Success) {
+                preferencesRepository.setAutoConnectServerId(saveResult.value.id)
+            }
+        }
+
+        VmResult.Success(creds)
+    }
+
+    /**
      * Universal sync: imports or updates projects from VM Project Hub into the local
      * ProjectRepository, dynamically binding GitHub repos to Zero-Clone `/github/...`
      * and server paths to the user's current active VPS (or universal local fallback
@@ -245,9 +294,11 @@ class VmProjectHubClient @Inject constructor(
             is VmResult.Success -> res.value
         }
         val activeServers = serverRepository.servers.first()
-        val primaryServerId = activeServers.firstOrNull {
-            it.host.contains("vmstudio", ignoreCase = true) || it.host == "200.234.41.231"
-        }?.id ?: activeServers.firstOrNull()?.id
+        val autoConnectId = preferencesRepository.preferences.first().autoConnectServerId
+        val primaryServerId = autoConnectId?.let { id -> activeServers.firstOrNull { it.id == id }?.id }
+            ?: activeServers.firstOrNull {
+                it.host.contains("vmstudio", ignoreCase = true) || it.host == "200.234.41.231"
+            }?.id ?: activeServers.firstOrNull()?.id
 
         val existing = projectRepository.observeAll().first()
         var syncedCount = 0

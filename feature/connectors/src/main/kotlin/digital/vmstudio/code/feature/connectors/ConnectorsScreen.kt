@@ -354,12 +354,14 @@ fun ConnectorsScreen(
                         category = "Universal Workspace & Kanban Sync",
                         status = if (state.hasHubKey) VmStatus.CONNECTED else VmStatus.IDLE,
                         statusText = if (state.hasHubKey) {
-                            state.hubProjectCount?.let { "$it workspaces" } ?: "Paired"
+                            val projPart = state.hubProjectCount?.let { "$it workspaces" } ?: "Paired"
+                            val vpsPart = if (state.vpsConnectionState.isConnected) " · VPS Live" else ""
+                            "$projPart$vpsPart"
                         } else {
                             "Not Paired"
                         },
-                        description = "Synchronizes universal project repositories and Kanban sprint tasks across local storage, GitHub, and VPS environments.",
-                        tags = listOf("Universal Portfolios", "REST JSON", "Kanban Tasks", "Zero-Trust Pairing"),
+                        description = "Synchronizes universal project repositories and Kanban sprint tasks across local storage, GitHub, and VPS environments with automated VPS connectivity.",
+                        tags = listOf("Universal Portfolios", "VPS Auto-Connect", "Kanban Tasks", "Zero-Trust Pairing"),
                         isExpanded = hubExpanded,
                         onToggleExpand = { hubExpanded = !hubExpanded },
                         statusMessage = state.hubStatusMessage,
@@ -446,6 +448,47 @@ fun ConnectorsScreen(
                                         },
                                         style = VmButtonStyle.Destructive,
                                         modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+
+                            // VPS Cloud Connectivity status & 1-tap action
+                            HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Cloud VPS Connectivity",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = if (state.vpsConnectionState.isConnected) {
+                                            "Connected to ${state.vpsHost ?: "VM Studio VPS"} · Terminal & Workspaces ready"
+                                        } else if (state.isConnectingVps) {
+                                            "Establishing SSH connection to VPS…"
+                                        } else {
+                                            "Auto-connects on launch so you don't have to connect each time"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                if (state.vpsConnectionState.isConnected) {
+                                    VmButton(
+                                        text = "Disconnect",
+                                        onClick = viewModel::disconnectHubVps,
+                                        style = VmButtonStyle.Secondary,
+                                    )
+                                } else {
+                                    VmButton(
+                                        text = if (state.isConnectingVps) "Connecting…" else "Connect VPS",
+                                        onClick = viewModel::connectHubVps,
+                                        loading = state.isConnectingVps,
+                                        style = VmButtonStyle.Primary,
                                     )
                                 }
                             }

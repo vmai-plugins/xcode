@@ -40,6 +40,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextRange
@@ -363,7 +369,27 @@ private fun TerminalInputBar(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown) {
+                            when {
+                                event.isCtrlPressed && event.key == Key.C -> { onInterrupt(); true }
+                                event.isCtrlPressed && event.key == Key.D -> { onSendControl('D'); true }
+                                event.isCtrlPressed && event.key == Key.Z -> { onSendControl('Z'); true }
+                                event.isCtrlPressed && event.key == Key.L -> { onClear(); true }
+                                event.key == Key.Tab -> { onSendKey(TerminalKey.TAB); true }
+                                event.key == Key.Escape -> { onSendKey(TerminalKey.ESCAPE); true }
+                                event.key == Key.DirectionUp -> { onSendKey(TerminalKey.ARROW_UP); true }
+                                event.key == Key.DirectionDown -> { onSendKey(TerminalKey.ARROW_DOWN); true }
+                                event.key == Key.DirectionLeft -> { onSendKey(TerminalKey.ARROW_LEFT); true }
+                                event.key == Key.DirectionRight -> { onSendKey(TerminalKey.ARROW_RIGHT); true }
+                                event.key == Key.Enter -> { onSendKey(TerminalKey.ENTER); true }
+                                event.key == Key.MoveHome -> { onSendKey(TerminalKey.HOME); true }
+                                event.key == Key.MoveEnd -> { onSendKey(TerminalKey.END); true }
+                                else -> false
+                            }
+                        } else false
+                    },
                 textStyle = VmTheme.code.mono.copy(
                     color = MaterialTheme.colorScheme.onSurface,
                 ),

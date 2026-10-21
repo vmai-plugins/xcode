@@ -271,6 +271,16 @@ fun VmNavHost(
                     nullable = true
                     defaultValue = null
                 },
+                navArgument(VmDestination.ProjectAdd.ARG_GITHUB_URL) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument(VmDestination.ProjectAdd.ARG_GITHUB_BRANCH) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
             ),
         ) {
             ProjectCreateScreen(
@@ -426,9 +436,20 @@ fun VmNavHost(
 
         composable("settings/github") {
             SettingsDetailScaffold(
-                title = "GitHub Codespaces",
+                title = "GitHub Projects",
                 onNavigateBack = { navController.popBackStack() },
-            ) { digital.vmstudio.code.feature.settings.GitHubSettingsScreen() }
+            ) {
+                digital.vmstudio.code.feature.settings.GitHubSettingsScreen(
+                    onImportRepo = { repoUrl, defaultBranch ->
+                        navController.navigate(
+                            VmDestination.ProjectAdd.routeFor(
+                                githubUrl = repoUrl,
+                                githubBranch = defaultBranch,
+                            ),
+                        )
+                    },
+                )
+            }
         }
 
         composable(VmDestination.Connectors.route) {

@@ -218,6 +218,8 @@ class UserPreferencesRepository @Inject constructor(
             googleSheetsSpreadsheetId = this[Keys.GOOGLE_SHEETS_SPREADSHEET_ID],
             hubApiKey = this[Keys.HUB_API_KEY],
             biometricLockEnabled = this[Keys.BIOMETRIC_LOCK_ENABLED] ?: defaults.biometricLockEnabled,
+            autoConnectServerId = this[Keys.AUTO_CONNECT_SERVER_ID],
+            vpsAutoConnectEnabled = this[Keys.VPS_AUTO_CONNECT_ENABLED] ?: defaults.vpsAutoConnectEnabled,
         )
     }
 
@@ -248,6 +250,14 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setGoogleSheetsSettings(credentialId: String?, spreadsheetId: String?) = edit {
         if (credentialId != null) it[Keys.GOOGLE_SHEETS_TOKEN_CREDENTIAL] = credentialId else it.remove(Keys.GOOGLE_SHEETS_TOKEN_CREDENTIAL)
         if (spreadsheetId != null) it[Keys.GOOGLE_SHEETS_SPREADSHEET_ID] = spreadsheetId else it.remove(Keys.GOOGLE_SHEETS_SPREADSHEET_ID)
+    }
+
+    suspend fun setAutoConnectServerId(serverId: String?) = edit {
+        if (serverId != null) it[Keys.AUTO_CONNECT_SERVER_ID] = serverId else it.remove(Keys.AUTO_CONNECT_SERVER_ID)
+    }
+
+    suspend fun setVpsAutoConnectEnabled(enabled: Boolean) = edit {
+        it[Keys.VPS_AUTO_CONNECT_ENABLED] = enabled
     }
 
     /** Unknown stored names fall back to the default rather than throwing. */
@@ -291,6 +301,8 @@ class UserPreferencesRepository @Inject constructor(
         val GOOGLE_DRIVE_TOKEN_CREDENTIAL = stringPreferencesKey("google_drive_token_credential")
         val GOOGLE_SHEETS_TOKEN_CREDENTIAL = stringPreferencesKey("google_sheets_token_credential")
         val GOOGLE_SHEETS_SPREADSHEET_ID = stringPreferencesKey("google_sheets_spreadsheet_id")
+        val AUTO_CONNECT_SERVER_ID = stringPreferencesKey("auto_connect_server_id")
+        val VPS_AUTO_CONNECT_ENABLED = booleanPreferencesKey("vps_auto_connect_enabled")
     }
 
     private companion object {

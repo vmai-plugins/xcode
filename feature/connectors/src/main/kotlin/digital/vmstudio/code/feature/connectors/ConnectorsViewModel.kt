@@ -67,6 +67,9 @@ data class ConnectorsUiState(
     val hasHubKey: Boolean = false,
     val isSyncingHub: Boolean = false,
     val hubStatusMessage: String? = null,
+    val vpsConnectionState: digital.vmstudio.code.core.ssh.connection.SshConnectionState = digital.vmstudio.code.core.ssh.connection.SshConnectionState.Disconnected,
+    val isConnectingVps: Boolean = false,
+    val vpsHost: String? = null,
     // AI Gateway
     val aiModelCount: Int = 0,
     val aiFreeModelCount: Int = 0,
@@ -95,6 +98,7 @@ private data class MutableExtraState(
     val hubTaskCount: Int? = null,
     val isSyncingHub: Boolean = false,
     val hubStatusMessage: String? = null,
+    val isConnectingVps: Boolean = false,
     val isTestingAi: Boolean = false,
     val aiLatencyMillis: Long? = null,
     val aiStatusMessage: String? = null,
@@ -110,6 +114,7 @@ class ConnectorsViewModel @Inject constructor(
     private val credentialStore: SecureCredentialStore,
     private val aiProviders: AiProviderRegistry,
     private val serverRepository: ServerRepository,
+    private val connectionManager: digital.vmstudio.code.core.ssh.connection.SshConnectionManager,
 ) : ViewModel() {
 
     private val extraState = MutableStateFlow(MutableExtraState())
@@ -118,7 +123,13 @@ class ConnectorsViewModel @Inject constructor(
         serverRepository.servers,
         preferencesRepository.preferences,
         extraState,
-    ) { srvs, prefs, extra ->
+        connectionManager.states,
+    ) { srvs, prefs, extra, connStates ->
+        val targetVps = prefs.autoConnectServerId?.let { id -> srvs.firstOrNull { it.id == id } }
+            ?: srvs.firstOrNull { it.host.contains("vmstudio", ignoreCase = true) || it.host == "200.234.41.231" }
+            ?: srvs.firstOrNull()
+        val vpsState = targetVps?.id?.let { connStates[it] } ?: digital.vmstudio.code.core.ssh.connection.SshConnectionState.Disconnected
+
         ConnectorsUiState(
             selectedFilter = extra.selectedFilter,
             servers = srvs,
@@ -143,6 +154,9 @@ class ConnectorsViewModel @Inject constructor(
             hasHubKey = !prefs.hubApiKey.isNullOrBlank(),
             isSyncingHub = extra.isSyncingHub,
             hubStatusMessage = extra.hubStatusMessage,
+            vpsConnectionState = vpsState,
+            isConnectingVps = extra.isConnectingVps,
+            vpsHost = targetVps?.host,
             aiModelCount = prefs.aiAvailableModelIds.size,
             aiFreeModelCount = prefs.aiFreeModelIds.size,
             hasCustomAiKey = prefs.aiApiKeyCredentialId != null,
@@ -422,11 +436,11 @@ class ConnectorsViewModel @Inject constructor(
 
     fun syncUniversalHubProjects() {
         if (extraState.value.isSyncingHub) return
-        extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Syncing universal workspaces & credentials from VM Project Hub…") }
+        extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Syncing universal workspaces & VPS credentials from VM Project Hub…") }
         viewModelScope.launch {
             try {
-                // Auto-sync credentials from Hub if present
-                when (val credsRes = projectHubClient.fetchCredentials()) {
+                // Auto-sync credentials & provision VPS from Hub
+                when (val credsRes = projectHubClient.syncHubCredentialsAndVps()) {
                     is VmResult.Success -> {
                         val creds = credsRes.value
                         val gh = creds.githubToken
@@ -437,7 +451,11 @@ class ConnectorsViewModel @Inject constructor(
                         if (!ai.isNullOrBlank() && preferencesRepository.preferences.first().aiApiKeyCredentialId == null) {
                             saveCustomAiKey(ai)
                         }
-                        syncVpsServer(creds)
+                        // Auto-connect to VPS immediately in background!
+                        val prefs = preferencesRepository.preferences.first()
+                        prefs.autoConnectServerId?.let { sId ->
+                            connectionManager.session(sId)
+                        }
                     }
                     is VmResult.Failure -> {}
                 }
@@ -474,7 +492,7 @@ class ConnectorsViewModel @Inject constructor(
         viewModelScope.launch {
             extraState.update { it.copy(hubStatusMessage = "Pulling credentials from VM Project Hub…") }
             try {
-                when (val credsRes = projectHubClient.fetchCredentials()) {
+                when (val credsRes = projectHubClient.syncHubCredentialsAndVps()) {
                     is VmResult.Failure -> {
                         extraState.update { it.copy(hubStatusMessage = "Credential sync failed: ${credsRes.error.summary}") }
                     }
@@ -491,9 +509,12 @@ class ConnectorsViewModel @Inject constructor(
                             saveCustomAiKey(ai)
                             syncedParts += "OmniRoute AI key"
                         }
-                        val vpsName = syncVpsServer(creds)
-                        if (vpsName != null) {
-                            syncedParts += "VPS ($vpsName)"
+                        if (!creds.vpsHost.isNullOrBlank()) {
+                            syncedParts += "VPS (${creds.vpsName ?: creds.vpsHost})"
+                            // Auto-connect to VPS
+                            preferencesRepository.preferences.first().autoConnectServerId?.let { sId ->
+                                connectionManager.session(sId)
+                            }
                         }
                         extraState.update {
                             it.copy(
@@ -509,6 +530,75 @@ class ConnectorsViewModel @Inject constructor(
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 extraState.update { it.copy(hubStatusMessage = "Credential sync error: ${t.message ?: "Unknown"}") }
+            }
+        }
+    }
+
+    fun connectHubVps() {
+        if (extraState.value.isConnectingVps) return
+        extraState.update { it.copy(isConnectingVps = true, hubStatusMessage = "Connecting to VPS…") }
+        viewModelScope.launch {
+            try {
+                // Sync VPS details if needed
+                projectHubClient.syncHubCredentialsAndVps()
+                val prefs = preferencesRepository.preferences.first()
+                val servers = serverRepository.servers.first()
+                val targetServer = prefs.autoConnectServerId?.let { id -> servers.firstOrNull { it.id == id } }
+                    ?: servers.firstOrNull { it.host.contains("vmstudio", ignoreCase = true) || it.host == "200.234.41.231" }
+                    ?: servers.firstOrNull()
+
+                if (targetServer == null) {
+                    extraState.update {
+                        it.copy(
+                            isConnectingVps = false,
+                            hubStatusMessage = "No VPS configured. Pair Hub Key or configure external VPS in Servers.",
+                        )
+                    }
+                    return@launch
+                }
+
+                when (val connRes = connectionManager.session(targetServer.id)) {
+                    is VmResult.Success -> {
+                        preferencesRepository.setAutoConnectServerId(targetServer.id)
+                        extraState.update {
+                            it.copy(
+                                isConnectingVps = false,
+                                hubStatusMessage = "VPS Connected (${targetServer.displayTarget})! Terminal and Workspaces ready.",
+                            )
+                        }
+                    }
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                isConnectingVps = false,
+                                hubStatusMessage = "VPS Connection failed: ${connRes.error.summary}",
+                            )
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                extraState.update {
+                    it.copy(
+                        isConnectingVps = false,
+                        hubStatusMessage = "VPS Error: ${t.message ?: "Unknown error"}",
+                    )
+                }
+            }
+        }
+    }
+
+    fun disconnectHubVps() {
+        viewModelScope.launch {
+            val prefs = preferencesRepository.preferences.first()
+            val servers = serverRepository.servers.first()
+            val targetServer = prefs.autoConnectServerId?.let { id -> servers.firstOrNull { it.id == id } }
+                ?: servers.firstOrNull { it.host.contains("vmstudio", ignoreCase = true) || it.host == "200.234.41.231" }
+                ?: servers.firstOrNull()
+
+            if (targetServer != null) {
+                connectionManager.disconnect(targetServer.id)
+                extraState.update { it.copy(hubStatusMessage = "Disconnected from VPS (${targetServer.displayTarget}).") }
             }
         }
     }

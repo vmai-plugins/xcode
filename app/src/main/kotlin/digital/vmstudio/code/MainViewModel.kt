@@ -38,6 +38,8 @@ class MainViewModel @Inject constructor(
     preferencesRepository: UserPreferencesRepository,
     networkMonitor: NetworkMonitor,
     projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
+    serverRepository: digital.vmstudio.code.core.ssh.repository.ServerRepository,
+    connectionManager: digital.vmstudio.code.core.ssh.connection.SshConnectionManager,
 ) : ViewModel() {
 
     init {
@@ -45,11 +47,23 @@ class MainViewModel @Inject constructor(
             try {
                 val prefs = preferencesRepository.preferences.first()
                 if (!prefs.hubApiKey.isNullOrBlank()) {
-                    projectHubClient.fetchCredentials()
+                    projectHubClient.syncHubCredentialsAndVps()
                     projectHubClient.syncUniversalProjects()
                 }
+
+                val currentPrefs = preferencesRepository.preferences.first()
+                if (currentPrefs.vpsAutoConnectEnabled) {
+                    val servers = serverRepository.servers.first()
+                    val targetServerId = currentPrefs.autoConnectServerId?.takeIf { id -> servers.any { it.id == id } }
+                        ?: servers.firstOrNull { it.host.contains("vmstudio", ignoreCase = true) || it.host == "200.234.41.231" }?.id
+                        ?: servers.firstOrNull()?.id
+
+                    if (targetServerId != null) {
+                        connectionManager.session(targetServerId)
+                    }
+                }
             } catch (_: Throwable) {
-                // Background auto-sync failure is non-fatal
+                // Background auto-sync and auto-connect failure is non-fatal
             }
         }
     }

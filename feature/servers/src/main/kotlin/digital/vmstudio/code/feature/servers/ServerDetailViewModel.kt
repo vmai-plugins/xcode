@@ -41,6 +41,7 @@ data class ServerDetailUiState(
     val pendingHostKey: HostKeyVerdict? = null,
     val error: VmError? = null,
     val isBusy: Boolean = false,
+    val isAutoConnect: Boolean = false,
     val telemetry: VpsTelemetry? = null,
     val isLoadingTelemetry: Boolean = false,
     val containers: List<DockerContainerInfo> = emptyList(),
@@ -56,6 +57,7 @@ data class ServerDetailUiState(
 class ServerDetailViewModel @Inject constructor(
     private val connectionManager: SshConnectionManager,
     private val serverRepository: ServerRepository,
+    private val preferencesRepository: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -71,6 +73,13 @@ class ServerDetailViewModel @Inject constructor(
         viewModelScope.launch {
             serverRepository.observe(serverId).collect { s ->
                 _uiState.update { it.copy(server = s) }
+            }
+        }
+
+        // Observe auto-connect preference
+        viewModelScope.launch {
+            preferencesRepository.preferences.collect { prefs ->
+                _uiState.update { it.copy(isAutoConnect = prefs.autoConnectServerId == serverId) }
             }
         }
 
@@ -117,6 +126,12 @@ class ServerDetailViewModel @Inject constructor(
                     hasDocker = false,
                 )
             }
+        }
+    }
+
+    fun toggleAutoConnect(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setAutoConnectServerId(if (enabled) serverId else null)
         }
     }
 

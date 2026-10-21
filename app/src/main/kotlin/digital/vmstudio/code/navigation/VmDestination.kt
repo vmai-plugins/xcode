@@ -51,13 +51,20 @@ sealed class VmDestination(val route: String) {
 
     data object ProjectAdd : VmDestination("projects/new") {
         const val ARG_MODE = "mode"
+        const val ARG_GITHUB_URL = "githubUrl"
+        const val ARG_GITHUB_BRANCH = "githubBranch"
         const val MODE_LINK = "link"
-        const val ROUTE_PATTERN = "projects/new?mode={mode}"
-        fun routeFor(mode: String? = null): String {
-            if (mode.isNullOrBlank()) {
-                return "projects/new"
-            }
-            return "projects/new?mode=${android.net.Uri.encode(mode)}"
+        const val ROUTE_PATTERN = "projects/new?mode={mode}&githubUrl={githubUrl}&githubBranch={githubBranch}"
+        fun routeFor(
+            mode: String? = null,
+            githubUrl: String? = null,
+            githubBranch: String? = null,
+        ): String {
+            val query = mutableListOf<String>()
+            if (!mode.isNullOrBlank()) query += "mode=${android.net.Uri.encode(mode)}"
+            if (!githubUrl.isNullOrBlank()) query += "githubUrl=${android.net.Uri.encode(githubUrl)}"
+            if (!githubBranch.isNullOrBlank()) query += "githubBranch=${android.net.Uri.encode(githubBranch)}"
+            return if (query.isEmpty()) "projects/new" else "projects/new?${query.joinToString("&")}"
         }
     }
 

@@ -394,6 +394,7 @@ private fun EditorContent(
                 // its line at any font size instead of drifting further down.
                 Text(
                     text = lineNumbers,
+                    softWrap = false,
                     style = editorStyle.copy(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         textAlign = TextAlign.End,
