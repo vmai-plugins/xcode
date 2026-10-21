@@ -103,6 +103,7 @@ dependencies {
     implementation(projects.core.ai)
     implementation(projects.core.update)
     implementation(projects.core.connectors)
+    implementation(projects.core.project)
 
     implementation(projects.feature.servers)
     implementation(projects.feature.settings)

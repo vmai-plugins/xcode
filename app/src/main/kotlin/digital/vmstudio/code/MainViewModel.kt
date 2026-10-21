@@ -11,7 +11,9 @@ import digital.vmstudio.code.core.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 sealed interface MainUiState {
@@ -35,7 +37,22 @@ sealed interface MainUiState {
 class MainViewModel @Inject constructor(
     preferencesRepository: UserPreferencesRepository,
     networkMonitor: NetworkMonitor,
+    projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
 ) : ViewModel() {
+
+    init {
+        viewModelScope.launch {
+            try {
+                val prefs = preferencesRepository.preferences.first()
+                if (!prefs.hubApiKey.isNullOrBlank()) {
+                    projectHubClient.fetchCredentials()
+                    projectHubClient.syncUniversalProjects()
+                }
+            } catch (_: Throwable) {
+                // Background auto-sync failure is non-fatal
+            }
+        }
+    }
 
     val uiState: StateFlow<MainUiState> = combine(
         preferencesRepository.preferences,

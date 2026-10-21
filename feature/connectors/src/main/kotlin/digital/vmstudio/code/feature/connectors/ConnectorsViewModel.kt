@@ -46,10 +46,15 @@ data class ConnectorsUiState(
     val driveBackups: List<GoogleDriveFile> = emptyList(),
     val isBackingUpDrive: Boolean = false,
     val driveStatusMessage: String? = null,
+    val hasDriveToken: Boolean = false,
+    val savedDriveToken: String? = null,
     // Google Sheets
     val isTestingSheet: Boolean = false,
     val sheetStatusMessage: String? = null,
     val sheetPreviewRows: List<List<String>> = emptyList(),
+    val hasSheetsToken: Boolean = false,
+    val savedSheetsToken: String? = null,
+    val savedSpreadsheetId: String? = null,
     // GitHub
     val githubRepoCount: Int? = null,
     val githubUsername: String? = null,
@@ -76,9 +81,12 @@ private data class MutableExtraState(
     val driveBackups: List<GoogleDriveFile> = emptyList(),
     val isBackingUpDrive: Boolean = false,
     val driveStatusMessage: String? = null,
+    val savedDriveToken: String? = null,
     val isTestingSheet: Boolean = false,
     val sheetStatusMessage: String? = null,
     val sheetPreviewRows: List<List<String>> = emptyList(),
+    val savedSheetsToken: String? = null,
+    val savedSpreadsheetId: String? = null,
     val githubRepoCount: Int? = null,
     val githubUsername: String? = null,
     val isTestingGithub: Boolean = false,
@@ -117,9 +125,14 @@ class ConnectorsViewModel @Inject constructor(
             driveBackups = extra.driveBackups,
             isBackingUpDrive = extra.isBackingUpDrive,
             driveStatusMessage = extra.driveStatusMessage,
+            hasDriveToken = prefs.googleDriveTokenCredentialId != null,
+            savedDriveToken = extra.savedDriveToken,
             isTestingSheet = extra.isTestingSheet,
             sheetStatusMessage = extra.sheetStatusMessage,
             sheetPreviewRows = extra.sheetPreviewRows,
+            hasSheetsToken = prefs.googleSheetsTokenCredentialId != null,
+            savedSheetsToken = extra.savedSheetsToken,
+            savedSpreadsheetId = extra.savedSpreadsheetId ?: prefs.googleSheetsSpreadsheetId,
             githubRepoCount = extra.githubRepoCount,
             githubUsername = extra.githubUsername ?: prefs.githubUsername,
             hasGithubToken = prefs.githubTokenCredentialId != null,
@@ -146,6 +159,7 @@ class ConnectorsViewModel @Inject constructor(
     init {
         checkGitHubStatus()
         testAiGateway()
+        loadSavedGoogleTokens()
         viewModelScope.launch {
             val key = preferencesRepository.preferences.first().hubApiKey
             if (!key.isNullOrBlank()) {
@@ -603,6 +617,110 @@ class ConnectorsViewModel @Inject constructor(
             } finally {
                 extraState.update { it.copy(isBackingUpDrive = false) }
             }
+        }
+    }
+
+    private fun loadSavedGoogleTokens() {
+        viewModelScope.launch {
+            val prefs = preferencesRepository.preferences.first()
+            prefs.googleDriveTokenCredentialId?.let { id ->
+                when (val secRes = credentialStore.read(id)) {
+                    is VmResult.Success -> {
+                        val tokenStr = secRes.value.useAsString { it }
+                        secRes.value.wipe()
+                        extraState.update { it.copy(savedDriveToken = tokenStr) }
+                        refreshDriveBackups(tokenStr)
+                    }
+                    is VmResult.Failure -> {}
+                }
+            }
+            prefs.googleSheetsTokenCredentialId?.let { id ->
+                when (val secRes = credentialStore.read(id)) {
+                    is VmResult.Success -> {
+                        val tokenStr = secRes.value.useAsString { it }
+                        secRes.value.wipe()
+                        extraState.update {
+                            it.copy(
+                                savedSheetsToken = tokenStr,
+                                savedSpreadsheetId = prefs.googleSheetsSpreadsheetId
+                            )
+                        }
+                    }
+                    is VmResult.Failure -> {}
+                }
+            }
+        }
+    }
+
+    fun saveDriveToken(token: String) {
+        val trimmed = token.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val secret = Secret.of(trimmed)
+            try {
+                when (val putRes = credentialStore.put(SecretType.OAUTH_ACCESS_TOKEN, "Google Drive Token", secret)) {
+                    is VmResult.Success -> {
+                        val previousId = preferencesRepository.preferences.first().googleDriveTokenCredentialId
+                        preferencesRepository.setGoogleDriveTokenCredential(putRes.value.id)
+                        extraState.update { it.copy(savedDriveToken = trimmed, driveStatusMessage = "Google Drive token saved securely.") }
+                        previousId?.let { oldId -> credentialStore.delete(oldId) }
+                        refreshDriveBackups(trimmed)
+                    }
+                    is VmResult.Failure -> {
+                        extraState.update { it.copy(driveStatusMessage = "Failed to save Drive token: ${putRes.error.summary}") }
+                    }
+                }
+            } finally {
+                secret.wipe()
+            }
+        }
+    }
+
+    fun clearDriveToken() {
+        viewModelScope.launch {
+            val currentId = preferencesRepository.preferences.first().googleDriveTokenCredentialId
+            preferencesRepository.setGoogleDriveTokenCredential(null)
+            currentId?.let { credentialStore.delete(it) }
+            extraState.update { it.copy(savedDriveToken = null, driveBackups = emptyList(), driveStatusMessage = "Drive token removed.") }
+        }
+    }
+
+    fun saveSheetsSettings(token: String, spreadsheetId: String) {
+        val trimmedToken = token.trim()
+        val trimmedSheetId = spreadsheetId.trim()
+        if (trimmedToken.isBlank() || trimmedSheetId.isBlank()) return
+        viewModelScope.launch {
+            val secret = Secret.of(trimmedToken)
+            try {
+                when (val putRes = credentialStore.put(SecretType.OAUTH_ACCESS_TOKEN, "Google Sheets Token", secret)) {
+                    is VmResult.Success -> {
+                        val previousId = preferencesRepository.preferences.first().googleSheetsTokenCredentialId
+                        preferencesRepository.setGoogleSheetsSettings(putRes.value.id, trimmedSheetId)
+                        extraState.update {
+                            it.copy(
+                                savedSheetsToken = trimmedToken,
+                                savedSpreadsheetId = trimmedSheetId,
+                                sheetStatusMessage = "Sheets settings saved securely."
+                            )
+                        }
+                        previousId?.let { oldId -> credentialStore.delete(oldId) }
+                    }
+                    is VmResult.Failure -> {
+                        extraState.update { it.copy(sheetStatusMessage = "Failed to save Sheets token: ${putRes.error.summary}") }
+                    }
+                }
+            } finally {
+                secret.wipe()
+            }
+        }
+    }
+
+    fun clearSheetsSettings() {
+        viewModelScope.launch {
+            val currentId = preferencesRepository.preferences.first().googleSheetsTokenCredentialId
+            preferencesRepository.setGoogleSheetsSettings(null, null)
+            currentId?.let { credentialStore.delete(it) }
+            extraState.update { it.copy(savedSheetsToken = null, savedSpreadsheetId = null, sheetPreviewRows = emptyList(), sheetStatusMessage = "Sheets settings cleared.") }
         }
     }
 

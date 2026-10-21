@@ -55,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -116,6 +117,14 @@ fun ConnectorsScreen(
     var aiExpanded by remember { mutableStateOf(false) }
     var aiKeyDraft by remember { mutableStateOf("") }
     var aiKeyVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.savedDriveToken) {
+        state.savedDriveToken?.let { if (driveTokenDraft.isBlank()) driveTokenDraft = it }
+    }
+    LaunchedEffect(state.savedSheetsToken, state.savedSpreadsheetId) {
+        state.savedSheetsToken?.let { if (sheetsTokenDraft.isBlank()) sheetsTokenDraft = it }
+        state.savedSpreadsheetId?.let { if (sheetsIdDraft.isBlank()) sheetsIdDraft = it }
+    }
 
     val openUrl = { url: String ->
         try {
@@ -514,13 +523,39 @@ fun ConnectorsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                VmButton(
+                                    text = if (state.hasSheetsToken) "Update Saved Token" else "Save Settings",
+                                    onClick = {
+                                        viewModel.saveSheetsSettings(sheetsTokenDraft, sheetsIdDraft)
+                                    },
+                                    enabled = sheetsTokenDraft.isNotBlank() && sheetsIdDraft.isNotBlank(),
+                                    style = VmButtonStyle.Primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (state.hasSheetsToken) {
+                                    VmButton(
+                                        text = "Forget",
+                                        onClick = {
+                                            viewModel.clearSheetsSettings()
+                                            sheetsTokenDraft = ""
+                                            sheetsIdDraft = ""
+                                        },
+                                        style = VmButtonStyle.Secondary,
+                                    )
+                                }
+                            }
+
                             VmButton(
                                 text = if (state.isTestingSheet) "Querying Sheets API…" else "Run Sheets Query Test",
                                 onClick = {
                                     viewModel.testGoogleSheets(sheetsTokenDraft, sheetsIdDraft, sheetsRangeDraft)
                                 },
                                 enabled = sheetsTokenDraft.isNotBlank() && sheetsIdDraft.isNotBlank() && !state.isTestingSheet,
-                                style = VmButtonStyle.Primary,
+                                style = VmButtonStyle.Secondary,
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
@@ -594,13 +629,35 @@ fun ConnectorsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
-                            VmButton(
-                                text = "Sync Drive Backups",
-                                onClick = { viewModel.refreshDriveBackups(driveTokenDraft) },
-                                enabled = driveTokenDraft.isNotBlank(),
-                                style = VmButtonStyle.Secondary,
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                            )
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                VmButton(
+                                    text = if (state.hasDriveToken) "Update Token" else "Save Token",
+                                    onClick = { viewModel.saveDriveToken(driveTokenDraft) },
+                                    enabled = driveTokenDraft.isNotBlank(),
+                                    style = VmButtonStyle.Primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                VmButton(
+                                    text = "Sync Backups",
+                                    onClick = { viewModel.refreshDriveBackups(driveTokenDraft) },
+                                    enabled = driveTokenDraft.isNotBlank(),
+                                    style = VmButtonStyle.Secondary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (state.hasDriveToken) {
+                                    VmButton(
+                                        text = "Forget",
+                                        onClick = {
+                                            viewModel.clearDriveToken()
+                                            driveTokenDraft = ""
+                                        },
+                                        style = VmButtonStyle.Secondary,
+                                    )
+                                }
+                            }
 
                             if (state.driveBackups.isNotEmpty()) {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

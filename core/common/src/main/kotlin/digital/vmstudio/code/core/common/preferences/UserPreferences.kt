@@ -102,6 +102,9 @@ data class UserPreferences(
     val userName: String? = null,
     val userAvatarUrl: String? = null,
     val googleIdToken: String? = null,
+    val googleDriveTokenCredentialId: String? = null,
+    val googleSheetsTokenCredentialId: String? = null,
+    val googleSheetsSpreadsheetId: String? = null,
 ) {
     companion object {
         /** The only supported AI gateway. */
