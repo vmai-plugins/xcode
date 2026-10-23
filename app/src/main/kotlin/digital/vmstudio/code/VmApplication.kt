@@ -27,6 +27,10 @@ class VmApplication : Application() {
 
     @Inject lateinit var updateManager: dagger.Lazy<UpdateManager>
 
+    @Inject lateinit var conversations: dagger.Lazy<digital.vmstudio.code.core.ai.repository.AgentConversationRepository>
+
+    @Inject lateinit var projectHubClient: dagger.Lazy<digital.vmstudio.code.core.project.VmProjectHubClient>
+
     @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
     override fun onCreate() {
@@ -34,7 +38,15 @@ class VmApplication : Application() {
         installLogging()
         CrashReporter.install(this, BuildConfig.VERSION_NAME) { diagnosticsLogSink.exportAsText() }
         reconcileInterruptedWork()
+        wireCloudChatSync()
         checkForUpdateLater()
+    }
+
+    /** Wires two-way companion chat synchronization without cyclic module coupling. */
+    private fun wireCloudChatSync() {
+        (conversations.get() as? digital.vmstudio.code.core.ai.repository.DefaultAgentConversationRepository)?.cloudSyncHook = { id ->
+            projectHubClient.get().syncChatToServer(id)
+        }
     }
 
     /** Off the startup path, and at most once a day rather than on every launch. */
