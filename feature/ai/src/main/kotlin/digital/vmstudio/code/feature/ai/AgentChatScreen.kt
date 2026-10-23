@@ -450,6 +450,7 @@ fun AgentChatScreen(
                                     onOpenDiff = openDiff,
                                     onRollback = viewModel::rollbackFile,
                                     onPreview = previewTarget,
+                                    chatBubbleColorHex = state.chatBubbleColorHex,
                                 )
                                 is TranscriptRowItem.ToolBatch -> ToolBatchRow(
                                     batch = rowItem,
