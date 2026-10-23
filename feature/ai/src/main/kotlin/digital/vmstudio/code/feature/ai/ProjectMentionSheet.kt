@@ -78,6 +78,18 @@ internal fun ProjectMentionSheet(
     var selectedCategory by remember { mutableStateOf(MentionCategory.ALL) }
     val haptic = LocalHapticFeedback.current
 
+    val registeredRepoNames = remember(availableProjects) {
+        availableProjects.mapNotNull { project ->
+            when {
+                project.remotePath.startsWith("/github/") ->
+                    project.remotePath.removePrefix("/github/").trim('/').lowercase()
+                project.description.contains("github.com", ignoreCase = true) ->
+                    project.remotePath.substringAfterLast("github.com/").removeSuffix(".git").trim('/').lowercase()
+                else -> null
+            }
+        }.toSet()
+    }
+
     val filteredProjects = remember(availableProjects, query, selectedCategory) {
         if (selectedCategory == MentionCategory.GITHUB || selectedCategory == MentionCategory.TOOLS || selectedCategory == MentionCategory.SWARM) {
             emptyList()
@@ -92,16 +104,17 @@ internal fun ProjectMentionSheet(
         }
     }
 
-    val filteredRepos = remember(githubRepositories, query, selectedCategory) {
+    val filteredRepos = remember(githubRepositories, registeredRepoNames, query, selectedCategory) {
         if (selectedCategory == MentionCategory.PROJECTS || selectedCategory == MentionCategory.TOOLS || selectedCategory == MentionCategory.SWARM) {
             emptyList()
-        } else if (query.isBlank()) {
-            githubRepositories
         } else {
-            githubRepositories.filter {
-                it.fullName.contains(query, ignoreCase = true) ||
-                    (it.description?.contains(query, ignoreCase = true) == true)
-            }
+            githubRepositories
+                .filter { repo -> repo.fullName.lowercase() !in registeredRepoNames }
+                .filter { repo ->
+                    if (query.isBlank()) true
+                    else repo.fullName.contains(query, ignoreCase = true) ||
+                        (repo.description?.contains(query, ignoreCase = true) == true)
+                }
         }
     }
 
