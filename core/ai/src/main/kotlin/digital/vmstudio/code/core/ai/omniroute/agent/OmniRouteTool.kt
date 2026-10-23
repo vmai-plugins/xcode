@@ -200,6 +200,20 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
         }
         putJsonArray("required") { }
     }
+    OmniRouteTool.DISPATCH_CLOUD_BUILD -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("workflow") {
+                put("type", "string")
+                put("description", "Workflow filename to run on GitHub Actions. Defaults to release.yml.")
+            }
+            putJsonObject("ref") {
+                put("type", "string")
+                put("description", "Branch ref to trigger on GitHub. Defaults to main.")
+            }
+        }
+        putJsonArray("required") { }
+    }
     OmniRouteTool.LIST_APKS -> buildJsonObject {
         put("type", "object")
         putJsonObject("properties") {
