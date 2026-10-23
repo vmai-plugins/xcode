@@ -221,39 +221,39 @@ fun ProjectsScreen(
                     onClick = { activeTab = WorkspaceFilterTab.ALL },
                 )
                 WorkspaceTabChip(
-                    label = "VM Hub",
-                    selected = activeTab == WorkspaceFilterTab.VM_HUB,
-                    accentColor = Color(0xFFEC4899),
-                    icon = Icons.Default.Cloud,
-                    onClick = { activeTab = WorkspaceFilterTab.VM_HUB },
-                )
-                WorkspaceTabChip(
                     label = "GitHub",
                     selected = activeTab == WorkspaceFilterTab.GITHUB,
-                    accentColor = Color(0xFF8B5CF6),
+                    accentColor = ProjectColors.BrandGitHub,
                     icon = Icons.Default.Code,
                     onClick = { activeTab = WorkspaceFilterTab.GITHUB },
                 )
                 WorkspaceTabChip(
+                    label = "VPS Cloud",
+                    selected = activeTab == WorkspaceFilterTab.VPS,
+                    accentColor = ProjectColors.BrandVPS,
+                    icon = Icons.Default.Dns,
+                    onClick = { activeTab = WorkspaceFilterTab.VPS },
+                )
+                WorkspaceTabChip(
+                    label = "VM Hub",
+                    selected = activeTab == WorkspaceFilterTab.VM_HUB,
+                    accentColor = ProjectColors.BrandVMHub,
+                    icon = Icons.Default.Cloud,
+                    onClick = { activeTab = WorkspaceFilterTab.VM_HUB },
+                )
+                WorkspaceTabChip(
                     label = "Local Phone",
                     selected = activeTab == WorkspaceFilterTab.LOCAL,
-                    accentColor = Color(0xFF10B981),
+                    accentColor = ProjectColors.BrandLocal,
                     icon = Icons.Default.PhoneAndroid,
                     onClick = { activeTab = WorkspaceFilterTab.LOCAL },
                 )
                 WorkspaceTabChip(
                     label = "Google Drive",
                     selected = activeTab == WorkspaceFilterTab.GDRIVE,
-                    accentColor = Color(0xFFF59E0B),
+                    accentColor = ProjectColors.BrandDrive,
                     icon = Icons.Default.Cloud,
                     onClick = { activeTab = WorkspaceFilterTab.GDRIVE },
-                )
-                WorkspaceTabChip(
-                    label = "VPS Cloud",
-                    selected = activeTab == WorkspaceFilterTab.VPS,
-                    accentColor = Color(0xFF06B6D4),
-                    icon = Icons.Default.Dns,
-                    onClick = { activeTab = WorkspaceFilterTab.VPS },
                 )
             }
 
