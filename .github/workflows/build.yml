@@ -76,6 +76,25 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $TARGET_DIR && mv -f .xcodes-latest.uploading.apk xcodes-latest.apk && chmod 644 xcodes-latest.apk"
           echo "Successfully published xcodes-latest.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
 
+          mkdir -p /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info 2>/dev/null || true
+          META_DIR="/home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info"
+          SHA="${GITHUB_SHA}"
+          SHORT_SHA="${SHA::7}"
+          VERSION_NAME="$(./gradlew -q :app:properties | grep "versionName" | head -n1 | awk '{print $2}' || true)"
+          cat > meta.json <<EOF
+          {
+            "workflow": "build.yml",
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "commit": "$SHA",
+            "short_sha": "$SHORT_SHA",
+            "version_name": "$VERSION_NAME",
+            "build_type": "debug",
+            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          scp -i ~/.ssh/id_rsa meta.json "${DEPLOY_HOST}:${META_DIR}/build-${SHORT_SHA}.json" || true
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $META_DIR && ln -sf build-${SHORT_SHA}.json xcodes-latest.json" || true
+
       - name: Unit tests
         continue-on-error: true
         run: ./gradlew testDebugUnitTest --stacktrace --continue
