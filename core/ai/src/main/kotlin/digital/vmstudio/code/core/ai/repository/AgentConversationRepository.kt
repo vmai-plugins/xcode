@@ -124,6 +124,7 @@ class DefaultAgentConversationRepository @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val toolExecutionDao: ToolExecutionDao,
+    private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : AgentConversationRepository {
 
@@ -226,6 +227,8 @@ class DefaultAgentConversationRepository @Inject constructor(
     ): VmResult<Unit> = withContext(ioDispatcher) {
         vmCatching(::mapError) {
             insertMessage(conversationId, MessageRole.USER, prompt)
+            // Auto-sync prompt to cloud backend
+            projectHubClient.syncChatToServer(conversationId)
         }
     }
 
@@ -291,9 +294,11 @@ class DefaultAgentConversationRepository @Inject constructor(
                     event.sessionId?.let {
                         conversationDao.updateProviderSession(conversationId, it, now)
                     }
+                    // Auto-sync completed turn to cloud backend
+                    projectHubClient.syncChatToServer(conversationId)
                 }
 
-                is AgentEvent.Failed ->
+                is AgentEvent.Failed -> {
                     insertMessage(
                         conversationId,
                         MessageRole.ASSISTANT,
@@ -301,6 +306,8 @@ class DefaultAgentConversationRepository @Inject constructor(
                         status = MessageStatus.FAILED,
                         errorText = event.error.summary,
                     )
+                    projectHubClient.syncChatToServer(conversationId)
+                }
 
                 // Deltas are display-only. The complete AssistantMessage that follows is
                 // what gets stored; persisting both would duplicate every reply.
