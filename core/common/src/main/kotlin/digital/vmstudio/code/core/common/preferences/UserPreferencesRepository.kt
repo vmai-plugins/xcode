@@ -175,6 +175,14 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.AI_WEB_ACCESS_ENABLED] = enabled
     }
 
+    suspend fun setChatBubbleColor(hex: String?) = edit {
+        if (hex.isNullOrBlank()) it.remove(Keys.CHAT_BUBBLE_COLOR) else it[Keys.CHAT_BUBBLE_COLOR] = hex.trim()
+    }
+
+    suspend fun setDefaultProjectColor(hex: String?) = edit {
+        if (hex.isNullOrBlank()) it.remove(Keys.DEFAULT_PROJECT_COLOR) else it[Keys.DEFAULT_PROJECT_COLOR] = hex.trim()
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         store.edit(block)
     }
