@@ -103,14 +103,32 @@ jobs:
             --notes "Debug build of main at ${SHA}. Installs next to a release build. On your phone: tap the .apk below, then allow installs from your browser if asked. Stable link to the latest: https://github.com/${GITHUB_REPOSITORY}/releases/download/nightly/xcodes-nightly.apk"
 
       - name: Deploy APK to apps.vmstudio.digital
-        if: env.DEPLOY_SSH_KEY != ''
+        if: env.DEPLOY_SSH_KEY != '' && success()
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
           TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
+          META_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info
         run: |
+          set -e
           mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
-          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR $META_DIR"
           scp -i ~/.ssh/id_rsa xcodes-nightly.apk "${DEPLOY_HOST}:${TARGET_DIR}/.xcodes-latest.uploading.apk"
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $TARGET_DIR && mv -f .xcodes-latest.uploading.apk xcodes-latest.apk && chmod 644 xcodes-latest.apk"
+
+          VERSION_NAME="$(./gradlew -q :app:properties | grep "versionName" | head -n1 | awk '{print $2}' | tr -d '\r' || true)"
+          cat > meta.json <<EOF
+          {
+            "workflow": "nightly.yml",
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "commit": "${GITHUB_SHA}",
+            "short_sha": "${GITHUB_SHA::7}",
+            "version_name": "$VERSION_NAME",
+            "build_type": "nightly_debug",
+            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          scp -i ~/.ssh/id_rsa meta.json "${DEPLOY_HOST}:${META_DIR}/nightly-${SHORT_SHA}.json" || true
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $META_DIR && ln -sf nightly-${SHORT_SHA}.json xcodes-nigthly-latest.json" || true
+
           echo "Successfully published xcodes-latest.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
