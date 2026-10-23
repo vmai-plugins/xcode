@@ -124,9 +124,14 @@ class DefaultAgentConversationRepository @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val toolExecutionDao: ToolExecutionDao,
-    private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : AgentConversationRepository {
+
+    /**
+     * Optional cloud sync hook. Set by the app module after Hilt wiring completes
+     * to avoid a circular dependency between :core:ai and :core:project.
+     */
+    var cloudSyncHook: (suspend (String) -> Unit)? = null
 
     override fun observeConversations(): Flow<List<AgentConversation>> =
         conversationDao.observeAll().map { list -> list.map { it.toDomain() } }
