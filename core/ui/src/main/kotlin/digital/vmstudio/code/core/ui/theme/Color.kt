@@ -55,6 +55,7 @@ internal object Palette {
     val Neutral50 = Color(0xFF6B7A99)
     val Neutral70 = Color(0xFFA0AEC7)
     val Neutral85 = Color(0xFFD5DFEE)
+    val Neutral90 = Color(0xFFE2E8F0)
     val Neutral94 = Color(0xFFF0F4FA)
     val Neutral97 = Color(0xFFF7F9FC)
     val Neutral100 = Color(0xFFFFFFFF)
