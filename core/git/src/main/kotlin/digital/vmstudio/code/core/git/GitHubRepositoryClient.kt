@@ -441,6 +441,49 @@ class GitHubRepositoryClient @Inject constructor(
         }
     }
 
+    /** Dispatches a GitHub Actions workflow (e.g. release.yml) to compile APKs in the cloud. */
+    suspend fun dispatchWorkflow(
+        repoFullName: String,
+        workflowFileName: String = "release.yml",
+        ref: String = "main",
+    ): VmResult<Unit> {
+        val secret = when (val result = readToken()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return result
+        }
+        return try {
+            val token = secret.useAsString { it }
+            val url = "https://api.github.com/repos/$repoFullName/actions/workflows/$workflowFileName/dispatches"
+            val bodyJson = org.json.JSONObject().apply {
+                put("ref", ref)
+            }.toString()
+
+            val request = Request.Builder()
+                .url(url)
+                .post(bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .build()
+
+            when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
+                is VmResult.Failure -> response
+                is VmResult.Success -> VmResult.Success(Unit)
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (exception: Exception) {
+            VmResult.Failure(
+                VmError.Network(
+                    summary = "Could not dispatch workflow on GitHub",
+                    reason = exception.message,
+                ),
+            )
+        } finally {
+            secret.wipe()
+        }
+    }
+
     private companion object {
         const val PAGE_SIZE = 100
         const val MAX_PAGES = 10
