@@ -74,11 +74,7 @@ jobs:
           cache-read-only: true
 
       - name: Assemble release
-        run: |
-          ./gradlew :app:assembleRelease -x lintVitalRelease --stacktrace > build.log 2>&1 || {
-            tail -n 120 build.log
-            exit 1
-          }
+        run: ./gradlew :app:assembleRelease -x lintVitalRelease --stacktrace
         env:
           VMSTUDIO_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           VMSTUDIO_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
