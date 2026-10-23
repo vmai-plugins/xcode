@@ -57,10 +57,6 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "Build the project (run ./gradlew assembleRelease) from the " +
             "working directory and return the artifact path plus build output.",
     ),
-    DISPATCH_CLOUD_BUILD(
-        "dispatch_cloud_build",
-        "Trigger an automated 100% cloud build on GitHub Actions to build and deploy the APK to Apps Hub without consuming VPS memory.",
-    ),
     LIST_APKS(
         "list_apks",
         "List APK files under a directory (defaults to the working directory).",
