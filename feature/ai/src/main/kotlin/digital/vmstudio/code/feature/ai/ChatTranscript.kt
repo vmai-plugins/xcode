@@ -231,6 +231,7 @@ internal fun TranscriptRow(
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
     onPreview: ((String) -> Unit)? = null,
+    chatBubbleColorHex: String? = null,
 ) {
     val spacing = VmTheme.spacing
 
@@ -241,10 +242,23 @@ internal fun TranscriptRow(
                 .padding(vertical = 4.dp),
             contentAlignment = Alignment.CenterEnd,
         ) {
+            val bubbleColor = remember(chatBubbleColorHex) {
+                if (!chatBubbleColorHex.isNullOrBlank()) {
+                    try {
+                        val clean = chatBubbleColorHex.trim().removePrefix("#")
+                        val full = if (clean.length == 6) "FF$clean" else clean
+                        Color(full.toLong(16))
+                    } catch (_: Exception) {
+                        Color(0xFF1E1F23)
+                    }
+                } else {
+                    Color(0xFF1E1F23)
+                }
+            }
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF1E1F23),
-                border = BorderStroke(1.dp, Color(0xFF2E3036)),
+                color = bubbleColor,
+                border = BorderStroke(1.dp, bubbleColor.copy(alpha = 0.6f)),
                 modifier = Modifier.widthIn(max = 340.dp),
             ) {
                 Text(
