@@ -105,7 +105,7 @@ jobs:
           gh release upload "$TARGET_TAG" "xcodes-${VERSION}.apk" --clobber
 
       - name: Deploy APK to apps.vmstudio.digital
-        if: env.DEPLOY_SSH_KEY != ''
+        if: env.DEPLOY_SSH_KEY != '' && success()
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
