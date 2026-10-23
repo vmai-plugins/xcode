@@ -68,6 +68,7 @@ jobs:
 
       - name: Assemble debug if not already downloaded
         run: |
+          set -e
           mkdir -p apk
           if [ ! -f apk/app-debug.apk ]; then
             echo "Building APK directly in nightly pipeline..."
