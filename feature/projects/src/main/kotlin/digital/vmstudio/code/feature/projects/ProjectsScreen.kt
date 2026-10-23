@@ -417,13 +417,14 @@ private fun ProjectRow(
                 ) {
                     // Source Badge
                     val (sourceLabel, sourceColor) = when {
-                        project.remotePath.startsWith("/github/") -> "GitHub" to Color(0xFF8B5CF6)
+                        project.remotePath.startsWith("/github/") -> "GitHub" to ProjectColors.BrandGitHub
                         project.remotePath.startsWith("/vmhub/") || project.description.contains("VM Hub #") ->
-                            "VM Hub · Universal" to Color(0xFFEC4899)
-                        project.remotePath.contains("gdrive", ignoreCase = true) -> "Google Drive" to Color(0xFFF59E0B)
-                        project.isLocal -> "Local Phone" to Color(0xFF10B981)
-                        project.branch != null -> "GitHub" to Color(0xFF8B5CF6)
-                        else -> (serverLabel ?: "VPS Cloud") to Color(0xFF06B6D4)
+                            "VM Hub · Universal" to ProjectColors.BrandVMHub
+                        project.remotePath.contains("gdrive", ignoreCase = true) || project.remotePath.contains("drive", ignoreCase = true) ->
+                            "Google Drive" to ProjectColors.BrandDrive
+                        project.isLocal -> "Local Phone" to ProjectColors.BrandLocal
+                        project.branch != null -> "GitHub" to ProjectColors.BrandGitHub
+                        else -> (serverLabel ?: "VPS Cloud") to ProjectColors.BrandVPS
                     }
 
                     BadgePill(label = sourceLabel, color = sourceColor)
