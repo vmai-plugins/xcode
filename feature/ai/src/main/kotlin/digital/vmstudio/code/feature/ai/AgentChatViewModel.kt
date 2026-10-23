@@ -249,6 +249,11 @@ class AgentChatViewModel @Inject constructor(
         viewModelScope.launch {
             modelCatalog.models.collect { models -> _uiState.update { it.copy(omniModels = models) } }
         }
+        viewModelScope.launch {
+            preferences.preferences.collect { prefs ->
+                _uiState.update { it.copy(chatBubbleColorHex = prefs.chatBubbleColorHex) }
+            }
+        }
         // Live model sync: refresh the gateway's list whenever the chat opens on a
         // stale one. A failure here is silent; an explicit sync reports it.
         viewModelScope.launch { modelCatalog.syncIfStale() }
