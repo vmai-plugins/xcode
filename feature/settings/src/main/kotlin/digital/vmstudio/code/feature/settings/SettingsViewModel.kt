@@ -120,6 +120,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.setBiometricLockEnabled(enabled) }
     }
 
+    fun setChatBubbleColor(hex: String?) {
+        viewModelScope.launch { preferencesRepository.setChatBubbleColor(hex) }
+    }
+
+    fun setDefaultProjectColor(hex: String?) {
+        viewModelScope.launch { preferencesRepository.setDefaultProjectColor(hex) }
+    }
+
     /** Diagnostics are redacted at capture time, so this text is safe to share. */
     fun exportDiagnostics(): String = diagnosticsLogSink.exportAsText()
 
