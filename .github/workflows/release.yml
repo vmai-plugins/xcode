@@ -110,10 +110,28 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
           TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
+          META_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info
         run: |
+          set -e
           mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
-          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR $META_DIR"
           scp -i ~/.ssh/id_rsa "xcodes-${VERSION}.apk" "${DEPLOY_HOST}:${TARGET_DIR}/app-release.apk"
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" \
             "cd $TARGET_DIR && cp -f app-release.apk xcodes-latest.apk && chmod 644 app-release.apk xcodes-latest.apk"
+
+          cat > meta.json <<EOF
+          {
+            "workflow": "release.yml",
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "commit": "${GITHUB_SHA}",
+            "short_sha": "${GITHUB_SHA::7}",
+            "version_name": "${VERSION}",
+            "build_type": "release_signed",
+            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          scp -i ~/.ssh/id_rsa meta.json "${DEPLOY_HOST}:${META_DIR}/release-${VERSION}.json" || true
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $META_DIR && ln -sf release-${VERSION}.json xcodes-latest.json" || true
+
           echo "Successfully published xcodes-${VERSION}.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
