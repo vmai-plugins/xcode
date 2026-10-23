@@ -233,6 +233,8 @@ class UserPreferencesRepository @Inject constructor(
             evolutionApiInstance = this[Keys.EVOLUTION_API_INSTANCE],
             evolutionApiRecipientNumber = this[Keys.EVOLUTION_API_RECIPIENT_NUMBER],
             evolutionApiNotificationsEnabled = this[Keys.EVOLUTION_API_NOTIFICATIONS_ENABLED] ?: defaults.evolutionApiNotificationsEnabled,
+            chatBubbleColorHex = this[Keys.CHAT_BUBBLE_COLOR],
+            defaultProjectColorHex = this[Keys.DEFAULT_PROJECT_COLOR],
         )
     }
 
