@@ -299,8 +299,8 @@ class DefaultAgentConversationRepository @Inject constructor(
                     event.sessionId?.let {
                         conversationDao.updateProviderSession(conversationId, it, now)
                     }
-                    // Auto-sync completed turn to cloud backend
-                    projectHubClient.syncChatToServer(conversationId)
+                    // Auto-sync completed turn to cloud backend (fire-and-forget)
+                    try { cloudSyncHook?.invoke(conversationId) } catch (_: Exception) {}
                 }
 
                 is AgentEvent.Failed -> {
@@ -311,7 +311,7 @@ class DefaultAgentConversationRepository @Inject constructor(
                         status = MessageStatus.FAILED,
                         errorText = event.error.summary,
                     )
-                    projectHubClient.syncChatToServer(conversationId)
+                    try { cloudSyncHook?.invoke(conversationId) } catch (_: Exception) {}
                 }
 
                 // Deltas are display-only. The complete AssistantMessage that follows is
