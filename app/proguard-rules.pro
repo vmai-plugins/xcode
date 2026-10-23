@@ -30,3 +30,9 @@
 # Allow shrinking without halting on optional dependencies
 -dontwarn **
 
+# AndroidX Credentials & Google Identity models
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }
+-dontwarn androidx.credentials.**
+-dontwarn com.google.android.libraries.identity.googleid.**
+
