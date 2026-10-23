@@ -31,10 +31,11 @@ object ProjectColors {
         else -> BrandVPS
     }
 
-    fun parseColor(hex: String?, fallbackSeed: String = ""): Color {
-        if (!hex.isNullOrBlank()) {
+    fun parseColor(hex: String?, fallbackSeed: String = "", defaultFallbackHex: String? = null): Color {
+        val effectiveHex = hex ?: defaultFallbackHex
+        if (!effectiveHex.isNullOrBlank()) {
             try {
-                val cleanHex = hex.trim().removePrefix("#")
+                val cleanHex = effectiveHex.trim().removePrefix("#")
                 val fullHex = if (cleanHex.length == 6) "FF$cleanHex" else cleanHex
                 return Color(fullHex.toLong(16))
             } catch (_: Exception) {}
