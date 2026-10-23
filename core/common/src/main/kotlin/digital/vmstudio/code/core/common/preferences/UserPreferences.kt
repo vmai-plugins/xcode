@@ -112,6 +112,8 @@ data class UserPreferences(
     val evolutionApiInstance: String? = null,
     val evolutionApiRecipientNumber: String? = null,
     val evolutionApiNotificationsEnabled: Boolean = false,
+    val chatBubbleColorHex: String? = null,
+    val defaultProjectColorHex: String? = null,
 ) {
     companion object {
         const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
