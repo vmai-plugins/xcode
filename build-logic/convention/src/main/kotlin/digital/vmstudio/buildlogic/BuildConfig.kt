@@ -11,13 +11,13 @@ import org.gradle.api.JavaVersion
  * degraded Git implementation, which the product spec rules out.
  */
 object BuildConfig {
-    const val COMPILE_SDK = 36
-    const val TARGET_SDK = 36
+    const val COMPILE_SDK = 35
+    const val TARGET_SDK = 35
     const val MIN_SDK = 26
 
     const val APPLICATION_ID = "digital.vmstudio.code"
-    const val VERSION_CODE = 8
-    const val VERSION_NAME = "0.8.0"
+    const val VERSION_CODE = 20
+    const val VERSION_NAME = "0.9.0"
 
     val JAVA_VERSION = JavaVersion.VERSION_17
     const val JVM_TARGET = "17"
