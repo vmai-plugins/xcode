@@ -118,5 +118,6 @@ jobs:
           mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR"
           scp -i ~/.ssh/id_rsa "xcodes-${VERSION}.apk" "${DEPLOY_HOST}:${TARGET_DIR}/app-release.apk"
-          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "chmod 644 ${TARGET_DIR}/app-release.apk"
-          echo "Successfully published xcodes-${VERSION}.apk to https://apps.vmstudio.digital/x-codes/app-release.apk"
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" \
+            "cd $TARGET_DIR && cp -f app-release.apk xcodes-latest.apk && chmod 644 app-release.apk xcodes-latest.apk"
+          echo "Successfully published xcodes-${VERSION}.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
