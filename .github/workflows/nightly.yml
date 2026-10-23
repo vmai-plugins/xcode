@@ -129,6 +129,6 @@ jobs:
           }
           EOF
           scp -i ~/.ssh/id_rsa meta.json "${DEPLOY_HOST}:${META_DIR}/nightly-${SHORT_SHA}.json" || true
-          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $META_DIR && ln -sf nightly-${SHORT_SHA}.json xcodes-nigthly-latest.json" || true
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $META_DIR && ln -sf nightly-${SHORT_SHA}.json xcodes-nightly-latest.json" || true
 
           echo "Successfully published xcodes-latest.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
