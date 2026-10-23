@@ -84,8 +84,7 @@ jobs:
       # silently: R8 shrinking and lintVital only execute here, and a debug-only
       # pipeline would not have caught the missing eddsa keep rule.
       - name: Assemble release
-        continue-on-error: true
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew :app:assembleRelease --stacktrace
         env:
           VMSTUDIO_KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
           VMSTUDIO_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
