@@ -80,7 +80,7 @@ jobs:
           META_DIR="/home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info"
           SHA="${GITHUB_SHA}"
           SHORT_SHA="${SHA::7}"
-          VERSION_NAME="$(./gradlew -q :app:properties | grep "versionName" | head -n1 | awk '{print $2}' || true)"
+          VERSION_NAME="$(./gradlew -q :app:properties | grep "versionName" | head -n1 | awk '{print $2}' | tr -d '\r' || true)"
           cat > meta.json <<EOF
           {
             "workflow": "build.yml",
