@@ -11,8 +11,8 @@ import org.gradle.api.JavaVersion
  * degraded Git implementation, which the product spec rules out.
  */
 object BuildConfig {
-    const val COMPILE_SDK = 35
-    const val TARGET_SDK = 35
+    const val COMPILE_SDK = 36
+    const val TARGET_SDK = 36
     const val MIN_SDK = 26
 
     const val APPLICATION_ID = "digital.vmstudio.code"

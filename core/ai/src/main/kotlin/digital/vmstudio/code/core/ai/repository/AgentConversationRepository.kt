@@ -234,6 +234,7 @@ class DefaultAgentConversationRepository @Inject constructor(
             insertMessage(conversationId, MessageRole.USER, prompt)
             // Auto-sync prompt to cloud backend (fire-and-forget)
             try { cloudSyncHook?.invoke(conversationId) } catch (_: Exception) {}
+            Unit
         }
     }
 
