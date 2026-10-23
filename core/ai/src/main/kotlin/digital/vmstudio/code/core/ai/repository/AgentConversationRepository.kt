@@ -232,8 +232,8 @@ class DefaultAgentConversationRepository @Inject constructor(
     ): VmResult<Unit> = withContext(ioDispatcher) {
         vmCatching(::mapError) {
             insertMessage(conversationId, MessageRole.USER, prompt)
-            // Auto-sync prompt to cloud backend
-            projectHubClient.syncChatToServer(conversationId)
+            // Auto-sync prompt to cloud backend (fire-and-forget)
+            try { cloudSyncHook?.invoke(conversationId) } catch (_: Exception) {}
         }
     }
 
