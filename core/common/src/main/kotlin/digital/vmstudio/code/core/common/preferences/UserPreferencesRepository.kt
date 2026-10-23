@@ -339,6 +339,8 @@ class UserPreferencesRepository @Inject constructor(
         val EVOLUTION_API_INSTANCE = stringPreferencesKey("evolution_api_instance")
         val EVOLUTION_API_RECIPIENT_NUMBER = stringPreferencesKey("evolution_api_recipient_number")
         val EVOLUTION_API_NOTIFICATIONS_ENABLED = booleanPreferencesKey("evolution_api_notifications_enabled")
+        val CHAT_BUBBLE_COLOR = stringPreferencesKey("chat_bubble_color")
+        val DEFAULT_PROJECT_COLOR = stringPreferencesKey("default_project_color")
     }
 
     private companion object {
