@@ -621,6 +621,7 @@ class AgentChatViewModel @Inject constructor(
                 it.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
                     selectedModel = effectiveModel,
+                    chatBubbleColorHex = prefs.chatBubbleColorHex,
                 )
             }
             checkHealth()
