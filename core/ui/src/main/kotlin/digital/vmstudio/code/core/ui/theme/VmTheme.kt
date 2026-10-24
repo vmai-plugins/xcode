@@ -56,42 +56,55 @@ private val DarkColorScheme: ColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme: ColorScheme = lightColorScheme(
+    // Primary — strong indigo-blue, legible on white (contrast ratio ≥ 4.5:1)
     primary = Palette.Clay40,
     onPrimary = Palette.Neutral100,
     primaryContainer = Palette.Clay90,
     onPrimaryContainer = Palette.Clay20,
     inversePrimary = Palette.Clay70,
 
+    // Secondary — teal, legible on white
     secondary = Palette.Teal40,
     onSecondary = Palette.Neutral100,
     secondaryContainer = Palette.Teal90,
     onSecondaryContainer = Palette.Teal20,
 
+    // Tertiary — violet for AI/agent surfaces
     tertiary = Palette.Violet40,
     onTertiary = Palette.Neutral100,
     tertiaryContainer = Palette.Violet90,
     onTertiaryContainer = Palette.Violet20,
 
+    // Page background: very light blue-grey (not pure white — reduces eye strain)
     background = Palette.Neutral94,
-    onBackground = Palette.Neutral10,
+    onBackground = Palette.LightOnSurface,
+
+    // Cards: pure white so they lift off the background visually
     surface = Palette.Neutral100,
-    onSurface = Palette.Neutral10,
-    surfaceVariant = Palette.Neutral90,
-    onSurfaceVariant = Palette.Neutral30,
+    onSurface = Palette.LightOnSurface,
+
+    // Containers / chips
+    surfaceVariant = Palette.Neutral92,
+    onSurfaceVariant = Palette.LightOnSurfaceVariant,
+
+    // Surface container ramp — used by VmCard, sheets, dialogs
     surfaceContainerLowest = Palette.Neutral100,
-    surfaceContainerLow = Palette.Neutral97,
-    surfaceContainer = Palette.Neutral100,
-    surfaceContainerHigh = Palette.Neutral100,
-    surfaceContainerHighest = Palette.Neutral90,
+    surfaceContainerLow = Palette.Neutral98,
+    surfaceContainer = Palette.Neutral97,
+    surfaceContainerHigh = Palette.Neutral96,
+    surfaceContainerHighest = Palette.Neutral92,
 
-    outline = Palette.Neutral70,
-    outlineVariant = Palette.Neutral85,
+    // Borders — visible 1dp hairlines, not washed out
+    outline = Palette.Neutral50,
+    outlineVariant = Palette.Neutral90,
 
+    // Error
     error = Palette.Red40,
     onError = Palette.Neutral100,
     errorContainer = Palette.Red90,
     onErrorContainer = Palette.RedContainerLight,
 
+    // Inverse (snackbars, tooltips shown on dark backgrounds)
     inverseSurface = Palette.Neutral10,
     inverseOnSurface = Palette.Neutral97,
     scrim = Palette.Neutral04,
