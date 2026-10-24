@@ -86,6 +86,7 @@ fun ProjectDetailScreen(
     val spacing = VmTheme.spacing
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var showCommitDialog by remember { mutableStateOf(false) }
+    var showColorDialog by remember { mutableStateOf(false) }
     var commitMessageInput by remember { mutableStateOf("") }
     val project = state.project
 
