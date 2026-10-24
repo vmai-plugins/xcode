@@ -95,7 +95,7 @@ private val LightColorScheme: ColorScheme = lightColorScheme(
     surfaceContainerHighest = Palette.Neutral92,
 
     // Borders — visible 1dp hairlines, not washed out
-    outline = Palette.Neutral50,
+    outline = Palette.Neutral70,
     outlineVariant = Palette.Neutral90,
 
     // Error
