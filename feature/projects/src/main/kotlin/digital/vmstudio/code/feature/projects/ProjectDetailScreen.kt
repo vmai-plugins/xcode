@@ -153,6 +153,7 @@ fun ProjectDetailScreen(
                         serverName = state.server?.name,
                         isSyncing = state.isSyncing,
                         onSyncGit = viewModel::syncGit,
+                        onChangeColor = { showColorDialog = true },
                     )
                 }
 
