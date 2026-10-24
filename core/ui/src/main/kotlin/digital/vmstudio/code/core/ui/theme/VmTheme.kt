@@ -88,10 +88,12 @@ private val LightColorScheme: ColorScheme = lightColorScheme(
     onSurfaceVariant = Palette.LightOnSurfaceVariant,
 
     // Surface container ramp — used by VmCard, sheets, dialogs
+    // Cards (surfaceContainerHigh) = pure white, background = Neutral94
+    // so cards visibly lift off the page background with clear separation
     surfaceContainerLowest = Palette.Neutral100,
-    surfaceContainerLow = Palette.Neutral98,
-    surfaceContainer = Palette.Neutral97,
-    surfaceContainerHigh = Palette.Neutral96,
+    surfaceContainerLow = Palette.Neutral100,
+    surfaceContainer = Palette.Neutral98,
+    surfaceContainerHigh = Palette.Neutral100,
     surfaceContainerHighest = Palette.Neutral92,
 
     // Borders — visible 1dp hairlines, not washed out
