@@ -45,7 +45,7 @@ internal object Palette {
     val Violet80 = Color(0xFFC9B6FF)
     val Violet90 = Color(0xFFECE5FF)
 
-    // Neutrals (crisp midnight blue-slate IDE surfaces).
+    // Neutrals (crisp midnight blue-slate IDE surfaces — dark).
     val Neutral04 = Color(0xFF0B0E14)
     val Neutral06 = Color(0xFF10151F)
     val Neutral10 = Color(0xFF161C28)
@@ -55,10 +55,18 @@ internal object Palette {
     val Neutral50 = Color(0xFF6B7A99)
     val Neutral70 = Color(0xFFA0AEC7)
     val Neutral85 = Color(0xFFD5DFEE)
-    val Neutral90 = Color(0xFFE2E8F0)
-    val Neutral94 = Color(0xFFF0F4FA)
-    val Neutral97 = Color(0xFFF7F9FC)
-    val Neutral100 = Color(0xFFFFFFFF)
+    val Neutral90 = Color(0xFFE2E8F0)  // crisp border / divider in light mode
+    val Neutral92 = Color(0xFFEAEFF6)  // light card border
+    val Neutral94 = Color(0xFFF0F4FA)  // light page background
+    val Neutral96 = Color(0xFFF4F6FA)  // light surface container low
+    val Neutral97 = Color(0xFFF7F9FC)  // light surface container
+    val Neutral98 = Color(0xFFFAFBFD)  // light surface container high
+    val Neutral100 = Color(0xFFFFFFFF) // pure white cards
+
+    // Light mode text — higher contrast than generic Neutral for WCAG AAA
+    val LightOnSurface   = Color(0xFF111827) // ~21:1 on white
+    val LightOnSurfaceVariant = Color(0xFF374151) // ~11:1 on white
+    val LightOnSurfaceSubtle  = Color(0xFF6B7280) // ~5.7:1 on white
 
     // Status ramp. Chosen for >= 4.5:1 against their paired containers.
     val Green40 = Color(0xFF167945)
