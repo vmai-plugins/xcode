@@ -45,9 +45,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Download the APK Build already made
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
         id: download_apk
-        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: app-debug
