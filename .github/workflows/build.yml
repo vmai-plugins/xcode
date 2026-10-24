@@ -99,8 +99,7 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $META_DIR && ln -sf build-${SHORT_SHA}.json xcodes-latest.json" || true
 
       - name: Unit tests
-        continue-on-error: true
-        run: ./gradlew testDebugUnitTest --stacktrace --continue
+        run: ./gradlew testDebugUnitTest --stacktrace
 
       # The release variant is built on every run because it is the one that broke
       # silently: R8 shrinking and lintVital only execute here, and a debug-only
