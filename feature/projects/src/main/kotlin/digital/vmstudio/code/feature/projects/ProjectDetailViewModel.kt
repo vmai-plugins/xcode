@@ -579,6 +579,13 @@ class ProjectDetailViewModel @Inject constructor(
         }
     }
 
+    fun updateProjectColor(colorHex: String?) {
+        viewModelScope.launch {
+            projectRepository.updateColor(projectId, colorHex)
+            loadProject()
+        }
+    }
+
     fun showTerminalNotice(
         message: String = "Terminal is only available for remote SSH servers. Local shell requires Termux.",
     ) {
