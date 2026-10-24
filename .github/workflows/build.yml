@@ -113,7 +113,6 @@ jobs:
           VMSTUDIO_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Android Lint
-        continue-on-error: true
         run: ./gradlew lintDebug --stacktrace
 
       - name: Upload test reports
