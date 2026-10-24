@@ -43,17 +43,20 @@ jobs:
 
       - name: Assemble debug
         run: |
-          ./gradlew assembleDebug --stacktrace > build.log 2>&1 || {
-            ERR=$(grep -o "e: .*" build.log | head -n 5 | paste -sd "; " - || true)
-            if [ -z "$ERR" ]; then
-              ERR=$(grep -o "FAILURE: .*" build.log | head -n 3 | paste -sd "; " - || true)
-            fi
-            if [ -z "$ERR" ]; then
-              ERR=$(tail -n 20 build.log | tr '\n' ' ' || true)
-            fi
-            echo "::error::Assemble debug failed: $ERR"
-            exit 1
-          }
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+
+      # The full compiler output is essential when the APK build fails. This must
+      # run even when the previous step failed; Nightly otherwise only reports a
+      # generic "assemble" failure and hides the Kotlin/R8 diagnostic.
+      - name: Upload Gradle build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: build.log
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
