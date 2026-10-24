@@ -42,12 +42,25 @@ fun VmCard(
         androidx.compose.foundation.layout.PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Flat tonal surface, no outline: separation comes from the fill, not a border.
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    // In light mode, cards are pure white on a grey background.
+    // A 1dp outline makes them clearly visible as raised panels.
+    // In dark mode, the fill does the separation — no outline needed.
+    val isDark = isSystemInDarkTheme()
+    val borderModifier = if (!isDark) {
+        Modifier.border(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+            shape = shape,
+        )
+    } else {
+        Modifier
+    }
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().then(borderModifier),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shadowElevation = if (!isDark) 1.dp else 0.dp,
     ) {
         Column(
             modifier = Modifier
