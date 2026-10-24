@@ -155,10 +155,10 @@ internal val LightSemanticColors = VmSemanticColors(
     terminalCursor = Palette.Blue60,
 
     editorGutter = Palette.Neutral50,
-    editorCurrentLine = Palette.Neutral97,
+    editorCurrentLine = Palette.Neutral94,   // visible highlight on white editor
 
-    divider = Palette.Neutral94,
-    codeSurface = Palette.Neutral97,
+    divider = Palette.Neutral90,             // visible 1dp hairline on white cards
+    codeSurface = Palette.Neutral92,         // inline code chips visible on white
 )
 
 val LocalVmSemanticColors = staticCompositionLocalOf { DarkSemanticColors }
