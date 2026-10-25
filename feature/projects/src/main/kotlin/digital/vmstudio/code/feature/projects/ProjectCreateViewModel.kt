@@ -128,6 +128,7 @@ class ProjectCreateViewModel @Inject constructor(
                     ?: state.selectedServerId ?: RemoteFileSystem.LOCAL_SERVER_ID
             }
             val newPath = when (source) {
+                ProjectSource.WORDPRESS -> "/vmhub/${state.name.ifBlank { "saketdhamashram" }}"
                 ProjectSource.LOCAL -> defaultProjectPath(isLocal = true, state.name)
                 ProjectSource.GDRIVE -> defaultProjectPath(isLocal = true, state.name)
                 ProjectSource.VPS -> "~/projects/${state.name.ifBlank { "vps-app" }}"
