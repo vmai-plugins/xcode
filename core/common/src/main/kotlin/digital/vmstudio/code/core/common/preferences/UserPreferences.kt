@@ -49,6 +49,7 @@ data class UserPreferences(
     val hasCompletedOnboarding: Boolean = false,
     val hasSignedIn: Boolean = false,
     val hubApiKey: String? = null,
+    val hubBaseUrl: String = DEFAULT_HUB_BASE_URL,
     val biometricLockEnabled: Boolean = false,
     /**
      * Context window at which the CLI auto-compacts.
