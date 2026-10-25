@@ -45,6 +45,7 @@ class VmApplication : Application() {
         reconcileInterruptedWork()
         wireCloudChatSync()
         checkForUpdateLater()
+        startBackgroundModelSync()
     }
 
     /** Wires two-way companion chat synchronization without cyclic module coupling. */
