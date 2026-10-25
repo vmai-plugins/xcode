@@ -231,6 +231,74 @@ fun ServerDetailScreen(
                     }
                 }
 
+                item { VmSectionHeader(title = "Laptop & Admin Controls") }
+                item {
+                    VmCard {
+                        Text(
+                            text = "Admin Remote Shortcuts",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "Control your laptop or workstation over SSH without opening a shell",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(spacing.sm))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                        ) {
+                            VmButton(
+                                text = "Lock",
+                                icon = Icons.Default.Lock,
+                                onClick = viewModel::lockLaptop,
+                                enabled = !state.isLaptopActionBusy,
+                                style = VmButtonStyle.Secondary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            VmButton(
+                                text = "Sleep",
+                                icon = Icons.Default.PowerSettingsNew,
+                                onClick = viewModel::sleepLaptop,
+                                enabled = !state.isLaptopActionBusy,
+                                style = VmButtonStyle.Secondary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            VmButton(
+                                text = "Mute",
+                                icon = Icons.Default.VolumeMute,
+                                onClick = viewModel::toggleMute,
+                                enabled = !state.isLaptopActionBusy,
+                                style = VmButtonStyle.Secondary,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Spacer(Modifier.height(spacing.xs))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                        ) {
+                            VmButton(
+                                text = "Screenshot",
+                                icon = Icons.Default.CameraAlt,
+                                onClick = viewModel::captureLaptopScreenshot,
+                                enabled = !state.isLaptopActionBusy,
+                                style = VmButtonStyle.Secondary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            VmButton(
+                                text = "Battery / Power",
+                                icon = Icons.Default.BatteryChargingFull,
+                                onClick = viewModel::checkLaptopBattery,
+                                enabled = !state.isLaptopActionBusy,
+                                style = VmButtonStyle.Secondary,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+
                 state.telemetry?.let { tel ->
                     item { VmSectionHeader(title = "Live Resource Telemetry") }
                     item {
