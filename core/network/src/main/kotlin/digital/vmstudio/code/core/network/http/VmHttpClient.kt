@@ -261,29 +261,56 @@ class VmHttpClient @Inject constructor(
     private fun mapHttpError(response: Response, body: String, request: Request): VmError {
         val endpoint = request.url.redactedForDisplay()
         val excerpt = body.take(400).takeIf { it.isNotBlank() }
+        val isGithub = request.url.host.contains("github.com", ignoreCase = true)
+        val isAiGateway = !isGithub && (request.url.host.contains("vmstudio.digital", ignoreCase = true) ||
+            request.url.encodedPath.contains("/v1/chat") ||
+            request.url.encodedPath.contains("/v1/messages") ||
+            request.url.encodedPath.contains("/v1/models"))
 
         return when (response.code) {
-            401, 403 -> VmError.Authentication(
-                summary = "The AI provider rejected the credentials",
-                reason = excerpt ?: "Status ${response.code}.",
-                suggestedAction = "Check the API key in Settings, and that it is valid " +
-                    "for this endpoint.",
-                realm = endpoint,
-            )
+            401, 403 -> {
+                val summary = when {
+                    isGithub -> if (response.code == 403) "GitHub API rate limit exceeded or access denied" else "GitHub authentication required"
+                    isAiGateway -> "The AI provider rejected the credentials"
+                    else -> "Authentication failed (${response.code})"
+                }
+                val suggestion = when {
+                    isGithub -> "Provide or refresh your GitHub Personal Access Token in Settings."
+                    isAiGateway -> "Check the API key in Settings, and that it is valid for this endpoint."
+                    else -> "Check credentials for this service."
+                }
+                VmError.Authentication(
+                    summary = summary,
+                    reason = excerpt ?: "Status ${response.code}.",
+                    suggestedAction = suggestion,
+                    realm = endpoint,
+                )
+            }
 
-            404 -> VmError.Network(
-                summary = "Endpoint not found",
-                reason = "The server has no handler at this path.",
-                suggestedAction = "Check the base URL. A gateway that only implements " +
-                    "the OpenAI API will not answer Anthropic paths, and the reverse.",
-                retryable = false,
-                statusCode = 404,
-                endpoint = endpoint,
-            )
+            404 -> {
+                val summary = when {
+                    isGithub -> "GitHub resource or release not found"
+                    isAiGateway -> "Endpoint not found"
+                    else -> "Resource not found"
+                }
+                val suggestion = when {
+                    isGithub -> "Verify that the repository and release tag exist."
+                    isAiGateway -> "Check the base URL. A gateway that only implements the OpenAI API will not answer Anthropic paths, and the reverse."
+                    else -> "Check the URL and endpoint path."
+                }
+                VmError.Network(
+                    summary = summary,
+                    reason = excerpt ?: "The server returned HTTP 404.",
+                    suggestedAction = suggestion,
+                    retryable = false,
+                    statusCode = 404,
+                    endpoint = endpoint,
+                )
+            }
 
             429 -> VmError.Network(
                 summary = "Rate limited",
-                reason = excerpt ?: "The provider is throttling requests.",
+                reason = excerpt ?: "The service is throttling requests.",
                 suggestedAction = "Wait a moment and try again.",
                 retryable = true,
                 statusCode = 429,
@@ -291,14 +318,17 @@ class VmHttpClient @Inject constructor(
             )
 
             in 500..599 -> VmError.Network(
-                summary = "The provider is unavailable",
-                reason = if (response.code == 502) {
+                summary = if (isAiGateway) "The provider is unavailable" else "Server error (${response.code})",
+                reason = if (response.code == 502 && isAiGateway) {
                     "The gateway could not reach its upstream service."
                 } else {
                     excerpt ?: "Status ${response.code}."
                 },
-                suggestedAction = "This is a problem on the server side. Check the " +
-                    "gateway is running and try again.",
+                suggestedAction = if (isAiGateway) {
+                    "This is a problem on the server side. Check the gateway is running and try again."
+                } else {
+                    "The remote server encountered an error. Try again later."
+                },
                 retryable = true,
                 statusCode = response.code,
                 endpoint = endpoint,
