@@ -78,7 +78,7 @@ class VmApplication : Application() {
             // Wait a bit after app startup to avoid competing with initial loads
             delay(30_000)
             while (isActive) {
-                modelCatalog.get().syncIfStale(force = false)
+                modelCatalog.get().syncIfStale()
                 // Check again every 15 minutes
                 delay(15 * 60 * 1000)
             }
