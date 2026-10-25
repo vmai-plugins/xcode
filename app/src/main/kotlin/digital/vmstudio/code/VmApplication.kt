@@ -34,6 +34,8 @@ class VmApplication : Application() {
 
     @Inject lateinit var projectHubClient: dagger.Lazy<digital.vmstudio.code.core.project.VmProjectHubClient>
 
+    @Inject lateinit var modelCatalog: dagger.Lazy<OmniRouteModelCatalog>
+
     @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
     override fun onCreate() {
