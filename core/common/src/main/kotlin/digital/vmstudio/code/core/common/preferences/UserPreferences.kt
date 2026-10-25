@@ -118,6 +118,7 @@ data class UserPreferences(
     val evolutionApiInstance: String? = null,
     val evolutionApiRecipientNumber: String? = null,
     val evolutionApiNotificationsEnabled: Boolean = false,
+    val releaseChannel: ReleaseChannel = ReleaseChannel.STABLE,
     val chatBubbleColorHex: String? = null,
     val defaultProjectColorHex: String? = null,
 ) {
