@@ -295,6 +295,7 @@ class ProjectCreateViewModel @Inject constructor(
         } else {
             "Cloning repository..."
         }
+        ProjectSource.WORDPRESS -> "Connecting to WordPress (saketdhamashram.org)..."
         ProjectSource.LOCAL -> "Initializing local workspace on phone..."
         ProjectSource.GDRIVE -> "Connecting Google Drive workspace..."
         ProjectSource.VPS -> "Creating remote cloud workspace on VPS..."
