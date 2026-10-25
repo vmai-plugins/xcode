@@ -498,7 +498,84 @@ class GitHubRepositoryClient @Inject constructor(
         }
     }
 
+    suspend fun requestDeviceCode(clientId: String = DEFAULT_DEVICE_CLIENT_ID): VmResult<GitHubDeviceAuth> {
+        val formBody = "client_id=$clientId&scope=repo,read:user,workflow"
+            .toRequestBody("application/x-www-form-urlencoded".toMediaType())
+        val request = Request.Builder()
+            .url("https://github.com/login/device/code")
+            .post(formBody)
+            .header("Accept", "application/json")
+            .build()
+
+        return when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
+            is VmResult.Failure -> response
+            is VmResult.Success -> {
+                try {
+                    val json = org.json.JSONObject(response.value)
+                    if (json.has("error")) {
+                        VmResult.Failure(
+                            VmError.Network(
+                                summary = "GitHub device code request failed",
+                                reason = json.optString("error_description", json.getString("error")),
+                            ),
+                        )
+                    } else {
+                        VmResult.Success(
+                            GitHubDeviceAuth(
+                                deviceCode = json.getString("device_code"),
+                                userCode = json.getString("user_code"),
+                                verificationUri = json.optString("verification_uri", "https://github.com/login/device"),
+                                expiresInSeconds = json.optInt("expires_in", 900),
+                                intervalSeconds = json.optInt("interval", 5),
+                            ),
+                        )
+                    }
+                } catch (e: Exception) {
+                    VmResult.Failure(
+                        VmError.Unexpected(summary = "Failed to parse GitHub device authorization response: ${e.message}"),
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun pollDeviceToken(clientId: String = DEFAULT_DEVICE_CLIENT_ID, deviceCode: String): VmResult<GitHubDevicePollResult> {
+        val formBody = "client_id=$clientId&device_code=$deviceCode&grant_type=urn:ietf:params:oauth:grant-type:device_code"
+            .toRequestBody("application/x-www-form-urlencoded".toMediaType())
+        val request = Request.Builder()
+            .url("https://github.com/login/oauth/access_token")
+            .post(formBody)
+            .header("Accept", "application/json")
+            .build()
+
+        return when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
+            is VmResult.Failure -> response
+            is VmResult.Success -> {
+                try {
+                    val json = org.json.JSONObject(response.value)
+                    if (json.has("access_token")) {
+                        val token = json.getString("access_token")
+                        VmResult.Success(GitHubDevicePollResult.Success(token))
+                    } else {
+                        val error = json.optString("error")
+                        if (error == "authorization_pending" || error == "slow_down") {
+                            VmResult.Success(GitHubDevicePollResult.Pending)
+                        } else {
+                            val desc = json.optString("error_description", error)
+                            VmResult.Success(GitHubDevicePollResult.Error(desc))
+                        }
+                    }
+                } catch (e: Exception) {
+                    VmResult.Failure(
+                        VmError.Unexpected(summary = "Failed to parse GitHub token polling response: ${e.message}"),
+                    )
+                }
+            }
+        }
+    }
+
     private companion object {
+        const val DEFAULT_DEVICE_CLIENT_ID = "178c6fc77837de763903"
         const val PAGE_SIZE = 100
         const val MAX_PAGES = 10
         const val REPOSITORIES_URL =
