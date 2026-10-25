@@ -65,18 +65,37 @@ class ApkDownloader @Inject constructor(
                             partFile.outputStream().use { output ->
                                 val buffer = ByteArray(BUFFER_SIZE)
                                 var downloaded = 0L
+                                var lastReportedPercent = -1
+                                var lastReportedMillis = 0L
                                 while (true) {
                                     val read = input.read(buffer)
                                     if (read == -1) break
                                     output.write(buffer, 0, read)
                                     downloaded += read
-                                    if (total > 0) onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
+                                    if (total > 0) {
+                                        val now = System.currentTimeMillis()
+                                        val percent = (downloaded * 100 / total).toInt()
+                                        if (percent != lastReportedPercent || now - lastReportedMillis > 200L) {
+                                            lastReportedPercent = percent
+                                            lastReportedMillis = now
+                                            onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
+                                        }
+                                    }
                                 }
+                                if (total > 0) onProgress(1f)
                             }
                         }
                     }
 
-                    Files.move(partFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    val moved = runCatching {
+                        Files.move(partFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                        true
+                    }.getOrDefault(false)
+
+                    if (!moved) {
+                        partFile.copyTo(destFile, overwrite = true)
+                        partFile.delete()
+                    }
                     destFile
                 } catch (t: Throwable) {
                     if (partFile.exists()) partFile.delete()
@@ -88,6 +107,6 @@ class ApkDownloader @Inject constructor(
 
     private companion object {
         const val UPDATES_DIR = "updates"
-        const val BUFFER_SIZE = 8 * 1024
+        const val BUFFER_SIZE = 64 * 1024
     }
 }
