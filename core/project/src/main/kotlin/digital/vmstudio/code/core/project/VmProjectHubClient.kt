@@ -724,7 +724,9 @@ class VmProjectHubClient @Inject constructor(
     }
 
     companion object {
-        const val HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
+        private const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
+private const val SAKET_DHAM_HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
+const val HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
