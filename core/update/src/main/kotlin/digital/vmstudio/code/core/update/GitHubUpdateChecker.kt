@@ -53,7 +53,9 @@ class GitHubUpdateChecker @Inject constructor(
         prefs.githubTokenCredentialId?.let { credId ->
             (credentialStore.read(credId) as? VmResult.Success)?.value?.let { secret ->
                 try {
-                    requestBuilder.header("Authorization", "Bearer ${secret.reveal()}")
+                    secret.useAsString { token ->
+                        requestBuilder.header("Authorization", "Bearer $token")
+                    }
                 } finally {
                     secret.wipe()
                 }
