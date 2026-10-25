@@ -220,6 +220,8 @@ class VmProjectHubClient @Inject constructor(
         val request = Request.Builder()
             .url("$baseUrl/credentials")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-Hub-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
             .get()
             .build()
