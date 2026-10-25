@@ -461,7 +461,7 @@ internal fun trimHistory(
     keepRecent: Int = DEFAULT_KEEP_RECENT_TURNS,
 ): List<OmniRouteMessage> {
     // Fast path: already under budget
-    if (history.joinToString { messageTextLength(it) }.length <= budget) {
+    if (messageTextLength(history) <= budget) {
         return history
     }
 
