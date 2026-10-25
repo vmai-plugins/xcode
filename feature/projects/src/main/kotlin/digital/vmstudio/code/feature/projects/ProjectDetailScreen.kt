@@ -184,6 +184,15 @@ fun ProjectDetailScreen(
                             onSendWhatsApp = viewModel::sendApkViaWhatsApp,
                         )
                     }
+                } else {
+                    item(key = "quick-build") {
+                        QuickBuildCard(
+                            isBuilding = state.isBuildingApk,
+                            statusMessage = state.buildStatusMessage,
+                            onBuild = viewModel::buildAndroidApk,
+                            onScan = viewModel::scanApkArtifacts,
+                        )
+                    }
                 }
 
                 item(key = "git-control") {
