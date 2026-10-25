@@ -175,6 +175,10 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.AI_WEB_ACCESS_ENABLED] = enabled
     }
 
+    suspend fun setReleaseChannel(channel: ReleaseChannel) = edit {
+        it[Keys.RELEASE_CHANNEL] = channel.name
+    }
+
     suspend fun setChatBubbleColor(hex: String?) = edit {
         if (hex.isNullOrBlank()) it.remove(Keys.CHAT_BUBBLE_COLOR) else it[Keys.CHAT_BUBBLE_COLOR] = hex.trim()
     }
