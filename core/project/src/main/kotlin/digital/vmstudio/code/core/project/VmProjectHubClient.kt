@@ -558,6 +558,8 @@ class VmProjectHubClient @Inject constructor(
         val request = Request.Builder()
             .url("$baseUrl/chats/sync")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-Hub-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
             .header("Content-Type", "application/json")
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
