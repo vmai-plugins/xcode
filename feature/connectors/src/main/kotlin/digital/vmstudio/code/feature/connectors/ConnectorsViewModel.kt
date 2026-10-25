@@ -554,15 +554,17 @@ class ConnectorsViewModel @Inject constructor(
 
     // --- VM Project Hub -----------------------------------------------------
 
-    fun pairHubKey(key: String) {
+    fun pairHubKey(key: String, customBaseUrl: String? = null) {
         val trimmed = key.trim()
         if (trimmed.isBlank()) {
             extraState.update { it.copy(hubStatusMessage = "Hub Key cannot be empty") }
             return
         }
+        val targetUrl = customBaseUrl?.trim()?.takeIf { it.isNotBlank() } ?: "https://saketdhamashram.org"
         viewModelScope.launch {
-            extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Verifying Hub Key with vmstudio.digital…") }
-            when (val testRes = projectHubClient.testHubKey(trimmed)) {
+            extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Verifying Hub Key with $targetUrl…") }
+            preferencesRepository.setHubBaseUrl(targetUrl)
+            when (val testRes = projectHubClient.testHubKey(trimmed, targetUrl)) {
                 is VmResult.Failure -> {
                     extraState.update {
                         it.copy(
@@ -576,7 +578,7 @@ class ConnectorsViewModel @Inject constructor(
                     extraState.update {
                         it.copy(
                             hubProjectCount = testRes.value,
-                            hubStatusMessage = "Paired successfully! Discovered ${testRes.value} projects. Syncing now…",
+                            hubStatusMessage = "Paired successfully with $targetUrl! Discovered ${testRes.value} projects. Syncing now…",
                         )
                     }
                     syncUniversalHubProjects()
