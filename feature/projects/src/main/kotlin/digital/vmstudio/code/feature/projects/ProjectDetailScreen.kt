@@ -476,6 +476,77 @@ private fun ProjectActionsRow(
 }
 
 @Composable
+private fun QuickBuildCard(
+    isBuilding: Boolean,
+    statusMessage: String?,
+    onBuild: () -> Unit,
+    onScan: () -> Unit,
+) {
+    val spacing = VmTheme.spacing
+    VmCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = "Build & Deploy Actions",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                if (isBuilding) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                }
+            }
+
+            statusMessage?.let { msg ->
+                Text(
+                    text = msg,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                VmButton(
+                    text = if (isBuilding) "Building..." else "1-Tap Build APK",
+                    onClick = onBuild,
+                    loading = isBuilding,
+                    enabled = !isBuilding,
+                    icon = Icons.Default.PlayArrow,
+                    style = VmButtonStyle.Primary,
+                    modifier = Modifier.weight(1f),
+                )
+                VmButton(
+                    text = "Scan Outputs",
+                    onClick = onScan,
+                    icon = Icons.Default.Refresh,
+                    style = VmButtonStyle.Secondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProjectAndroidBuildCard(
     state: ProjectDetailUiState,
     onBuildApk: () -> Unit,
