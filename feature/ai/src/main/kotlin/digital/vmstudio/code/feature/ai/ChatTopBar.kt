@@ -221,15 +221,8 @@ internal fun ChatTopBar(
                 }
             }
             if (hasTranscript) {
-                IconButton(onClick = onNewChat) { Icon(Icons.Default.Add, contentDescription = "New chat") }
-            }
-            if (onToggleFullScreen != null) {
-                IconButton(onClick = onToggleFullScreen) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = if (isFullScreen) "Exit Focus" else "Smart Focus",
-                        tint = if (isFullScreen) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
-                    )
+                IconButton(onClick = onNewChat) { 
+                    Icon(Icons.Default.Add, contentDescription = "New chat") 
                 }
             }
             Box {
