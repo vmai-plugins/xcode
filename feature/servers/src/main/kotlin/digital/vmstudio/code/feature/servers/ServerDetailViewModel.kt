@@ -296,6 +296,73 @@ class ServerDetailViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 
+    fun lockLaptop() {
+        executeLaptopCommand(
+            title = "Lock Workstation",
+            command = "powershell -Command \"rundll32.exe user32.dll,LockWorkStation\" 2>/dev/null || (which pmset >/dev/null 2>&1 && pmset displaysleepnow) || loginctl lock-session 2>/dev/null || xdg-screensaver lock 2>/dev/null",
+        )
+    }
+
+    fun sleepLaptop() {
+        executeLaptopCommand(
+            title = "Sleep / Suspend",
+            command = "powershell -Command \"rundll32.exe powrprof.dll,SetSuspendState 0,1,0\" 2>/dev/null || systemctl suspend 2>/dev/null || pmset sleepnow 2>/dev/null",
+        )
+    }
+
+    fun toggleMute() {
+        executeLaptopCommand(
+            title = "Toggle Mute",
+            command = "powershell -Command \"(New-Object -ComObject WScript.Shell).SendKeys([char]173)\" 2>/dev/null || osascript -e 'set volume output muted not (output muted of (get volume settings))' 2>/dev/null || amixer set Master toggle 2>/dev/null",
+        )
+    }
+
+    fun captureLaptopScreenshot() {
+        executeLaptopCommand(
+            title = "Remote Screenshot",
+            command = "powershell -Command \"Add-Type -AssemblyName System.Windows.Forms; \$s=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; \$b=New-Object System.Drawing.Bitmap \$s.Width,\$s.Height; \$g=[System.Drawing.Graphics]::FromImage(\$b); \$g.CopyFromScreen(\$s.Location,[System.Drawing.Point]::Empty,\$s.Size); \$p=[System.IO.Path]::GetTempPath()+'screenshot.png'; \$b.Save(\$p); Write-Output ('Saved to ' + \$p)\" 2>/dev/null || (screencapture -x /tmp/screenshot.png 2>/dev/null && echo 'Saved to /tmp/screenshot.png') || (scrot /tmp/screenshot.png 2>/dev/null && echo 'Saved to /tmp/screenshot.png')",
+        )
+    }
+
+    fun checkLaptopBattery() {
+        executeLaptopCommand(
+            title = "Battery & Power Status",
+            command = "powershell -Command \"Get-CimInstance -ClassName Win32_Battery | Select-Object -Property EstimatedChargeRemaining, BatteryStatus | Format-List\" 2>/dev/null || pmset -g batt 2>/dev/null || (cat /sys/class/power_supply/BAT*/capacity 2>/dev/null | awk '{print \"Battery: \" \$1 \"%\"}') || echo 'Battery telemetry unavailable'",
+        )
+    }
+
+    fun dismissLaptopResult() {
+        _uiState.update { it.copy(laptopActionResult = null) }
+    }
+
+    private fun executeLaptopCommand(title: String, command: String) {
+        if (_uiState.value.isLaptopActionBusy) return
+        _uiState.update { it.copy(isLaptopActionBusy = true) }
+        viewModelScope.launch {
+            val sessionResult = connectionManager.session(serverId)
+            if (sessionResult is VmResult.Success) {
+                val res = sessionResult.value.execute(command, CommandLimits(timeoutMillis = 10_000))
+                val output = when (res) {
+                    is VmResult.Success -> res.value.stdout.ifBlank { res.value.stderr }.ifBlank { "Command completed successfully." }
+                    is VmResult.Failure -> "Failed: ${res.error.summary}"
+                }
+                _uiState.update {
+                    it.copy(
+                        isLaptopActionBusy = false,
+                        laptopActionResult = LaptopActionResult(title, output, res is VmResult.Success),
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isLaptopActionBusy = false,
+                        laptopActionResult = LaptopActionResult(title, "Server not connected", false),
+                    )
+                }
+            }
+        }
+    }
+
     companion object {
         const val ARG_SERVER_ID = "serverId"
     }
