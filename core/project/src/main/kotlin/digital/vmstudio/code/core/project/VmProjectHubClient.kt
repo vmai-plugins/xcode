@@ -134,13 +134,24 @@ class VmProjectHubClient @Inject constructor(
         return configured?.trim()?.takeIf { it.isNotBlank() }
     }
 
-    suspend fun testHubKey(key: String): VmResult<Int> = withContext(ioDispatcher) {
+    suspend fun getEffectiveHubBaseUrl(): String {
+        val configured = preferencesRepository.preferences.first().hubBaseUrl.trim()
+        val base = if (configured.isNotBlank()) configured else DEFAULT_HUB_BASE_URL
+        return if (!base.contains("/wp-json/xcodes/v1")) {
+            "${base.removeSuffix("/")}/wp-json/xcodes/v1"
+        } else {
+            base.removeSuffix("/")
+        }
+    }
+
+    suspend fun testHubKey(key: String, customBaseUrl: String? = null): VmResult<Int> = withContext(ioDispatcher) {
         val trimmed = key.trim()
         if (trimmed.isBlank()) {
             return@withContext VmResult.Failure(VmError.Validation("Key cannot be empty"))
         }
+        val baseUrl = customBaseUrl?.trim()?.takeIf { it.isNotBlank() } ?: getEffectiveHubBaseUrl()
         val request = Request.Builder()
-            .url("$HUB_BASE_URL/projects")
+            .url("$baseUrl/projects")
             .header("X-VMPJ-Key", trimmed)
             .header("Accept", "application/json")
             .get()
@@ -159,8 +170,9 @@ class VmProjectHubClient @Inject constructor(
         val hubKey = getEffectiveHubKey()
             ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
 
+        val baseUrl = getEffectiveHubBaseUrl()
         val request = Request.Builder()
-            .url("$HUB_BASE_URL/projects")
+            .url("$baseUrl/projects")
             .header("X-VMPJ-Key", hubKey)
             .header("Accept", "application/json")
             .get()
@@ -180,8 +192,9 @@ class VmProjectHubClient @Inject constructor(
             ?.associateBy({ it.id }, { it.name })
             .orEmpty()
 
+        val baseUrl = getEffectiveHubBaseUrl()
         val request = Request.Builder()
-            .url("$HUB_BASE_URL/tasks")
+            .url("$baseUrl/tasks")
             .header("X-VMPJ-Key", hubKey)
             .header("Accept", "application/json")
             .get()
@@ -197,8 +210,9 @@ class VmProjectHubClient @Inject constructor(
         val hubKey = getEffectiveHubKey()
             ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
 
+        val baseUrl = getEffectiveHubBaseUrl()
         val request = Request.Builder()
-            .url("$HUB_BASE_URL/credentials")
+            .url("$baseUrl/credentials")
             .header("X-VMPJ-Key", hubKey)
             .header("Accept", "application/json")
             .get()
@@ -248,8 +262,9 @@ class VmProjectHubClient @Inject constructor(
         }.toString()
 
         val encodedId = java.net.URLEncoder.encode(taskId, "UTF-8")
+        val baseUrl = getEffectiveHubBaseUrl()
         val request = Request.Builder()
-            .url("$HUB_BASE_URL/tasks/$encodedId")
+            .url("$baseUrl/tasks/$encodedId")
             .header("X-VMPJ-Key", hubKey)
             .header("Content-Type", "application/json")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
