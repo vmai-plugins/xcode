@@ -96,6 +96,10 @@ class SettingsViewModel @Inject constructor(
 
     fun retryInstall() = updateManager.retryInstall()
 
+    fun setReleaseChannel(channel: digital.vmstudio.code.core.common.preferences.ReleaseChannel) {
+        viewModelScope.launch { preferencesRepository.setReleaseChannel(channel) }
+    }
+
     fun setTheme(preference: ThemePreference) {
         viewModelScope.launch { preferencesRepository.setThemePreference(preference) }
     }
