@@ -745,6 +745,7 @@ class VmProjectHubClient @Inject constructor(
 private const val SAKET_DHAM_HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
 const val HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
         private const val DEFAULT_HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
+private const val DEFAULT_HUB_KEY = "xc_b97a8a0607420e8996f3ce2be04ad0647c7f0ec5"
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
