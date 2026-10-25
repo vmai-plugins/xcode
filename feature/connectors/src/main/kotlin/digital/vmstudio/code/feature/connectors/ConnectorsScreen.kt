@@ -469,7 +469,7 @@ fun ConnectorsScreen(
                             ) {
                                 VmButton(
                                     text = if (state.isSyncingHub) "Verifying…" else if (state.hasHubKey) "Update & Sync" else "Pair Device",
-                                    onClick = { viewModel.pairHubKey(hubKeyDraft) },
+                                    onClick = { viewModel.pairHubKey(hubKeyDraft, hubBaseUrlDraft) },
                                     enabled = hubKeyDraft.isNotBlank() && !state.isSyncingHub,
                                     style = VmButtonStyle.Primary,
                                     modifier = Modifier.weight(1f),
