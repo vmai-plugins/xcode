@@ -99,6 +99,15 @@ class UserPreferencesRepository @Inject constructor(
         }
     }
 
+    suspend fun setHubBaseUrl(url: String) = edit {
+        val trimmed = url.trim().removeSuffix("/")
+        if (trimmed.isNotBlank()) {
+            it[Keys.HUB_BASE_URL] = trimmed
+        } else {
+            it.remove(Keys.HUB_BASE_URL)
+        }
+    }
+
     suspend fun setBiometricLockEnabled(enabled: Boolean) = edit {
         it[Keys.BIOMETRIC_LOCK_ENABLED] = enabled
     }
