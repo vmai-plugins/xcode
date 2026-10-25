@@ -75,6 +75,8 @@ data class ConnectorsUiState(
     val hasGithubToken: Boolean = false,
     val isTestingGithub: Boolean = false,
     val githubStatusMessage: String? = null,
+    val githubDeviceAuth: digital.vmstudio.code.core.git.GitHubDeviceAuth? = null,
+    val isPollingGithubDevice: Boolean = false,
     // VM Project Hub
     val hubProjectCount: Int? = null,
     val hubTaskCount: Int? = null,
