@@ -67,19 +67,14 @@ class CommandGitService @Inject constructor(
     }
 
     override suspend fun currentBranch(serverId: String, repoPath: String): GitResult<String> {
-        val branchResult = execute(serverId, repoPath, "git branch --show-current")
-        return when (branchResult) {
+        // Optimization: Use a single command that handles both normal case and detached HEAD
+        val command = "git rev-parse --abbrev-ref HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo HEAD"
+        return when (val result = execute(serverId, repoPath, command)) {
             is GitResult.Success -> {
-                val branch = branchResult.value.stdout.trim()
-                if (branch.isNotEmpty()) {
-                    GitResult.Success(branch)
-                } else {
-                    // Detached HEAD or rebasing: fallback to short commit hash or HEAD
-                    execute(serverId, repoPath, "git rev-parse --short HEAD")
-                        .map { it.stdout.trim().ifEmpty { "HEAD" } }
-                }
+                val branch = result.value.stdout.trim()
+                GitResult.Success(if (branch.isNotEmpty()) branch else "HEAD")
             }
-            is GitResult.Failure -> branchResult
+            is GitResult.Failure -> result
         }
     }
 
