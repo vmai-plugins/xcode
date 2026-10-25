@@ -582,6 +582,8 @@ class VmProjectHubClient @Inject constructor(
         val listRequest = Request.Builder()
             .url("$baseUrl/chats")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-Hub-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
             .get()
             .build()
