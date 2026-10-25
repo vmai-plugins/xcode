@@ -34,6 +34,12 @@ data class DockerContainerInfo(
     val isRunning: Boolean,
 )
 
+data class LaptopActionResult(
+    val title: String,
+    val output: String,
+    val isSuccess: Boolean,
+)
+
 data class ServerDetailUiState(
     val server: Server? = null,
     val connectionState: SshConnectionState = SshConnectionState.Disconnected,
@@ -47,6 +53,8 @@ data class ServerDetailUiState(
     val containers: List<DockerContainerInfo> = emptyList(),
     val hasDocker: Boolean = false,
     val containerLogs: Pair<String, String>? = null,
+    val laptopActionResult: LaptopActionResult? = null,
+    val isLaptopActionBusy: Boolean = false,
 ) {
     val isConnected: Boolean get() = connectionState.isConnected
 
