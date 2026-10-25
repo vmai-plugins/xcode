@@ -35,6 +35,20 @@ data class GitHubTreeItem(
     val size: Long = 0,
 )
 
+data class GitHubDeviceAuth(
+    val deviceCode: String,
+    val userCode: String,
+    val verificationUri: String,
+    val expiresInSeconds: Int,
+    val intervalSeconds: Int,
+)
+
+sealed interface GitHubDevicePollResult {
+    data class Success(val accessToken: String) : GitHubDevicePollResult
+    data object Pending : GitHubDevicePollResult
+    data class Error(val message: String) : GitHubDevicePollResult
+}
+
 
 fun GitHubRepository.codespacesUrl(): String {
     require(fullName.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"))) {
