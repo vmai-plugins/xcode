@@ -131,7 +131,7 @@ class VmProjectHubClient @Inject constructor(
 
     suspend fun getEffectiveHubKey(): String? {
         val configured = preferencesRepository.preferences.first().hubApiKey
-        return configured?.trim()?.takeIf { it.isNotBlank() }
+        return configured?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_HUB_KEY
     }
 
     suspend fun getEffectiveHubBaseUrl(): String {
