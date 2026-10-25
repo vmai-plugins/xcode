@@ -79,6 +79,7 @@ data class ConnectorsUiState(
     val hubProjectCount: Int? = null,
     val hubTaskCount: Int? = null,
     val hasHubKey: Boolean = false,
+    val hubBaseUrl: String = "https://saketdhamashram.org",
     val isSyncingHub: Boolean = false,
     val hubStatusMessage: String? = null,
     val vpsConnectionState: digital.vmstudio.code.core.ssh.connection.SshConnectionState = digital.vmstudio.code.core.ssh.connection.SshConnectionState.Disconnected,
