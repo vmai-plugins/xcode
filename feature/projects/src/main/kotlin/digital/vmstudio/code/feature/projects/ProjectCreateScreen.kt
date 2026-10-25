@@ -210,6 +210,13 @@ private fun SourceSelectionGrid(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SourceChip(
+            label = "WordPress",
+            icon = Icons.Default.Dns,
+            selected = currentSource == ProjectSource.WORDPRESS,
+            accentColor = Color(0xFF2196F3),
+            onClick = { onSelectSource(ProjectSource.WORDPRESS) },
+        )
+        SourceChip(
             label = "Local Phone",
             icon = Icons.Default.PhoneAndroid,
             selected = currentSource == ProjectSource.LOCAL,
