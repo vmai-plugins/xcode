@@ -1,6 +1,8 @@
 package digital.vmstudio.code.core.update
 
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.preferences.ReleaseChannel
+import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.flatMap
 import digital.vmstudio.code.core.common.result.map
@@ -8,8 +10,10 @@ import digital.vmstudio.code.core.common.result.vmCatching
 import digital.vmstudio.code.core.common.version.AppVersionProvider
 import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
+import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import digital.vmstudio.code.core.update.model.GitHubRelease
 import digital.vmstudio.code.core.update.model.UpdateInfo
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import okhttp3.Request
 import javax.inject.Inject
@@ -18,27 +22,58 @@ import javax.inject.Singleton
 /**
  * Checks GitHub's Releases API for a release newer than the installed version.
  *
- * The app has no Play Store distribution, so this is the only update signal it
- * has: whatever the maintainer most recently tagged and attached an APK to.
+ * Supports both STABLE (full releases via latest) and PRE_RELEASE (Nightlies/Betas),
+ * and automatically attaches the configured GitHub Personal Access Token if present
+ * to avoid unauthenticated API rate limits.
  */
 @Singleton
 class GitHubUpdateChecker @Inject constructor(
     private val httpClient: VmHttpClient,
     private val json: Json,
     private val appVersionProvider: AppVersionProvider,
+    private val preferences: UserPreferencesSource,
+    private val credentialStore: SecureCredentialStore,
 ) : UpdateChecker {
 
     override suspend fun checkForUpdate(): VmResult<UpdateInfo?> {
-        val request = Request.Builder()
-            .url("https://api.github.com/repos/$OWNER/$REPO/releases/latest")
-            .header("Accept", "application/vnd.github+json")
-            .build()
+        val prefs = preferences.preferences.first()
+        val isPreRelease = prefs.releaseChannel == ReleaseChannel.PRE_RELEASE
 
-        // A single attempt: an update check that silently retries for a while on a
-        // slow network would delay the screen it's backing for no real benefit.
+        val endpoint = if (isPreRelease) {
+            "https://api.github.com/repos/$OWNER/$REPO/releases?per_page=5"
+        } else {
+            "https://api.github.com/repos/$OWNER/$REPO/releases/latest"
+        }
+
+        val requestBuilder = Request.Builder()
+            .url(endpoint)
+            .header("Accept", "application/vnd.github+json")
+
+        // Include user's stored GitHub PAT if available to bypass IP rate limits
+        prefs.githubTokenCredentialId?.let { credId ->
+            (credentialStore.read(credId) as? VmResult.Success)?.value?.let { secret ->
+                try {
+                    requestBuilder.header("Authorization", "Bearer ${secret.reveal()}")
+                } finally {
+                    secret.wipe()
+                }
+            }
+        }
+
+        val request = requestBuilder.build()
+
         return httpClient.execute(request, RetryPolicy.NONE)
-            .flatMap(::parseRelease)
-            .map { release -> release.toUpdateInfoOrNull() }
+            .flatMap { body ->
+                if (isPreRelease) {
+                    parseReleases(body).map { releases ->
+                        releases.firstNotNullOfOrNull { it.toUpdateInfoOrNull(allowPreRelease = true) }
+                    }
+                } else {
+                    parseRelease(body).map { release ->
+                        release.toUpdateInfoOrNull(allowPreRelease = false)
+                    }
+                }
+            }
     }
 
     private fun parseRelease(body: String): VmResult<GitHubRelease> = vmCatching(
@@ -53,10 +88,32 @@ class GitHubUpdateChecker @Inject constructor(
         json.decodeFromString<GitHubRelease>(body)
     }
 
-    private fun GitHubRelease.toUpdateInfoOrNull(): UpdateInfo? {
-        if (draft || prerelease) return null
+    private fun parseReleases(body: String): VmResult<List<GitHubRelease>> = vmCatching(
+        mapper = {
+            VmError.Unexpected(
+                summary = "Could not read releases list",
+                reason = it.message,
+                cause = it,
+            )
+        },
+    ) {
+        json.decodeFromString<List<GitHubRelease>>(body)
+    }
+
+    private fun GitHubRelease.toUpdateInfoOrNull(allowPreRelease: Boolean): UpdateInfo? {
+        if (draft) return null
+        if (!allowPreRelease && prerelease) return null
         val remoteVersion = tagName.removePrefix("v")
-        if (!remoteVersion.isNewerThan(appVersionProvider.versionName)) return null
+
+        // For stable channel, ensure remoteVersion is newer than current.
+        // For nightly channel, allow if tag is nightly or newer.
+        val isNewer = if (remoteVersion.equals("nightly", ignoreCase = true)) {
+            allowPreRelease
+        } else {
+            remoteVersion.isNewerThan(appVersionProvider.versionName)
+        }
+        if (!isNewer) return null
+
         val apk = assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) } ?: return null
         return UpdateInfo(
             versionName = remoteVersion,
