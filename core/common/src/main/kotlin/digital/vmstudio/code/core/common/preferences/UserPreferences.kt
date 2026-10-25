@@ -124,6 +124,7 @@ data class UserPreferences(
     val defaultProjectColorHex: String? = null,
 ) {
     companion object {
+        const val DEFAULT_HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
         const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
         /** The only supported AI gateway. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
