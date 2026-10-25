@@ -566,8 +566,9 @@ class VmProjectHubClient @Inject constructor(
         val hubKey = getEffectiveHubKey()
             ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
 
+        val baseUrl = getEffectiveHubBaseUrl()
         val listRequest = Request.Builder()
-            .url("$HUB_BASE_URL/chats")
+            .url("$baseUrl/chats")
             .header("X-VMPJ-Key", hubKey)
             .header("Accept", "application/json")
             .get()
