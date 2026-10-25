@@ -20,19 +20,17 @@ class CommandGitService @Inject constructor(
     }
 
     override suspend fun status(serverId: String, repoPath: String): GitResult<GitStatus> {
-        val branchResult = execute(serverId, repoPath, "git branch --show-current")
-        val branch = when (branchResult) {
-            is GitResult.Success -> branchResult.value.stdout.trim()
-            is GitResult.Failure -> return branchResult
+        // Optimization: Combine branch and status into a single SSH round trip
+        val command = "git branch --show-current; echo '---BRANCH_END---'; git status --porcelain=v1 -u --branch"
+        return when (val result = execute(serverId, repoPath, command)) {
+            is GitResult.Success -> {
+                val parts = result.value.stdout.split("---BRANCH_END---", limit = 2)
+                val branch = parts.getOrNull(0)?.trim() ?: ""
+                val statusOutput = parts.getOrNull(1)?.trimIndent() ?: ""
+                GitResult.Success(GitParsers.parseStatus(statusOutput, branch))
+            }
+            is GitResult.Failure -> result
         }
-
-        val statusResult = execute(serverId, repoPath, "git status --porcelain=v1 -u --branch")
-        val status = when (statusResult) {
-            is GitResult.Success -> statusResult.value.stdout
-            is GitResult.Failure -> return statusResult
-        }
-
-        return GitResult.Success(GitParsers.parseStatus(status, branch))
     }
 
     override suspend fun diffUnstaged(serverId: String, repoPath: String): GitResult<GitDiff> {
