@@ -69,6 +69,7 @@ class UpdateManager @Inject constructor(
 
     /** Downloads the update found by the last [checkForUpdate] and installs it. */
     fun downloadAndInstall() {
+        if (_state.value is UpdateState.Downloading) return
         val info = (_state.value as? UpdateState.Available)?.info ?: lastAvailableInfo ?: return
         // Set before launching, so a second tap sees Downloading and does nothing;
         // two downloads into one file produced a corrupt APK.
