@@ -274,6 +274,8 @@ class VmProjectHubClient @Inject constructor(
         val request = Request.Builder()
             .url("$baseUrl/tasks/$encodedId")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-Hub-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
             .header("Content-Type", "application/json")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .build()
