@@ -31,6 +31,13 @@
 - [x] Bug 157: Fixed parser failure on reasoning-only responses in `OmniRouteToolCodec.kt` where models like DeepSeek-R1 or Claude 3.7 with extended thinking returned empty content, by extracting `reasoning_content` and `"thinking"` blocks.
 - [x] Bug 158: Mapped unhandled raw socket and transport exceptions in `VmHttpClient.stream` to structured `VmError.Network` errors, preventing generic crashes on connection drops.
 - [x] Bug 159: Ensured clean socket disconnection on failed or aborted GitHub archive downloads in `ProjectCreateViewModel.kt` to avoid leaking HTTP connections.
+- [x] Bug 160: Fixed Android P+ (API 28+) `SigningInfo` verification in `ApkInstaller.kt` where single-signer APKs returned null for `apkContentsSigners`, causing valid downloaded release APKs to be deleted with "Update could not be verified". Added support for `signingCertificateHistory` and API 33+ `PackageInfoFlags`.
+- [x] Bug 161: Prevented concurrent update download file corruption in `UpdateManager.kt` by guarding `downloadAndInstall()` against repeated taps while state is `Downloading`.
+- [x] Bug 162: Hardened `ApkDownloader.kt` with a 64 KB streaming buffer and throttled UI progress updates (200ms cadence) to prevent frame jank on large APK downloads, and added copy fallback if `Files.move` fails across filesystem partitions.
+- [x] Bug 163: Added proactive redirect to Android's `ACTION_MANAGE_UNKNOWN_APP_SOURCES` in `ApkInstaller.kt` when `canRequestPackageInstalls()` is not granted, preventing silent install failures on Android 8.0+.
+- [x] Bug 164: Generalized `VmHttpClient.mapHttpError` to prevent misclassifying GitHub API rate limits (HTTP 403) or 404s as AI Gateway/OpenAI endpoint failures.
+- [x] Bug 165: Added GitHub Personal Access Token authentication support in `GitHubUpdateChecker.kt` to bypass IP-based 60 req/hr rate limits and support private releases.
+- [x] Bug 166: Implemented full Release Channel selection (`STABLE` vs `PRE_RELEASE` / Nightly) in `UserPreferences`, `GitHubUpdateChecker`, and `AgentAboutSettingsScreens`, enabling users to update to latest automated GitHub Nightly builds directly from the app.
 - [x] Fluid Chat: Optimized code block syntax highlighting to cap heavy regex scanning for large code blocks, avoiding frame drops during high-speed LLM streaming.
 - [x] Cleaned Detekt violations (`maxIssues`, line length wrapping, unsafe `!!` assertions) and configured `ignoreFailures = true` so static analysis uploads reports without blocking APK compilation.
 
