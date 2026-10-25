@@ -34,6 +34,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 enum class ProjectSource {
+    WORDPRESS,
     GITHUB,
     LOCAL,
     GDRIVE,
