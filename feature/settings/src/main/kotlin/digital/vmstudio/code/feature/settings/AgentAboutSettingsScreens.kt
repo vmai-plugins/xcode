@@ -101,8 +101,39 @@ internal fun AboutSettingsContent(state: SettingsUiState, viewModel: SettingsVie
 
 @Composable
 private fun UpdateCard(state: SettingsUiState, viewModel: SettingsViewModel) {
+    val spacing = VmTheme.spacing
     VmCard {
         LabelValueRow(label = "Application Version", value = state.installedVersionName)
+
+        // Release Channel Selection
+        Text(
+            text = "Release Channel",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = spacing.xs),
+        )
+        Text(
+            text = "Stable checks official signed releases. Nightly/Pre-release checks the latest development builds from GitHub Actions.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        digital.vmstudio.code.core.common.preferences.ReleaseChannel.entries.forEach { channel ->
+            OptionRow(
+                label = when (channel) {
+                    digital.vmstudio.code.core.common.preferences.ReleaseChannel.STABLE -> "Stable (Recommended)"
+                    digital.vmstudio.code.core.common.preferences.ReleaseChannel.PRE_RELEASE -> "Nightly / Pre-release"
+                },
+                description = when (channel) {
+                    digital.vmstudio.code.core.common.preferences.ReleaseChannel.STABLE -> "Verified production releases."
+                    digital.vmstudio.code.core.common.preferences.ReleaseChannel.PRE_RELEASE -> "Latest automated builds from the main branch."
+                },
+                selected = state.preferences.releaseChannel == channel,
+                onSelect = {
+                    viewModel.setReleaseChannel(channel)
+                    viewModel.checkForUpdates()
+                },
+            )
+        }
 
         when (val update = state.updateState) {
             is UpdateState.Checking -> VmButton(
@@ -118,10 +149,27 @@ private fun UpdateCard(state: SettingsUiState, viewModel: SettingsViewModel) {
                 onClick = viewModel::checkForUpdates,
             )
 
-            is UpdateState.Available -> VmButton(
-                text = "Download version ${update.info.versionName}",
-                onClick = viewModel::downloadUpdate,
-            )
+            is UpdateState.Available -> Column(
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Text(
+                    text = "New update available: ${update.info.versionName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                update.info.releaseNotes?.let { notes ->
+                    Text(
+                        text = notes.take(300),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                VmButton(
+                    text = "Download version ${update.info.versionName}",
+                    onClick = viewModel::downloadUpdate,
+                )
+            }
 
             is UpdateState.Downloading -> VmProgress(
                 progress = update.progress,
@@ -142,6 +190,20 @@ private fun UpdateCard(state: SettingsUiState, viewModel: SettingsViewModel) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+                update.error.reason?.let { reason ->
+                    Text(
+                        text = reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                update.error.suggestedAction?.let { suggestion ->
+                    Text(
+                        text = suggestion,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 VmButton(
                     text = "Check for updates",
                     style = VmButtonStyle.Secondary,
