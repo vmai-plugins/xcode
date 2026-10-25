@@ -453,6 +453,30 @@ fun ServerDetailScreen(
         }
     }
 
+    state.laptopActionResult?.let { res ->
+        VmDialog(
+            title = res.title,
+            onDismiss = viewModel::dismissLaptopResult,
+            confirmLabel = "OK",
+            onConfirm = viewModel::dismissLaptopResult,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1E1F22))
+                    .padding(8.dp),
+            ) {
+                Text(
+                    text = res.output,
+                    style = VmTheme.code.mono,
+                    color = if (res.isSuccess) Color(0xFFE2E2E5) else MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+    }
+
     state.pendingHostKey?.let { verdict ->
         HostKeyDialog(
             verdict = verdict,
