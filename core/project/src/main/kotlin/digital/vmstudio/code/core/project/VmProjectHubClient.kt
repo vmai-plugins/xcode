@@ -591,7 +591,7 @@ class VmProjectHubClient @Inject constructor(
             val localConv = conversationDao.getById(convId)
             if (localConv == null || serverUpdatedAt > localConv.updatedAtMillis) {
                 val detailRequest = Request.Builder()
-                    .url("$HUB_BASE_URL/chats/$convId")
+                    .url("$baseUrl/chats/$convId")
                     .header("X-VMPJ-Key", hubKey)
                     .header("Accept", "application/json")
                     .get()
