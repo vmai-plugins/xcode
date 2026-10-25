@@ -3,13 +3,15 @@ package digital.vmstudio.code.core.update
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
-import digital.vmstudio.code.core.common.error.VmError
-import digital.vmstudio.code.core.common.result.VmResult
 import android.content.pm.PackageManager
 import android.content.pm.Signature
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.result.VmResult
 import java.io.File
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -19,8 +21,8 @@ import javax.inject.Singleton
  * Launches the system package installer for a downloaded APK.
  *
  * If the user has not yet allowed "install unknown apps" for this app, the
- * installer itself shows that system prompt before proceeding - nothing here
- * needs to pre-check or request it.
+ * installer itself shows that system prompt before proceeding, or this launcher
+ * redirects to the unknown app sources permission setting directly.
  */
 @Singleton
 class ApkInstaller @Inject constructor(
@@ -28,6 +30,18 @@ class ApkInstaller @Inject constructor(
 ) {
 
     fun install(apkFile: File): VmResult<Unit> = runCatching {
+        val packageManager = context.packageManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            val settingsIntent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}"),
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(settingsIntent)
+            return@runCatching
+        }
+
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
@@ -72,7 +86,14 @@ class ApkInstaller @Inject constructor(
     }
 
     private fun archiveSigningCertificates(packageManager: PackageManager, apkFile: File): List<String> {
-        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(
+                apkFile.absolutePath,
+                PackageManager.PackageInfoFlags.of(
+                    (PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES).toLong(),
+                ),
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             @Suppress("DEPRECATION")
             packageManager.getPackageArchiveInfo(
                 apkFile.absolutePath,
@@ -82,11 +103,23 @@ class ApkInstaller @Inject constructor(
             @Suppress("DEPRECATION")
             packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
         }
+        // Fix for package archive metadata parsing across OEM distributions:
+        info?.applicationInfo?.let { appInfo ->
+            appInfo.sourceDir = apkFile.absolutePath
+            appInfo.publicSourceDir = apkFile.absolutePath
+        }
         return info?.let(::signingFingerprints).orEmpty()
     }
 
     private fun installedSigningCertificates(packageManager: PackageManager): List<String> {
-        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.PackageInfoFlags.of(
+                    (PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES).toLong(),
+                ),
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             @Suppress("DEPRECATION")
             packageManager.getPackageInfo(
                 context.packageName,
@@ -102,9 +135,15 @@ class ApkInstaller @Inject constructor(
     private fun signingFingerprints(info: PackageInfo): List<String> {
         @Suppress("DEPRECATION")
         val legacySignatures: Array<Signature>? = info.signatures
-        // The SDK check sits directly around the call so lint can see the guard.
+        // On Android 9+ (API 28+), signingInfo has either apkContentsSigners (if multiple
+        // simultaneous signers) or signingCertificateHistory (for single-signer apps).
         val signatures: Array<Signature>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            info.signingInfo?.apkContentsSigners ?: legacySignatures
+            val signingInfo = info.signingInfo
+            when {
+                signingInfo == null -> legacySignatures
+                signingInfo.hasMultipleSigners() -> signingInfo.apkContentsSigners
+                else -> signingInfo.signingCertificateHistory
+            } ?: legacySignatures
         } else {
             legacySignatures
         }
@@ -114,3 +153,4 @@ class ApkInstaller @Inject constructor(
         }
     }
 }
+
