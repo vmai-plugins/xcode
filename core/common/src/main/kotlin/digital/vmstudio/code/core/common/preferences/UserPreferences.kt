@@ -3,6 +3,12 @@ package digital.vmstudio.code.core.common.preferences
 /** Appearance choice. Mirrored by the UI theme; stored as a name string. */
 enum class ThemePreference { SYSTEM, LIGHT, DARK }
 
+/** Release channel for app updates via GitHub. */
+enum class ReleaseChannel {
+    STABLE,
+    PRE_RELEASE,
+}
+
 /**
  * How much the AI agent may do without asking.
  *
