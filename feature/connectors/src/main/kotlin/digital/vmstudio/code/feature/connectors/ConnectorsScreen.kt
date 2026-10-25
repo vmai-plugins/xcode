@@ -421,12 +421,21 @@ fun ConnectorsScreen(
                             )
                             Text(
                                 text = if (state.hasHubKey) {
-                                    "Your device is paired with vmstudio.digital. You can update your Hub Key or unpair this device at any time."
+                                    "Your device is paired with ${state.hubBaseUrl}. You can update your Hub URL, Key, or unpair at any time."
                                 } else {
-                                    "Enter your Hub API Key (found in WordPress Admin > VM Project Hub > Settings > API Token) to link this mobile device securely."
+                                    "Enter your WordPress Hub URL (e.g. https://saketdhamashram.org) and your Hub API Key (found in WordPress Admin > VM Project Hub > Settings > API Token)."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            OutlinedTextField(
+                                value = hubBaseUrlDraft,
+                                onValueChange = { hubBaseUrlDraft = it },
+                                label = { Text("Hub WordPress Site URL") },
+                                placeholder = { Text("https://saketdhamashram.org") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
                             )
 
                             OutlinedTextField(
