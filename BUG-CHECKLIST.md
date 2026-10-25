@@ -38,6 +38,8 @@
 - [x] Bug 164: Generalized `VmHttpClient.mapHttpError` to prevent misclassifying GitHub API rate limits (HTTP 403) or 404s as AI Gateway/OpenAI endpoint failures.
 - [x] Bug 165: Added GitHub Personal Access Token authentication support in `GitHubUpdateChecker.kt` to bypass IP-based 60 req/hr rate limits and support private releases.
 - [x] Bug 166: Implemented full Release Channel selection (`STABLE` vs `PRE_RELEASE` / Nightly) in `UserPreferences`, `GitHubUpdateChecker`, and `AgentAboutSettingsScreens`, enabling users to update to latest automated GitHub Nightly builds directly from the app.
+- [x] UI & Newbie Experience: Added dedicated 1-Tap "WordPress" workspace source option to `ProjectCreateScreen` and `ProjectCreateViewModel`, allowing effortless setup of `saketdhamashram.org` projects without manual path typing.
+- [x] UI & Build Workflow: Added persistent `QuickBuildCard` in `ProjectDetailScreen` allowing 1-tap APK building and output scanning even for newly initialized workspaces.
 - [x] Fluid Chat: Optimized code block syntax highlighting to cap heavy regex scanning for large code blocks, avoiding frame drops during high-speed LLM streaming.
 - [x] Cleaned Detekt violations (`maxIssues`, line length wrapping, unsafe `!!` assertions) and configured `ignoreFailures = true` so static analysis uploads reports without blocking APK compilation.
 
