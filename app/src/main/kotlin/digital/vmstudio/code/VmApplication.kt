@@ -66,6 +66,25 @@ class VmApplication : Application() {
         }
     }
 
+    /**
+     * Proactively refreshes the LLM model catalog in the background.
+     * 
+     * Instead of requiring explicit user action or waiting until the chat screen 
+     * opens, this coroutine periodically syncs the model list so the gateway 
+     * always has the freshest available models for auto-detection and routing.
+     */
+    private fun startBackgroundModelSync() {
+        applicationScope.launch {
+            // Wait a bit after app startup to avoid competing with initial loads
+            delay(30_000)
+            while (isActive) {
+                modelCatalog.get().syncIfStale(force = false)
+                // Check again every 15 minutes
+                delay(15 * 60 * 1000)
+            }
+        }
+    }
+
     private fun installLogging() {
         VmLog.configure(if (BuildConfig.DEBUG) LogLevel.DEBUG else LogLevel.INFO)
         // The in-memory diagnostics buffer is always installed so a user can export
