@@ -10,9 +10,12 @@ import digital.vmstudio.code.core.common.log.LogcatSink
 import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.onFailure
 import digital.vmstudio.code.core.database.StartupReconciler
+import digital.vmstudio.code.core.ai.omniroute.OmniRouteModelCatalog
 import digital.vmstudio.code.core.update.UpdateManager
 import digital.vmstudio.code.crash.CrashReporter
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
