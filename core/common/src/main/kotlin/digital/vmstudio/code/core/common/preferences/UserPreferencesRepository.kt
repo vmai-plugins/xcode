@@ -238,6 +238,7 @@ class UserPreferencesRepository @Inject constructor(
             googleSheetsTokenCredentialId = this[Keys.GOOGLE_SHEETS_TOKEN_CREDENTIAL],
             googleSheetsSpreadsheetId = this[Keys.GOOGLE_SHEETS_SPREADSHEET_ID],
             hubApiKey = this[Keys.HUB_API_KEY],
+            hubBaseUrl = this[Keys.HUB_BASE_URL] ?: defaults.hubBaseUrl,
             biometricLockEnabled = this[Keys.BIOMETRIC_LOCK_ENABLED] ?: defaults.biometricLockEnabled,
             autoConnectServerId = this[Keys.AUTO_CONNECT_SERVER_ID],
             vpsAutoConnectEnabled = this[Keys.VPS_AUTO_CONNECT_ENABLED] ?: defaults.vpsAutoConnectEnabled,
