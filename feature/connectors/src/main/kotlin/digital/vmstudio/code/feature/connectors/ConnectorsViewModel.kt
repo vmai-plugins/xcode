@@ -204,6 +204,7 @@ class ConnectorsViewModel @Inject constructor(
             hubProjectCount = extra.hubProjectCount,
             hubTaskCount = extra.hubTaskCount,
             hasHubKey = !prefs.hubApiKey.isNullOrBlank(),
+            hubBaseUrl = prefs.hubBaseUrl,
             isSyncingHub = extra.isSyncingHub,
             hubStatusMessage = extra.hubStatusMessage,
             vpsConnectionState = vpsState,
