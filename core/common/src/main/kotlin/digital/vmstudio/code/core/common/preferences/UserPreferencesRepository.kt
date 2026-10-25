@@ -343,6 +343,7 @@ class UserPreferencesRepository @Inject constructor(
         val USER_AVATAR_URL = stringPreferencesKey("user_avatar_url")
         val GOOGLE_ID_TOKEN = stringPreferencesKey("google_id_token")
         val HUB_API_KEY = stringPreferencesKey("hub_api_key")
+        val HUB_BASE_URL = stringPreferencesKey("hub_base_url")
         val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
         val GOOGLE_DRIVE_TOKEN_CREDENTIAL = stringPreferencesKey("google_drive_token_credential")
         val GOOGLE_SHEETS_TOKEN_CREDENTIAL = stringPreferencesKey("google_sheets_token_credential")
