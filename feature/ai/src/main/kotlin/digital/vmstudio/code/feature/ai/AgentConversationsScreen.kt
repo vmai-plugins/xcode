@@ -139,6 +139,7 @@ fun AgentConversationsScreen(
                     items(state.conversations, key = { it.id }) { conversation ->
                         ConversationRow(
                             conversation = conversation,
+                            colorHex = state.chatColors[conversation.id],
                             onOpen = { onOpenConversation(conversation.id) },
                             onAction = { action -> pending = conversation to action },
                         )
