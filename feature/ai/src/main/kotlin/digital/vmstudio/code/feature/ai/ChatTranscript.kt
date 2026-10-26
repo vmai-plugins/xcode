@@ -689,6 +689,17 @@ private fun AssistantReply(text: String) {
         }
     }
 
+    var cleanTtsText by remember(text) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(text) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            cleanTtsText = text
+                .replace(Regex("[#*`_~>\\[\\]]"), "")
+                .replace(Regex("\\(https?://[^)]+\\)"), "")
+                .take(1500)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -724,11 +735,8 @@ private fun AssistantReply(text: String) {
                             tts.stop()
                             isSpeaking = false
                         } else {
-                            val cleanText = text
-                                .replace(Regex("[#*`_~>\\[\\]]"), "")
-                                .replace(Regex("\\(https?://[^)]+\\)"), "")
-                                .take(1500)
-                            tts.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "tts_reply")
+                            val speechText = cleanTtsText ?: text.take(500)
+                            tts.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "tts_reply")
                             isSpeaking = true
                         }
                     }
