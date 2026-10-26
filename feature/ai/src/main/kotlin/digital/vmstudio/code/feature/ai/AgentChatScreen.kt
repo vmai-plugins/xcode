@@ -156,10 +156,7 @@ fun AgentChatScreen(
             ?: state.workingDirectory.trimEnd('/').substringAfterLast('/').ifBlank { "General chat" }
     }
 
-    // Derived transcript grouping: recomputes only when transcript identity changes
-    val groupedTranscript by remember(state.transcript) {
-        derivedStateOf { groupTranscript(state.transcript) }
-    }
+    val groupedTranscript = remember(state.transcript) { groupTranscript(state.transcript) }
 
     state.watchServerId?.let { server ->
         LaunchedEffect(server) {
