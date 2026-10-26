@@ -49,7 +49,7 @@ apps = [
         "desc": "Mobile AI Cloud IDE with live SFTP server file manager, persistent chat memory, and direct OmniRoute AI integration.",
         "apk": "x-codes/xcodes-latest.apk",
         "badge": "Active Build",
-        "version": "v3.18"
+        "version": "v0.11.0"
     },
     {
         "slug": "mynearby-shop",
