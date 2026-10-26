@@ -246,6 +246,10 @@ fun AgentChatScreen(
         )
     }
 
+    val currentChatColorHex = remember(state.conversationId, chats.chatColors) {
+        state.conversationId?.let { chats.chatColors[it] } ?: state.chatBubbleColorHex
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
