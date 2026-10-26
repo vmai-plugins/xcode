@@ -143,12 +143,14 @@ fun AgentChatScreen(
 
     ConversationActionDialogs(
         pending = pendingChatAction,
+        currentColorHex = pendingChatAction?.first?.id?.let { chats.chatColors[it] },
         onDismiss = { pendingChatAction = null },
         onRename = conversationsViewModel::rename,
         onDelete = { id ->
             conversationsViewModel.delete(id)
             viewModel.startNewConversation()
         },
+        onSetColor = conversationsViewModel::updateColor,
     )
 
     val currentProjectName = remember(state.workingDirectory, state.availableProjects) {
