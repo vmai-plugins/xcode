@@ -13,6 +13,13 @@ Audit of this Android app (Kotlin/Jetpack Compose, Hilt, Room, sshj, Material 3)
 
 ---
 
+## Pending infrastructure tasks
+
+- **Move Android builds entirely to GitHub Actions.** The VPS must only receive and serve finished APKs. Run the `purge-all-vps-build-tools` action in `VPS Maintenance & Safe Cleanup` after confirming every Android repository builds and deploys through GitHub Actions. This removes `/opt/android-sdk`, Gradle caches, and stale VPS build outputs; do not remove the Apps Hub web root.
+- **Audit every Android repository.** Remove or disable local VPS Gradle/Android-SDK build scripts, keep GitHub Actions as the default build authority, and retain only SSH/SCP deployment of finished APKs to the Apps Hub.
+- **Permission-mode correctness.** Verify full-agent (`BYPASS`) reaches every OmniRoute file/command tool path. It should suppress ordinary tool approval prompts, while destructive or production-affecting operations may remain explicitly confirmed as documented.
+- **Per-chat model routing.** Persist an optional model override per conversation, use it for that conversation only, and provide a sensible default/fallback model. This prevents multiple projects from unintentionally competing for the same constrained model/provider quota.
+
 ## 1. Orphans
 
 ### 1.1 Empty directories — zero Kotlin source, not Gradle modules (6)
