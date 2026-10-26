@@ -68,9 +68,11 @@ fun AgentConversationsScreen(
 
     ConversationActionDialogs(
         pending = pending,
+        currentColorHex = pending?.first?.id?.let { state.chatColors[it] },
         onDismiss = { pending = null },
         onRename = viewModel::rename,
         onDelete = viewModel::delete,
+        onSetColor = viewModel::updateColor,
     )
 
     Scaffold(
