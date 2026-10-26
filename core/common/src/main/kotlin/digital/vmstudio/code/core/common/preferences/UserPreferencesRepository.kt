@@ -196,6 +196,12 @@ class UserPreferencesRepository @Inject constructor(
         if (hex.isNullOrBlank()) it.remove(Keys.DEFAULT_PROJECT_COLOR) else it[Keys.DEFAULT_PROJECT_COLOR] = hex.trim()
     }
 
+    suspend fun setChatColor(chatId: String, hex: String?) = edit {
+        val current = parseFolders(it[Keys.CHAT_COLORS])
+        val updated = if (hex.isNullOrBlank()) current - chatId else current + (chatId to hex.trim())
+        if (updated.isEmpty()) it.remove(Keys.CHAT_COLORS) else it[Keys.CHAT_COLORS] = formatFolders(updated)
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         store.edit(block)
     }
