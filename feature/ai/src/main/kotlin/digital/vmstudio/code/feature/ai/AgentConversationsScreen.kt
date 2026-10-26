@@ -153,17 +153,34 @@ fun AgentConversationsScreen(
 @Composable
 private fun ConversationRow(
     conversation: ConversationSummary,
+    colorHex: String?,
     onOpen: () -> Unit,
     onAction: (ConversationAction) -> Unit,
 ) {
     val spacing = VmTheme.spacing
     var menuOpen by remember { mutableStateOf(false) }
+    val accentColor = remember(colorHex) {
+        if (!colorHex.isNullOrBlank()) {
+            val clean = colorHex.trim().removePrefix("#")
+            val longVal = clean.toLongOrNull(16) ?: 0xFF6366F1
+            androidx.compose.ui.graphics.Color(if (clean.length == 6) 0xFF000000 or longVal else longVal)
+        } else null
+    }
 
     VmCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
+            if (accentColor != null) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .androidx.compose.foundation.background(accentColor, androidx.compose.foundation.shape.CircleShape),
+                )
+            }
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = conversation.title,
