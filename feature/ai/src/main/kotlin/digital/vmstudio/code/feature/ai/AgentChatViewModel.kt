@@ -214,6 +214,14 @@ class AgentChatViewModel @Inject constructor(
         _uiState.update { it.copy(transcript = it.transcript.appendDelta(text, STREAMING_ID, ::nextId)) }
     }
 
+    override fun onCleared() {
+        // Do not let a delayed coroutine publish into a ViewModel which is leaving
+        // the composition. Flushing retains text already received; clear cancels
+        // the scheduled publication without leaking a delayed job.
+        deltas.flush()
+        super.onCleared()
+    }
+
     /** Until then the run list is re-read even though nothing is listed as running yet. */
     private var listRunsUntil = 0L
     private var hasLoadedGithubRepositories = false
