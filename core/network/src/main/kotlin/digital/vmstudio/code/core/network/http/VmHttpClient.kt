@@ -228,26 +228,34 @@ class VmHttpClient @Inject constructor(
 
     /**
      * A non-idempotent request (a POST that may have been processed before the
-     * failure response) is only retried on 429, where the server is explicitly
-     * saying it did not act and to back off. A 5xx after a POST could mean the
-     * write already landed, so resending it risks a duplicate. Idempotent methods
-     * retry on the full transient set.
+     * failure response) is retried on 429, and for AI gateway endpoints also on
+     * transient 5xx/408 errors (such as 502/503/504), where the gateway or upstream
+     * proxy explicitly failed to provide a completion.
      */
     private fun Response.isRetryable(request: Request): Boolean {
         if (code == 429) return true
         val idempotent = request.method in IDEMPOTENT_METHODS
-        return idempotent && (code >= 500 || code == 408)
+        if (idempotent && (code >= 500 || code == 408)) return true
+
+        // AI Chat/Messages endpoints are safe to retry on upstream gateway outages (502, 503, 504)
+        val isAiCompletion = request.url.encodedPath.contains("/v1/chat") ||
+            request.url.encodedPath.contains("/v1/messages") ||
+            request.url.encodedPath.contains("/v1/models")
+        return isAiCompletion && (code == 502 || code == 503 || code == 504 || code == 408)
     }
 
     /**
-     * For a transport-level failure, retrying a non-idempotent request is only safe
-     * when the request provably never reached the server. An unresolved host is the
-     * one clear case; a timeout or reset may have occurred after the server received
-     * and acted on the bytes.
+     * For a transport-level failure, retrying a non-idempotent request is safe
+     * when the request provably never reached the server, or for AI completions
+     * experiencing socket timeouts or connection drops before a response arrives.
      */
     private fun transportErrorIsSafeToRetry(throwable: Throwable, request: Request): Boolean {
         if (request.method in IDEMPOTENT_METHODS) return true
-        return throwable is UnknownHostException
+        if (throwable is UnknownHostException) return true
+        val isAiCompletion = request.url.encodedPath.contains("/v1/chat") ||
+            request.url.encodedPath.contains("/v1/messages") ||
+            request.url.encodedPath.contains("/v1/models")
+        return isAiCompletion && (throwable is ConnectException || throwable is SocketTimeoutException)
     }
 
     private fun backoffFor(attempt: Int, policy: RetryPolicy): Long {
