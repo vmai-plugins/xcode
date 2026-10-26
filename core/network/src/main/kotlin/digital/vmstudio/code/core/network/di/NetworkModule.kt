@@ -68,8 +68,4 @@ object NetworkModule {
     private class KeyOwner(val host: String)
 
     private val KEY_HEADERS = listOf("Authorization", "x-api-key", "api-key")
-
-    private const val CONNECT_TIMEOUT_SECONDS = 20L
-    private const val READ_TIMEOUT_MINUTES = 10L
-    private const val WRITE_TIMEOUT_SECONDS = 30L
 }
