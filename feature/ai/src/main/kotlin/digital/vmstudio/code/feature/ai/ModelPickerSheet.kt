@@ -158,10 +158,13 @@ private fun ModelPickerSheet(
     }
     var filter by remember { mutableStateOf(initialTab) }
 
-    // Live-sync automatically when opening the picker if never synced or free catalog is empty
+    // Auto-sync whenever opening the sheet if not synced recently (older than 5 minutes) or empty
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        if (omniModels.isConfigured && !isSyncing && (omniModels.syncedAtMillis == 0L || omniModels.freeIds.isEmpty())) {
-            onSync()
+        if (omniModels.isConfigured && !isSyncing) {
+            val isStale = (System.currentTimeMillis() - omniModels.syncedAtMillis) > 300_000L
+            if (omniModels.syncedAtMillis == 0L || omniModels.freeIds.isEmpty() || isStale) {
+                onSync()
+            }
         }
     }
 
