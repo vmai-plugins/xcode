@@ -122,6 +122,7 @@ data class UserPreferences(
     val releaseChannel: ReleaseChannel = ReleaseChannel.STABLE,
     val chatBubbleColorHex: String? = null,
     val defaultProjectColorHex: String? = null,
+    val chatColors: Map<String, String> = emptyMap(),
 ) {
     companion object {
         const val DEFAULT_HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
