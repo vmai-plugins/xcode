@@ -7,7 +7,7 @@ APP_SLUG="${1:-x-codes}"
 APP_NAME="${2:-Project X-Codes}"
 APP_DESC="${3:-Mobile AI Cloud IDE with live SFTP server file manager, persistent chat memory, and direct OmniRoute AI integration.}"
 APK_PATH="${4:-/opt/vmstudio/builds/apk/xcodes-latest.apk}"
-VERSION="${5:-v3.18}"
+VERSION="${5:-v0.11.0}"
 
 DEPLOY_HOST="${DEPLOY_HOST:-root@200.234.41.231}"
 LOCAL_APPS_DIR="/home/vmstudio-apps/htdocs/apps.vmstudio.digital"
