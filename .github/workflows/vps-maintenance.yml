@@ -11,6 +11,7 @@ on:
         options:
           - 'inspect-disk-usage'
           - 'safe-clean-android-caches'
+          - 'purge-all-vps-build-tools'
           - 'refresh-apps-hub'
 
 permissions:
