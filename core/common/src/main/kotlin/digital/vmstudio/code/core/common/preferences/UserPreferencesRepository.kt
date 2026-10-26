@@ -256,6 +256,7 @@ class UserPreferencesRepository @Inject constructor(
             releaseChannel = this[Keys.RELEASE_CHANNEL].toEnum(defaults.releaseChannel),
             chatBubbleColorHex = this[Keys.CHAT_BUBBLE_COLOR],
             defaultProjectColorHex = this[Keys.DEFAULT_PROJECT_COLOR],
+            chatColors = parseFolders(this[Keys.CHAT_COLORS]),
         )
     }
 
