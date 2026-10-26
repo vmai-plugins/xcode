@@ -29,6 +29,7 @@ data class ConversationSummary(
 
 data class AgentConversationsUiState(
     val conversations: List<ConversationSummary> = emptyList(),
+    val chatColors: Map<String, String> = emptyMap(),
     val isLoading: Boolean = true,
     val error: VmError? = null,
 )
