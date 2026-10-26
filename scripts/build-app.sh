@@ -1,45 +1,16 @@
 #!/usr/bin/env bash
-# VMStudio Autopilot APK Builder & Deployer
-# Runs on VPS 2 (200.234.41.231) to compile Android APKs and publish to https://apps.vmstudio.digital/
+# VMStudio APK Build Redirector
+# NOTICE: Compiling on the VPS is deprecated to save VPS CPU/RAM/Disk.
+# All Android apps are now compiled on GitHub Actions, and the resulting APK
+# is pushed automatically to https://apps.vmstudio.digital/.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LOCAL_APPS_DIR="/home/vmstudio-apps/htdocs/apps.vmstudio.digital"
-TARGET_DIR="${LOCAL_APPS_DIR}/x-codes"
-BUILD_CACHE="/opt/vmstudio/builds/apk"
-DEPLOY_HOST="${DEPLOY_HOST:-root@200.234.41.231}"
-
-# Resolve JDK 17 / 21
-if [ -z "${JAVA_HOME:-}" ]; then
-    for candidate in /usr/lib/jvm/java-17-openjdk* /usr/lib/jvm/java-21-openjdk* /opt/java/openjdk*; do
-        if [ -d "$candidate" ] && [ -x "$candidate/bin/java" ]; then
-            export JAVA_HOME="$candidate"
-            break
-        fi
-    done
-fi
-
-# Resolve Android SDK
-export ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
-export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-
-if [ -n "${JAVA_HOME:-}" ]; then
-    export PATH="${JAVA_HOME}/bin:${PATH}"
-fi
-if [ -d "${ANDROID_HOME}/cmdline-tools/latest/bin" ]; then
-    export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${PATH}"
-fi
-
-cd "$REPO_DIR"
-
-echo "==> [1/4] Checking repository state..."
-if git rev-parse --git-dir > /dev/null 2>&1; then
-    git fetch origin main || true
-    LOCAL_HASH=$(git rev-parse HEAD 2>/dev/null || echo "none")
-    REMOTE_HASH=$(git rev-parse origin/main 2>/dev/null || echo "none")
-
-    if [ "$LOCAL_HASH" = "$REMOTE_HASH" ] && [ "${1:-}" != "--force" ]; then
+echo "=========================================================================="
+echo " NOTICE: Building on VPS is disabled to keep VPS resources free."
+echo " Build your APK on GitHub Actions via the 'Build' or 'Nightly APK' workflow."
+echo " GitHub will compile the APK and upload it directly to apps.vmstudio.digital."
+echo "=========================================================================="
+exit 0 && [ "${1:-}" != "--force" ]; then
         echo "Already up-to-date ($LOCAL_HASH). Build skipped. Pass --force to rebuild."
         exit 0
     fi
