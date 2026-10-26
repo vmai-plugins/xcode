@@ -192,9 +192,9 @@ class OmniRouteProvider @Inject constructor(
         }
 
         if (baseUrl.contains("vmstudio.digital", ignoreCase = true) || model.startsWith("auto/")) {
-            dialectCache.putIfAbsent(baseUrl, OmniRouteDialect.OPENAI_CHAT)
+            dialectCache[baseUrl] = OmniRouteDialect.OPENAI_CHAT
         }
-        val dialect = dialectFor(baseUrl, key, model)
+        val dialect = dialectCache[baseUrl] ?: dialectFor(baseUrl, key, model)
 
         val isGitHubWorkspace = config.workingDirectory.startsWith("/github/")
         val isVmHubWorkspace = config.workingDirectory.startsWith("/vmhub/")
