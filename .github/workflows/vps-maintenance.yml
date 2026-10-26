@@ -50,7 +50,14 @@ jobs:
 
           elif [ "$ACTION" = "safe-clean-android-caches" ]; then
             ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_rsa "$DEPLOY_HOST" \
-              "rm -rf /root/.gradle/caches /root/.gradle/daemon ~/.gradle/caches 2>/dev/null || true; apt-get clean 2>/dev/null || true; df -h /"
+              "rm -rf /root/.gradle/caches /root/.gradle/daemon ~/.gradle/caches /opt/vmstudio/builds/apk/* 2>/dev/null || true; apt-get clean 2>/dev/null || true; df -h /"
+
+          elif [ "$ACTION" = "purge-all-vps-build-tools" ]; then
+            ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_rsa "$DEPLOY_HOST" \
+              "echo 'Purging Android SDK, Gradle, and build caches to free VPS completely...'; \
+               rm -rf /opt/android-sdk /root/.gradle ~/.gradle /opt/vmstudio/builds /tmp/gradle* 2>/dev/null || true; \
+               apt-get autoremove -y 2>/dev/null || true; apt-get clean 2>/dev/null || true; \
+               echo '==> Remaining Disk Usage:'; df -h /"
 
           elif [ "$ACTION" = "refresh-apps-hub" ]; then
             ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_rsa "$DEPLOY_HOST" \
