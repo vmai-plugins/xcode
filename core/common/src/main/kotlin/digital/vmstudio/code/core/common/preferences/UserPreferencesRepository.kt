@@ -365,6 +365,7 @@ class UserPreferencesRepository @Inject constructor(
         val RELEASE_CHANNEL = stringPreferencesKey("release_channel")
         val CHAT_BUBBLE_COLOR = stringPreferencesKey("chat_bubble_color")
         val DEFAULT_PROJECT_COLOR = stringPreferencesKey("default_project_color")
+        val CHAT_COLORS = stringPreferencesKey("chat_colors")
     }
 
     private companion object {
