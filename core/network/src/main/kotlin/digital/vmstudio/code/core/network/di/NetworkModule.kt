@@ -13,6 +13,10 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
+    private const val CONNECT_TIMEOUT_SECONDS = 15L
+    private const val READ_TIMEOUT_MINUTES = 5L
+    private const val WRITE_TIMEOUT_SECONDS = 30L
+
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
