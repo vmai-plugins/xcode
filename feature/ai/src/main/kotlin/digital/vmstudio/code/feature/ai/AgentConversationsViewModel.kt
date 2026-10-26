@@ -45,6 +45,7 @@ data class AgentConversationsUiState(
 class AgentConversationsViewModel @Inject constructor(
     private val conversations: AgentConversationRepository,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
+    private val userPreferences: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
 ) : ViewModel() {
 
     private val error = MutableStateFlow<VmError?>(null)
@@ -67,10 +68,12 @@ class AgentConversationsViewModel @Inject constructor(
                 )
             }
         },
+        userPreferences.preferences.map { it.chatColors },
         error,
-    ) { list, currentError ->
+    ) { list, colors, currentError ->
         AgentConversationsUiState(
             conversations = list,
+            chatColors = colors,
             isLoading = false,
             error = currentError,
         )
