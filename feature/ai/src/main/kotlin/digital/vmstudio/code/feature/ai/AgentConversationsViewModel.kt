@@ -113,6 +113,12 @@ class AgentConversationsViewModel @Inject constructor(
         }
     }
 
+    fun updateColor(id: String, hex: String?) {
+        viewModelScope.launch {
+            userPreferences.setChatColor(id, hex)
+        }
+    }
+
     fun dismissError() {
         error.value = null
     }
