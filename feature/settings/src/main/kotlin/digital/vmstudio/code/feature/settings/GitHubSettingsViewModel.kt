@@ -45,7 +45,7 @@ class GitHubSettingsViewModel @Inject constructor(
                         onTriggered(true, "Cloud build '$workflowFileName' dispatched to GitHub Actions! Finished APK will be published to Apps Hub.")
                     }
                     is VmResult.Failure -> {
-                        val message = result.error.userMessage
+                        val message = result.error.summary
                         _uiState.update { it.copy(isLoading = false, error = message) }
                         onTriggered(false, message)
                     }

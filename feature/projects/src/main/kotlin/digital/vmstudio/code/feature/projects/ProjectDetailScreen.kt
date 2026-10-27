@@ -314,6 +314,7 @@ private fun ProjectOverviewCard(
     serverName: String?,
     isSyncing: Boolean,
     onSyncGit: () -> Unit,
+    onChangeColor: (() -> Unit)? = null,
 ) {
     val spacing = VmTheme.spacing
     val projectColor = ProjectColors.parseColor(project.colorHex, project.name)
