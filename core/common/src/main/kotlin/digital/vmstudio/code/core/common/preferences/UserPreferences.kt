@@ -129,7 +129,7 @@ data class UserPreferences(
     companion object {
         const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
         const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"
-        const val DEFAULT_HUB_API_KEY = "xc_b97a8a0607420e8996f3ce2be04ad0647c7f0ec5"
+        const val DEFAULT_HUB_API_KEY = "xc_a081cf117bf790917874c8a0f5dee6634442fa9d"
         const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
         /** The only supported AI gateway. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
