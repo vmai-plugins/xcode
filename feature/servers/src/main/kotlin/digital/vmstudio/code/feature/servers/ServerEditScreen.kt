@@ -119,7 +119,62 @@ fun ServerEditScreen(
                 VmErrorPanel(error = error, onRetry = viewModel::save)
             }
 
-            VmSectionHeader(title = "Connection")
+            VmSectionHeader(title = "Machine Type & Connection")
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                FilterChip(
+                    selected = state.selectedPreset == ServerPreset.CLOUD_VPS,
+                    onClick = { viewModel.applyPreset(ServerPreset.CLOUD_VPS) },
+                    label = { Text("Cloud Linux VPS") },
+                )
+                FilterChip(
+                    selected = state.selectedPreset == ServerPreset.WINDOWS_PC,
+                    onClick = { viewModel.applyPreset(ServerPreset.WINDOWS_PC) },
+                    label = { Text("Windows PC / Laptop") },
+                )
+                FilterChip(
+                    selected = state.selectedPreset == ServerPreset.MAC_LINUX_PC,
+                    onClick = { viewModel.applyPreset(ServerPreset.MAC_LINUX_PC) },
+                    label = { Text("Mac / Linux") },
+                )
+            }
+
+            if (state.selectedPreset == ServerPreset.WINDOWS_PC) {
+                VmCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                        Text(
+                            text = "💡 Windows PC OpenSSH Guide",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = "1. Enable OpenSSH Server on PC (Admin PowerShell):\n   Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0; Start-Service sshd\n2. Host: Enter your PC Wi-Fi IP (run 'ipconfig' on PC) or Tailscale IP.\n3. Default Shell is set to 'powershell.exe'.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else if (state.selectedPreset == ServerPreset.MAC_LINUX_PC) {
+                VmCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                        Text(
+                            text = "💡 Mac / Linux OpenSSH Guide",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = "macOS: Enable 'Remote Login' in System Settings > Sharing.\nLinux: Run 'sudo systemctl enable --now ssh'.\nEnter your local Wi-Fi or Tailscale IP.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
 
             VmField(
                 value = state.draft.name,

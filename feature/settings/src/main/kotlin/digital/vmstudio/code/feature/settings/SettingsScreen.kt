@@ -219,6 +219,52 @@ fun SettingsScreen(
                             )
                         }
                     }
+
+                    // App Hub Master Connection Bar
+                    val hasHubKey = !preferences.hubApiKey.isNullOrBlank()
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF1B1C20),
+                        border = BorderStroke(1.dp, if (hasHubKey) Color(0xFF10B981).copy(alpha = 0.35f) else Color(0xFF282A31)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onOpenConnectors),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (hasHubKey) Color(0xFF10B981) else Color(0xFFF59E0B)),
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (hasHubKey) "App Hub Master Provisioning Active" else "App Hub 1-Key Master Connect",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFE2E2E6),
+                                )
+                                Text(
+                                    text = if (hasHubKey) "Single API key linked • GitHub, AI, VPS & Drive synchronized" else "Enter single API key to configure all connections",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF8E919B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Manage App Hub",
+                                tint = Color(0xFF6B7280),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
                 }
             }
         }

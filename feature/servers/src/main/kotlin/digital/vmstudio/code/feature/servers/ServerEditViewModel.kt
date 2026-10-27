@@ -21,8 +21,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class ServerPreset {
+    CLOUD_VPS,
+    WINDOWS_PC,
+    MAC_LINUX_PC,
+}
+
 data class ServerEditUiState(
     val draft: ServerDraft = ServerDraft(),
+    val selectedPreset: ServerPreset = ServerPreset.CLOUD_VPS,
     val isEditing: Boolean = false,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
@@ -116,6 +123,39 @@ class ServerEditViewModel @Inject constructor(
     }
 
     fun setEnvironment(value: ServerEnvironment) = updateDraft { it.copy(environment = value) }
+
+    fun applyPreset(preset: ServerPreset) {
+        _uiState.update { it.copy(selectedPreset = preset) }
+        when (preset) {
+            ServerPreset.WINDOWS_PC -> updateDraft { draft ->
+                draft.copy(
+                    name = if (draft.name.isBlank() || draft.name.startsWith("Linux") || draft.name.startsWith("Server")) "Personal PC (Windows)" else draft.name,
+                    preferredShell = "powershell.exe",
+                    defaultDirectory = if (draft.defaultDirectory.isBlank() || draft.defaultDirectory.startsWith("/")) "D:\\Dev" else draft.defaultDirectory,
+                    environment = ServerEnvironment.DEVELOPMENT,
+                    port = if (draft.port.isBlank()) "22" else draft.port,
+                )
+            }
+            ServerPreset.MAC_LINUX_PC -> updateDraft { draft ->
+                draft.copy(
+                    name = if (draft.name.isBlank() || draft.name.startsWith("Linux") || draft.name.startsWith("Personal PC")) "Personal Laptop (Mac/Linux)" else draft.name,
+                    preferredShell = "/bin/zsh",
+                    defaultDirectory = if (draft.defaultDirectory.isBlank() || draft.defaultDirectory.contains(":")) "~/Dev" else draft.defaultDirectory,
+                    environment = ServerEnvironment.DEVELOPMENT,
+                    port = if (draft.port.isBlank()) "22" else draft.port,
+                )
+            }
+            ServerPreset.CLOUD_VPS -> updateDraft { draft ->
+                draft.copy(
+                    name = if (draft.name.isBlank() || draft.name.startsWith("Personal")) "Cloud Linux VPS" else draft.name,
+                    preferredShell = "",
+                    defaultDirectory = if (draft.defaultDirectory.contains(":")) "/root" else draft.defaultDirectory,
+                    environment = ServerEnvironment.PRODUCTION,
+                    port = if (draft.port.isBlank()) "22" else draft.port,
+                )
+            }
+        }
+    }
 
     fun setPreferredShell(value: String) = updateDraft { it.copy(preferredShell = value) }
 

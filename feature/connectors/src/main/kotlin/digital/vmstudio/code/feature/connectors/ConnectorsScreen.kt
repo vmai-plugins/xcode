@@ -241,6 +241,132 @@ fun ConnectorsScreen(
                 }
             }
 
+            // --- HERO: APP HUB MASTER SINGLE-KEY PROVISIONING ---
+            if (state.selectedFilter == ConnectorFilter.ALL) {
+                item(key = "card-hub-master-hero") {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF14161A),
+                        border = BorderStroke(1.dp, if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.5f) else Color(0xFF38BDF8).copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Cloud,
+                                        contentDescription = null,
+                                        tint = if (state.hasHubKey) Color(0xFF10B981) else Color(0xFF38BDF8),
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "App Hub Master Connect",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFE2E2E6),
+                                    )
+                                    Text(
+                                        text = "1 API Key automatically configures GitHub, AI Gateway, VPS & Drive",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF8E919B),
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFF38BDF8).copy(alpha = 0.15f),
+                                    border = BorderStroke(1.dp, if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.3f) else Color(0xFF38BDF8).copy(alpha = 0.3f)),
+                                ) {
+                                    Text(
+                                        text = if (state.hasHubKey) "PROVISIONED" else "READY TO PAIR",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (state.hasHubKey) Color(0xFF10B981) else Color(0xFF38BDF8),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    )
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = hubKeyDraft,
+                                onValueChange = { hubKeyDraft = it },
+                                label = { Text("App Hub Master API Key (xc_...)") },
+                                placeholder = { Text("xc_b97a8a0607420e8996f3ce2be04ad0647c7f0ec5") },
+                                singleLine = true,
+                                visualTransformation = if (hubKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    Row {
+                                        IconButton(onClick = {
+                                            clipboardManager.getText()?.text?.let { hubKeyDraft = it.trim() }
+                                        }) {
+                                            Icon(Icons.Default.ContentPaste, contentDescription = "Paste from clipboard")
+                                        }
+                                        IconButton(onClick = { hubKeyVisible = !hubKeyVisible }) {
+                                            Icon(
+                                                imageVector = if (hubKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = null,
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                VmButton(
+                                    text = if (state.isSyncingHub) "Provisioning All Services…" else "Connect & Provision Everything",
+                                    onClick = { viewModel.pairHubKey(hubKeyDraft, hubBaseUrlDraft) },
+                                    loading = state.isSyncingHub,
+                                    enabled = hubKeyDraft.isNotBlank() && !state.isSyncingHub,
+                                    style = VmButtonStyle.Primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (state.hasHubKey) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.unpairHub() },
+                                        shape = RoundedCornerShape(8.dp),
+                                    ) {
+                                        Text("Unpair", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+
+                            state.hubStatusMessage?.let { msg ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF1A1C20),
+                                    border = BorderStroke(1.dp, Color(0xFF282A31)),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = msg,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF10B981),
+                                        modifier = Modifier.padding(10.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 1. GitHub Integration (Git & VCS)
             if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.GIT_VCS) {
                 item(key = "card-github") {

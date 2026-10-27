@@ -628,21 +628,36 @@ class ConnectorsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Auto-sync credentials & provision VPS from Hub
+                var syncedGithubCount = 0
+                var syncedAiActive = false
+                var syncedVpsConnected = false
+                var syncedDriveReady = false
+
                 when (val credsRes = projectHubClient.syncHubCredentialsAndVps()) {
                     is VmResult.Success -> {
                         val creds = credsRes.value
                         val gh = creds.githubToken
-                        if (!gh.isNullOrBlank() && !githubClient.hasToken()) {
+                        if (!gh.isNullOrBlank()) {
                             saveGitHubToken(gh)
+                            syncedGithubCount = 1
                         }
                         val ai = creds.omnirouteKey
-                        if (!ai.isNullOrBlank() && preferencesRepository.preferences.first().aiApiKeyCredentialId == null) {
+                        if (!ai.isNullOrBlank()) {
                             saveCustomAiKey(ai)
+                            syncedAiActive = true
+                        }
+                        val driveToken = creds.googleDriveToken
+                        if (!driveToken.isNullOrBlank()) {
+                            saveDriveToken(driveToken)
+                            syncedDriveReady = true
                         }
                         // Auto-connect to VPS immediately in background!
                         val prefs = preferencesRepository.preferences.first()
                         prefs.autoConnectServerId?.let { sId ->
-                            connectionManager.session(sId)
+                            when (connectionManager.session(sId)) {
+                                is VmResult.Success -> syncedVpsConnected = true
+                                else -> {}
+                            }
                         }
                     }
                     is VmResult.Failure -> {}
@@ -651,11 +666,20 @@ class ConnectorsViewModel @Inject constructor(
                 when (val res = projectHubClient.syncUniversalProjects()) {
                     is VmResult.Success -> {
                         val tCount = (projectHubClient.fetchTasks() as? VmResult.Success)?.value?.size ?: 0
+                        val pCount = res.value
+                        val summaryText = buildString {
+                            append("✓ App Hub Provisioned! ")
+                            append("$pCount Workspaces · $tCount Tasks")
+                            if (syncedGithubCount > 0) append(" · GitHub Linked")
+                            if (syncedAiActive) append(" · OmniRoute AI Active")
+                            if (syncedVpsConnected) append(" · VPS Live")
+                            if (syncedDriveReady) append(" · Drive Ready")
+                        }
                         extraState.update {
                             it.copy(
-                                hubProjectCount = res.value,
+                                hubProjectCount = pCount,
                                 hubTaskCount = tCount,
-                                hubStatusMessage = "Synced ${res.value} universal workspaces & $tCount tasks (GitHub / Local / VPS-ready)",
+                                hubStatusMessage = summaryText,
                             )
                         }
                     }
