@@ -50,6 +50,31 @@ fun GitHubSettingsScreen(
         modifier = modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // Cloud APK Build & Publish Card
+        VmCard {
+            Text("GitHub Cloud APK Builder", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(
+                "Trigger an autonomous GitHub Actions build directly in the cloud. Builds the signed APK and automatically publishes it to the VMStudio Apps Hub (https://apps.vmstudio.digital).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                VmButton(
+                    text = "🚀 Build & Publish APK",
+                    onClick = {
+                        viewModel.triggerBuild("nightly.yml") { success, message ->
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    enabled = state.hasToken && !state.isLoading,
+                    style = VmButtonStyle.Primary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
         VmCard {
             Text("GitHub Personal Access Token", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(
