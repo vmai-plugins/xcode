@@ -116,6 +116,7 @@ internal fun ModernComposer(
     onOpenFiles: (() -> Unit)? = null,
     onTriggerCloudBuild: (() -> Unit)? = null,
     onDetach: (() -> Unit)? = null,
+    totalTokens: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
@@ -448,6 +449,30 @@ internal fun ModernComposer(
                     onModelChange = onModelChange,
                     onSync = onSyncModels,
                 )
+
+                if (totalTokens > 0) {
+                    Spacer(Modifier.size(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    ) {
+                        val tokenText = if (totalTokens >= 1_000_000) {
+                            String.format(java.util.Locale.US, "%.1fM", totalTokens / 1_000_000.0)
+                        } else if (totalTokens >= 1_000) {
+                            String.format(java.util.Locale.US, "%.1fk", totalTokens / 1_000.0)
+                        } else {
+                            "$totalTokens"
+                        }
+                        Text(
+                            text = "$tokenText tok",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
 
                 Spacer(Modifier.weight(1f))
 

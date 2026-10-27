@@ -411,8 +411,8 @@ fun AgentChatScreen(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xCC1E1F22),
-                        border = BorderStroke(1.dp, Color(0xFF2E3036)),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.clickable { isFullScreen = false },
                     ) {
                         Row(
@@ -424,12 +424,12 @@ fun AgentChatScreen(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Exit Focus Mode",
                                 modifier = Modifier.size(14.dp),
-                                tint = Color(0xFF8E919A),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
                                 text = "Full Screen Focus • Tap to exit",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFE2E2E5),
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
@@ -557,8 +557,8 @@ fun AgentChatScreen(
                     if (showScrollToBottom) {
                         Surface(
                             shape = CircleShape,
-                            color = Color(0xFF2E3036),
-                            border = BorderStroke(1.dp, Color(0xFF3E4046)),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             shadowElevation = 4.dp,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -575,7 +575,7 @@ fun AgentChatScreen(
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
                                     contentDescription = "Scroll to bottom",
-                                    tint = Color.White,
+                                    tint = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
@@ -643,6 +643,7 @@ fun AgentChatScreen(
                 },
                 onTriggerCloudBuild = { showCloudBuildDialog = true },
                 onDetach = viewModel::detachToBackground,
+                totalTokens = state.totalTokens,
             )
         }
     }

@@ -188,7 +188,7 @@ internal fun ToolBatchRow(
                 Text(
                     text = summary,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (failed > 0) MaterialTheme.colorScheme.error else Color(0xFFC4C6D0),
+                    color = if (failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -196,7 +196,7 @@ internal fun ToolBatchRow(
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     contentDescription = if (expanded) "Hide" else "Show",
-                    tint = Color(0xFF8E919A),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp),
                 )
             }
@@ -362,12 +362,12 @@ private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
             Text(
                 text = "Thought",
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                color = Color(0xFF9CA3AF),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Icon(
                 imageVector = if (expanded) Icons.Default.ExpandLess else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = if (expanded) "Hide" else "Show",
-                tint = Color(0xFF6B7280),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(14.dp),
             )
         }
@@ -456,7 +456,7 @@ private fun ToolRow(
             Text(
                 text = verb,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                color = Color(0xFF9CA3AF),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             // Antigravity Purple glyph badge
@@ -490,7 +490,7 @@ private fun ToolRow(
             Text(
                 text = targetName,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontWeight = FontWeight.Medium),
-                color = Color(0xFFE5E7EB),
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
@@ -519,7 +519,7 @@ private fun ToolRow(
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = Color(0xFF6B7280),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(14.dp),
                 )
             }
@@ -566,7 +566,7 @@ private fun ToolRow(
                     Text(
                         text = rawOutput,
                         style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                        color = Color(0xFFD1D5DB),
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(8.dp),
                     )
                 }

@@ -91,13 +91,13 @@ internal fun ArtifactsSheet(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF6366F1).copy(alpha = 0.15f)),
+                            .background(MaterialTheme.colorScheme.tertiaryContainer),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Default.Inventory2,
                             contentDescription = null,
-                            tint = Color(0xFF6366F1),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -213,13 +213,13 @@ private fun ArtifactCard(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF3B82F6).copy(alpha = 0.12f)),
+                        .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Default.Code,
                         contentDescription = null,
-                        tint = Color(0xFF3B82F6),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp),
                     )
                 }

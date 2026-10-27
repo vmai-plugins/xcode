@@ -168,7 +168,7 @@ internal fun ChatTopBar(
                         imageVector = Icons.Default.KeyboardArrowDown,
                         contentDescription = "Switch project",
                         modifier = Modifier.size(16.dp),
-                        tint = Color(0xFF8E919A),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -205,8 +205,8 @@ internal fun ChatTopBar(
             if (artifactsCount > 0 && onOpenArtifacts != null) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF6366F1).copy(alpha = 0.2f),
-                    border = BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.45f)),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f)),
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .clickable(onClick = onOpenArtifacts)
@@ -219,14 +219,14 @@ internal fun ChatTopBar(
                         Icon(
                             imageVector = Icons.Default.Inventory2,
                             contentDescription = "Deliverables",
-                            tint = Color(0xFF818CF8),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.size(13.dp),
                         )
                         Text(
                             text = artifactsCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFE0E7FF),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
                         )
                     }
                 }

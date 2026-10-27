@@ -393,14 +393,14 @@ internal fun BackgroundRunsSection(
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Refresh tasks",
-                            tint = Color(0xFF8E919A),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp),
                         )
                     }
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = if (expanded) "Collapse" else "Expand",
-                        tint = Color(0xFF8E919A),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp),
                     )
                 }
@@ -426,7 +426,7 @@ internal fun BackgroundRunsSection(
                             text = run.name ?: id,
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            color = Color(0xFFC4C6D0),
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
@@ -538,7 +538,7 @@ internal fun QueuedTasksShelf(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF2B2D31))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         ) {
                             Text(
@@ -550,7 +550,7 @@ internal fun QueuedTasksShelf(
                         Text(
                             text = item.prompt,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFFE2E2E5),
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
@@ -573,7 +573,7 @@ internal fun QueuedTasksShelf(
                             Icon(
                                 imageVector = Icons.Default.DeleteOutline,
                                 contentDescription = "Remove",
-                                tint = Color(0xFF8E919A),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp),
                             )
                         }

@@ -207,7 +207,7 @@ internal fun HtmlPreviewSheet(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(if (state.isMobileView) Color(0xFF141517) else MaterialTheme.colorScheme.surface),
+                    .background(if (state.isMobileView) MaterialTheme.colorScheme.surfaceContainerLowest else MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center,
             ) {
                 val previewModifier = if (state.isMobileView) {

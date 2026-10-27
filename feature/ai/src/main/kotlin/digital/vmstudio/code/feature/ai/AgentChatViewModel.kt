@@ -160,6 +160,14 @@ data class AgentChatUiState(
             (serverId != null || workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/"))
 
     val isResuming: Boolean get() = providerSessionId != null
+
+    val totalTokens: Long
+        get() = transcript.filterIsInstance<TranscriptItem.RunSummary>()
+            .sumOf { it.inputTokens + it.outputTokens }
+
+    val totalCostUsd: Double
+        get() = transcript.filterIsInstance<TranscriptItem.RunSummary>()
+            .sumOf { it.costUsd }
 }
 
 data class ChatServerOption(

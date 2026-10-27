@@ -449,7 +449,7 @@ private fun MentionItemRow(
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF26282D),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
@@ -465,7 +465,7 @@ private fun MentionItemRow(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -493,7 +493,7 @@ private fun MentionItemRow(
                     if (!branch.isNullOrBlank()) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         ) {
                             Text(
                                 text = branch,
@@ -508,7 +508,7 @@ private fun MentionItemRow(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF8E919A),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -518,12 +518,12 @@ private fun MentionItemRow(
 
             Surface(
                 shape = RoundedCornerShape(6.dp),
-                color = Color(0xFF32353B),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
             ) {
                 Text(
                     text = badge,
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                    color = Color(0xFFDCDDDE),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }

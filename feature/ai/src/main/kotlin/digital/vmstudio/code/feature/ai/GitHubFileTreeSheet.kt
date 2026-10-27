@@ -94,21 +94,21 @@ internal fun GitHubFileTreeSheet(
                         text = repoFullName,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFE3E5E8),
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = "${blobFiles.size} files · Zero-Clone Virtual Tree",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF8E919A),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = Color(0xFF8E919A),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -122,14 +122,14 @@ internal fun GitHubFileTreeSheet(
                     Text(
                         "Search files in repo…",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF8E919A),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
-                        tint = Color(0xFF8E919A),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp),
                     )
                 },
@@ -139,7 +139,7 @@ internal fun GitHubFileTreeSheet(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Clear",
-                                tint = Color(0xFF8E919A),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -222,13 +222,13 @@ internal fun GitHubFileTreeSheet(
                                         text = item.path.substringAfterLast('/'),
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Medium,
-                                        color = Color(0xFFE3E5E8),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     if (item.path.contains('/')) {
                                         Text(
                                             text = item.path.substringBeforeLast('/'),
                                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                            color = Color(0xFF8E919A),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontFamily = FontFamily.Monospace,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -238,7 +238,7 @@ internal fun GitHubFileTreeSheet(
                                 Icon(
                                     imageVector = Icons.Default.Chat,
                                     contentDescription = "Mention in chat",
-                                    tint = Color(0xFF8E919A),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp),
                                 )
                             }

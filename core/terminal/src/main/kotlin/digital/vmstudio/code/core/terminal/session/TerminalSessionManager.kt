@@ -49,7 +49,9 @@ class TerminalSessionManager @Inject constructor(
             connectionManager.states.collect { serverStates ->
                 serverStates.forEach { (serverId, state) ->
                     if (state is SshConnectionState.Disconnected || state is SshConnectionState.Failed) {
-                        closeAllForServer(serverId)
+                        // Close the network channel on disconnect without deleting the session
+                        // and its terminal buffer/scrollback so the user retains their work.
+                        _sessions.value.filter { it.serverId == serverId }.forEach { it.close() }
                     }
                 }
             }

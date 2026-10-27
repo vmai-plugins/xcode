@@ -344,11 +344,9 @@ class DefaultSshConnectionManager @Inject constructor(
 
         private companion object {
         const val TAG = "SshConnectionManager"
-        // 60s read timeout: long enough for a slow command to produce output, short
-        // enough that a silently-dead connection (no keepalive response) is detected
-        // instead of hanging a feature coroutine indefinitely. Keepalives cover idle
-        // peers; this covers peers that never fully disconnect but stop responding.
-        const val SOCKET_TIMEOUT_MILLIS = 60_000
+        // 180s read timeout: generous enough for slow builds (Gradle, Cargo, Docker)
+        // to complete steps without output, while still detecting a dead connection.
+        const val SOCKET_TIMEOUT_MILLIS = 180_000
         const val KEEPALIVE_TIMEOUT_FACTOR = 3
         const val MILLIS_PER_SECOND = 1_000
 
