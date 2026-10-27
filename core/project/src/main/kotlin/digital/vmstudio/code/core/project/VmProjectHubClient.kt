@@ -192,13 +192,14 @@ class VmProjectHubClient @Inject constructor(
         }
     }
 
-    suspend fun fetchTasks(): VmResult<List<HubTaskItem>> = withContext(ioDispatcher) {
+    suspend fun fetchTasks(cachedProjects: List<HubProjectItem>? = null): VmResult<List<HubTaskItem>> = withContext(ioDispatcher) {
         val hubKey = getEffectiveHubKey()
             ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
 
-        val projectsById = (fetchProjects() as? VmResult.Success)?.value
-            ?.associateBy({ it.id }, { it.name })
-            .orEmpty()
+        val projectsById = cachedProjects?.associateBy({ it.id }, { it.name })
+            ?: (fetchProjects() as? VmResult.Success)?.value
+                ?.associateBy({ it.id }, { it.name })
+                .orEmpty()
 
         val baseUrl = getEffectiveHubBaseUrl()
         val request = Request.Builder()
@@ -439,8 +440,8 @@ class VmProjectHubClient @Inject constructor(
      * and server paths to the user's current active VPS (or universal local fallback
      * if a previous VPS was lost and a new one hasn't been added yet).
      */
-    suspend fun syncUniversalProjects(): VmResult<Int> = withContext(ioDispatcher) {
-        val hubProjects = when (val res = fetchProjects()) {
+    suspend fun syncUniversalProjects(cachedProjects: List<HubProjectItem>? = null): VmResult<Int> = withContext(ioDispatcher) {
+        val hubProjects = cachedProjects ?: when (val res = fetchProjects()) {
             is VmResult.Failure -> return@withContext res
             is VmResult.Success -> res.value
         }

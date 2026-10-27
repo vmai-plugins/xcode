@@ -566,25 +566,76 @@ class ConnectorsViewModel @Inject constructor(
         viewModelScope.launch {
             extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Connecting & provisioning from $targetUrl…") }
             preferencesRepository.setHubBaseUrl(targetUrl)
-            when (val testRes = projectHubClient.testHubKey(trimmed, targetUrl)) {
-                is VmResult.Failure -> {
-                    extraState.update {
-                        it.copy(
-                            isSyncingHub = false,
-                            hubStatusMessage = "Pairing failed: ${testRes.error.summary}. Check key in vmstudio.digital.",
-                        )
+            try {
+                // 1. Save Hub API Key immediately
+                preferencesRepository.setHubApiKey(trimmed)
+
+                // 2. Provision credentials (GitHub, OmniRoute, VPS, Drive)
+                var ghSynced = false
+                var aiSynced = false
+                var driveSynced = false
+                when (val credsRes = projectHubClient.syncHubCredentialsAndVps()) {
+                    is VmResult.Success -> {
+                        val creds = credsRes.value
+                        val gh = creds.githubToken
+                        if (!gh.isNullOrBlank()) {
+                            saveGitHubToken(gh)
+                            ghSynced = true
+                        }
+                        val ai = creds.omnirouteKey
+                        if (!ai.isNullOrBlank()) {
+                            saveCustomAiKey(ai)
+                            aiSynced = true
+                        }
+                        val driveToken = creds.googleDriveToken
+                        if (!driveToken.isNullOrBlank()) {
+                            saveDriveToken(driveToken)
+                            driveSynced = true
+                        }
+                        // Non-blocking background VPS connection
+                        val prefs = preferencesRepository.preferences.first()
+                        prefs.autoConnectServerId?.let { sId ->
+                            launch { connectionManager.session(sId) }
+                        }
+                    }
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                isSyncingHub = false,
+                                hubStatusMessage = "Pairing failed: ${credsRes.error.summary}. Check key in vmstudio.digital.",
+                            )
+                        }
+                        return@launch
                     }
                 }
-                is VmResult.Success -> {
-                    preferencesRepository.setHubApiKey(trimmed)
-                    extraState.update {
-                        it.copy(
-                            hubProjectCount = testRes.value,
-                            hubStatusMessage = "Paired successfully with $targetUrl! Discovered ${testRes.value} projects. Syncing now…",
-                        )
-                    }
-                    syncUniversalHubProjects()
+
+                // 3. Fast single-pass project and task synchronization
+                val projectsRes = projectHubClient.fetchProjects()
+                val projects = (projectsRes as? VmResult.Success)?.value.orEmpty()
+                projectHubClient.syncUniversalProjects(cachedProjects = projects)
+
+                val tasksRes = projectHubClient.fetchTasks(cachedProjects = projects)
+                val tCount = (tasksRes as? VmResult.Success)?.value?.size ?: 0
+
+                val summaryText = buildString {
+                    append("✓ App Hub Provisioned! ")
+                    append("${projects.size} Workspaces · $tCount Tasks")
+                    if (ghSynced) append(" · GitHub Linked")
+                    if (aiSynced) append(" · AI Active")
+                    if (driveSynced) append(" · Drive Ready")
                 }
+                extraState.update {
+                    it.copy(
+                        hubProjectCount = projects.size,
+                        hubTaskCount = tCount,
+                        hubStatusMessage = summaryText,
+                    )
+                }
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                extraState.update { it.copy(hubStatusMessage = "Provisioning error: ${t.message ?: "Unknown"}") }
+            } finally {
+                extraState.update { it.copy(isSyncingHub = false) }
             }
         }
     }
@@ -605,18 +656,15 @@ class ConnectorsViewModel @Inject constructor(
     fun refreshProjectHubStatus() {
         viewModelScope.launch {
             val projectsRes = projectHubClient.fetchProjects()
-            val tasksRes = projectHubClient.fetchTasks()
-            val pCount = (projectsRes as? VmResult.Success)?.value?.size
+            val projects = (projectsRes as? VmResult.Success)?.value.orEmpty()
+            val tasksRes = projectHubClient.fetchTasks(cachedProjects = projects)
+            val pCount = projects.size
             val tCount = (tasksRes as? VmResult.Success)?.value?.size
             extraState.update {
                 it.copy(
                     hubProjectCount = pCount,
                     hubTaskCount = tCount,
-                    hubStatusMessage = if (pCount != null) {
-                        "Connected to vmstudio.digital ($pCount universal projects · ${tCount ?: 0} Kanban tasks)"
-                    } else {
-                        "Ready to sync with vmstudio.digital/wp-json/xcodes/v1"
-                    },
+                    hubStatusMessage = "Connected to vmstudio.digital ($pCount universal projects · ${tCount ?: 0} Kanban tasks)",
                 )
             }
         }
@@ -624,13 +672,12 @@ class ConnectorsViewModel @Inject constructor(
 
     fun syncUniversalHubProjects() {
         if (extraState.value.isSyncingHub) return
-        extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Syncing universal workspaces & VPS credentials from VM Project Hub…") }
+        extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Syncing universal workspaces & credentials from VM Project Hub…") }
         viewModelScope.launch {
             try {
                 // Auto-sync credentials & provision VPS from Hub
                 var syncedGithubCount = 0
                 var syncedAiActive = false
-                var syncedVpsConnected = false
                 var syncedDriveReady = false
 
                 when (val credsRes = projectHubClient.syncHubCredentialsAndVps()) {
@@ -651,45 +698,37 @@ class ConnectorsViewModel @Inject constructor(
                             saveDriveToken(driveToken)
                             syncedDriveReady = true
                         }
-                        // Auto-connect to VPS immediately in background!
+                        // Non-blocking background VPS connection
                         val prefs = preferencesRepository.preferences.first()
                         prefs.autoConnectServerId?.let { sId ->
-                            when (connectionManager.session(sId)) {
-                                is VmResult.Success -> syncedVpsConnected = true
-                                else -> {}
-                            }
+                            launch { connectionManager.session(sId) }
                         }
                     }
                     is VmResult.Failure -> {}
                 }
 
-                when (val res = projectHubClient.syncUniversalProjects()) {
-                    is VmResult.Success -> {
-                        val tCount = (projectHubClient.fetchTasks() as? VmResult.Success)?.value?.size ?: 0
-                        val pCount = res.value
-                        val summaryText = buildString {
-                            append("✓ App Hub Provisioned! ")
-                            append("$pCount Workspaces · $tCount Tasks")
-                            if (syncedGithubCount > 0) append(" · GitHub Linked")
-                            if (syncedAiActive) append(" · OmniRoute AI Active")
-                            if (syncedVpsConnected) append(" · VPS Live")
-                            if (syncedDriveReady) append(" · Drive Ready")
-                        }
-                        extraState.update {
-                            it.copy(
-                                hubProjectCount = pCount,
-                                hubTaskCount = tCount,
-                                hubStatusMessage = summaryText,
-                            )
-                        }
-                    }
-                    is VmResult.Failure -> {
-                        extraState.update {
-                            it.copy(
-                                hubStatusMessage = "Sync error: ${res.error.summary}",
-                            )
-                        }
-                    }
+                // Fast single-pass project and task sync
+                val projectsRes = projectHubClient.fetchProjects()
+                val projects = (projectsRes as? VmResult.Success)?.value.orEmpty()
+                projectHubClient.syncUniversalProjects(cachedProjects = projects)
+
+                val tasksRes = projectHubClient.fetchTasks(cachedProjects = projects)
+                val tCount = (tasksRes as? VmResult.Success)?.value?.size ?: 0
+                val pCount = projects.size
+
+                val summaryText = buildString {
+                    append("✓ App Hub Provisioned! ")
+                    append("$pCount Workspaces · $tCount Tasks")
+                    if (syncedGithubCount > 0) append(" · GitHub Linked")
+                    if (syncedAiActive) append(" · OmniRoute AI Active")
+                    if (syncedDriveReady) append(" · Drive Ready")
+                }
+                extraState.update {
+                    it.copy(
+                        hubProjectCount = pCount,
+                        hubTaskCount = tCount,
+                        hubStatusMessage = summaryText,
+                    )
                 }
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
