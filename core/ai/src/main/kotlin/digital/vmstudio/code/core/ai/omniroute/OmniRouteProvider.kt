@@ -199,14 +199,16 @@ class OmniRouteProvider @Inject constructor(
         val isGitHubWorkspace = config.workingDirectory.startsWith("/github/")
         val isVmHubWorkspace = config.workingDirectory.startsWith("/vmhub/")
         val isLocalWorkspace = digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(config.serverId)
-        val canUseTools = settings.aiToolsEnabled &&
-            config.workingDirectory.isNotBlank() &&
-            (config.serverId.isNotBlank() || isGitHubWorkspace || isVmHubWorkspace || isLocalWorkspace)
+        val effectiveWorkDir = config.workingDirectory.ifBlank { "/" }
+        val effectiveConfig = if (config.workingDirectory.isBlank()) config.copy(workingDirectory = effectiveWorkDir) else config
+        val canUseTools = settings.aiToolsEnabled
 
         // auto/best-free is a conversational combo where targets do not guarantee tool calling.
         // For tool-assisted workspace runs, use auto/coding:free (the 100% free tool-capable coding combo).
         val effectiveModel = if (canUseTools && (model == "auto/best-free" || model == "best-free")) {
             if (settings.aiAvailableModelIds.contains("auto/coding:free")) "auto/coding:free" else "auto/best-coding"
+        } else if (canUseTools && (model == "auto/best-reasoning" || model == "best-reasoning" || model.endsWith("reasoning"))) {
+            "auto/best-coding"
         } else {
             model
         }
@@ -215,7 +217,7 @@ class OmniRouteProvider @Inject constructor(
         wakeLockManager.acquire()
         try {
             if (canUseTools) {
-                runToolAgent(baseUrl, key, dialect, effectiveModel, effectiveFallback, config, settings.agentAutonomyLevel)
+                runToolAgent(baseUrl, key, dialect, effectiveModel, effectiveFallback, effectiveConfig, settings.agentAutonomyLevel)
             } else {
                 runPlainChat(baseUrl, key, dialect, model, effectiveFallback, config)
             }

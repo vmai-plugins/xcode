@@ -130,7 +130,7 @@ internal fun ChatTopBar(
         scrollBehavior = scrollBehavior,
         title = {
             val displayTitle = when {
-                isConnecting -> "Connectingâ€¦"
+                isConnecting -> "Connecting..."
                 title.isNotBlank() && title != "Agent Chat" -> title
                 workingDirectory.isNotBlank() && workingDirectory != "/" -> workingDirectory.trimEnd('/').substringAfterLast('/')
                 else -> "Select Project"

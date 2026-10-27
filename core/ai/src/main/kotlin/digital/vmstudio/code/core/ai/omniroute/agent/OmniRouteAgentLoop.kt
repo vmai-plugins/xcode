@@ -92,9 +92,11 @@ class OmniRouteAgentLoop @Inject constructor(
         val startedAt = System.currentTimeMillis()
 
         val allowedTools = allowedToolsFor(config)
-        // If tools are required and auto/best-free was requested, transparently use the tool-capable free counterpart
+        // If tools are required and pure reasoning or best-free was requested, transparently use the tool-capable counterpart
         var currentModel = if (allowedTools.isNotEmpty() && (model == "auto/best-free" || model == "best-free")) {
             fallbackModel ?: "auto/coding:free"
+        } else if (allowedTools.isNotEmpty() && (model == "auto/best-reasoning" || model == "best-reasoning" || model.endsWith("reasoning"))) {
+            "auto/best-coding"
         } else {
             model
         }
