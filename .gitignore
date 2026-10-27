@@ -29,6 +29,9 @@ google-services.json
 .claude/worktrees/
 platform-tools/
 *.tar.gz
+*.zip
+old app/
+old app.zip
 *.png
 *.bat
 build_and_install.ps1

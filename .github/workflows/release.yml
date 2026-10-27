@@ -117,7 +117,7 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR $META_DIR"
           scp -i ~/.ssh/id_rsa "xcodes-${VERSION}.apk" "${DEPLOY_HOST}:${TARGET_DIR}/app-release.apk"
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" \
-            "cd $TARGET_DIR && cp -f app-release.apk xcodes-latest.apk && chmod 644 app-release.apk xcodes-latest.apk"
+            "cd $TARGET_DIR && cp -f app-release.apk xcodes-latest.apk && cp -f app-release.apk xcodes-${VERSION}.apk && chmod 644 app-release.apk xcodes-latest.apk xcodes-${VERSION}.apk && cp -f app-release.apk /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes-latest.apk 2>/dev/null || true; mkdir -p /home/vmstudio/htdocs/vmstudio.digital/apps 2>/dev/null || true; cp -f app-release.apk /home/vmstudio/htdocs/vmstudio.digital/apps/x-codes-latest.apk 2>/dev/null || true"
 
           cat > meta.json <<EOF
           {
