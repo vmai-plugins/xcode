@@ -31,6 +31,7 @@ data class AgentConversation(
     val providerSessionId: String?,
     val serverId: String?,
     val workingDirectory: String?,
+    val modelId: String = "",
     val promptTokens: Long,
     val completionTokens: Long,
     val updatedAtMillis: Long,
@@ -116,6 +117,8 @@ interface AgentConversationRepository {
 
     suspend fun rename(conversationId: String, title: String): VmResult<Unit>
 
+    suspend fun updateModel(conversationId: String, modelId: String): VmResult<Unit>
+
     suspend fun delete(conversationId: String): VmResult<Unit>
 }
 
@@ -187,6 +190,7 @@ class DefaultAgentConversationRepository @Inject constructor(
         providerSessionId = providerSessionId,
         serverId = serverId,
         workingDirectory = workingDirectory,
+        modelId = modelId,
         promptTokens = promptTokens,
         completionTokens = completionTokens,
         updatedAtMillis = updatedAtMillis,
@@ -333,6 +337,14 @@ class DefaultAgentConversationRepository @Inject constructor(
                 conversationDao.getById(conversationId)?.let {
                     conversationDao.upsert(it.copy(title = title))
                 }
+                Unit
+            }
+        }
+
+    override suspend fun updateModel(conversationId: String, modelId: String): VmResult<Unit> =
+        withContext(ioDispatcher) {
+            vmCatching(::mapError) {
+                conversationDao.updateModel(conversationId, modelId, System.currentTimeMillis())
                 Unit
             }
         }

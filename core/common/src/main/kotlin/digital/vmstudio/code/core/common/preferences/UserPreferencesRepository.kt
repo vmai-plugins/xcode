@@ -132,6 +132,12 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setLastChatModel(model: String) = edit { it[Keys.LAST_CHAT_MODEL] = model }
 
+    suspend fun setProjectModel(projectKey: String, model: String) = edit {
+        if (projectKey.isBlank()) return@edit
+        val models = parseFolders(it[Keys.PROJECT_MODELS]) + (projectKey to model)
+        it[Keys.PROJECT_MODELS] = formatFolders(models)
+    }
+
     suspend fun setLastChatGeneral(general: Boolean) = edit { it[Keys.LAST_CHAT_GENERAL] = general }
 
     suspend fun setLastFolder(serverId: String, path: String) = edit {
@@ -232,6 +238,7 @@ class UserPreferencesRepository @Inject constructor(
             aiWebAccessEnabled = this[Keys.AI_WEB_ACCESS_ENABLED] ?: defaults.aiWebAccessEnabled,
             aiContextSize = this[Keys.AI_CONTEXT_SIZE] ?: defaults.aiContextSize,
             lastChatModel = this[Keys.LAST_CHAT_MODEL],
+            projectModels = parseFolders(this[Keys.PROJECT_MODELS]),
             lastChatGeneral = this[Keys.LAST_CHAT_GENERAL] ?: false,
             lastFolders = parseFolders(this[Keys.LAST_FOLDERS]),
             githubTokenCredentialId = this[Keys.GITHUB_TOKEN_CREDENTIAL],
@@ -341,6 +348,7 @@ class UserPreferencesRepository @Inject constructor(
         val AI_WEB_ACCESS_ENABLED = booleanPreferencesKey("ai_web_access_enabled")
         val AI_CONTEXT_SIZE = stringPreferencesKey("ai_context_size")
         val LAST_CHAT_MODEL = stringPreferencesKey("last_chat_model")
+        val PROJECT_MODELS = stringPreferencesKey("project_models")
         val LAST_CHAT_GENERAL = booleanPreferencesKey("last_chat_general")
         val LAST_FOLDERS = stringPreferencesKey("last_folders")
         val GITHUB_TOKEN_CREDENTIAL = stringPreferencesKey("github_token_credential")

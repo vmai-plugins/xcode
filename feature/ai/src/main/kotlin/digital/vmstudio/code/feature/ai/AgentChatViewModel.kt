@@ -456,6 +456,7 @@ class AgentChatViewModel @Inject constructor(
             val seen = mutableSetOf<String>()
             val restored = conversations.transcript(conversationId)
                 .map { it.toTranscriptItem(::nextId, seen) }
+            val modelToRestore = stored.modelId.takeIf { it.isNotBlank() }
 
             _uiState.update {
                 it.copy(
@@ -468,6 +469,7 @@ class AgentChatViewModel @Inject constructor(
                     // The route of a reopened chat carries no server; without this
                     // the chat could be read but never continued.
                     serverId = it.serverId ?: stored.serverId,
+                    selectedModel = modelToRestore ?: it.selectedModel,
                 )
             }
             checkHealth()
@@ -629,11 +631,14 @@ class AgentChatViewModel @Inject constructor(
                 syncedModels.isEmpty() || last in syncedModels
             }
             val defaultFallbackModel = "auto/best-coding"
-            val effectiveModel = (lastModel ?: omniModel)?.ifBlank { null } ?: defaultFallbackModel
-            _uiState.update {
-                it.copy(
+            val projectKey = projectPath?.trim().orEmpty()
+            val projectModel = if (projectKey.isNotBlank()) prefs.projectModels[projectKey] else null
+            val effectiveModel = (projectModel ?: lastModel ?: omniModel)?.ifBlank { null } ?: defaultFallbackModel
+            _uiState.update { current ->
+                val currentModel = current.selectedModel.takeIf { it.isNotBlank() && existingConversationId != null }
+                current.copy(
                     permissionMode = prefs.agentAutonomyLevel.toPermissionMode(),
-                    selectedModel = effectiveModel,
+                    selectedModel = currentModel ?: effectiveModel,
                     chatBubbleColorHex = prefs.chatBubbleColorHex,
                 )
             }
@@ -971,7 +976,17 @@ class AgentChatViewModel @Inject constructor(
                 selectedModel = model,
             )
         }
-        viewModelScope.launch { preferenceStore.setLastChatModel(model) }
+        viewModelScope.launch {
+            preferenceStore.setLastChatModel(model)
+            val convId = _uiState.value.conversationId
+            if (!convId.isNullOrBlank()) {
+                conversations.updateModel(convId, model)
+            }
+            val workingDir = _uiState.value.workingDirectory.trim()
+            if (workingDir.isNotBlank()) {
+                preferenceStore.setProjectModel(workingDir, model)
+            }
+        }
     }
 
     /** Refreshes the gateway's model list now, reporting a failure. */

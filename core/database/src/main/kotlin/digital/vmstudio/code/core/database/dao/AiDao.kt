@@ -38,6 +38,11 @@ interface ConversationDao {
     )
     suspend fun updateProviderSession(id: String, sessionId: String?, timestamp: Long)
 
+    @Query(
+        "UPDATE conversation SET modelId = :modelId, updatedAtMillis = :timestamp WHERE id = :id",
+    )
+    suspend fun updateModel(id: String, modelId: String, timestamp: Long)
+
     @Query("DELETE FROM conversation WHERE id = :id")
     suspend fun deleteById(id: String)
 
