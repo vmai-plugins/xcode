@@ -8,6 +8,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -246,7 +247,6 @@ fun ConnectorsScreen(
                     ModernConnectorCard(
                         icon = Icons.Default.Code,
                         iconTint = Color(0xFF9C27B0),
-                        badgeBackground = Color(0xFFF3E5F5),
                         title = "GitHub",
                         category = "Version Control & Codespaces",
                         status = if (state.hasGithubToken) VmStatus.CONNECTED else VmStatus.IDLE,
@@ -352,7 +352,6 @@ fun ConnectorsScreen(
                     ModernConnectorCard(
                         icon = Icons.Default.Terminal,
                         iconTint = Color(0xFF00897B),
-                        badgeBackground = Color(0xFFE0F2F1),
                         title = "Linux VPS Servers",
                         category = "SSH Remote Compute & Execution",
                         status = if (state.servers.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
@@ -375,7 +374,6 @@ fun ConnectorsScreen(
                     ModernConnectorCard(
                         icon = Icons.Default.Cloud,
                         iconTint = Color(0xFF0288D1),
-                        badgeBackground = Color(0xFFE1F5FE),
                         title = "VM Project Hub",
                         category = "Universal Workspace & Kanban Sync",
                         status = if (state.hasHubKey) VmStatus.CONNECTED else VmStatus.IDLE,
@@ -538,7 +536,6 @@ fun ConnectorsScreen(
                     ModernConnectorCard(
                         icon = Icons.Default.TableChart,
                         iconTint = Color(0xFF2E7D32),
-                        badgeBackground = Color(0xFFE8F5E9),
                         title = "Google Sheets",
                         category = "Data & Living Knowledge Base",
                         status = if (state.sheetPreviewRows.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
@@ -666,7 +663,6 @@ fun ConnectorsScreen(
                     ModernConnectorCard(
                         icon = Icons.Default.Storage,
                         iconTint = Color(0xFFF57C00),
-                        badgeBackground = Color(0xFFFFF3E0),
                         title = "Google Drive & Docs",
                         category = "Drive Storage, Docs & Sheet Intelligence",
                         status = if (state.driveFiles.isNotEmpty() || state.driveBackups.isNotEmpty() || state.hasDriveToken) VmStatus.CONNECTED else VmStatus.IDLE,
@@ -945,7 +941,6 @@ fun ConnectorsScreen(
                     ModernConnectorCard(
                         icon = Icons.Default.SmartToy,
                         iconTint = Color(0xFF673AB7),
-                        badgeBackground = Color(0xFFEDE7F6),
                         title = "OmniRoute AI Gateway",
                         category = "Multi-Model Intelligence & Code Agent",
                         status = VmStatus.CONNECTED,
@@ -1047,7 +1042,6 @@ fun ConnectorsScreen(
                     ModernConnectorCard(
                         icon = Icons.Default.SmartToy,
                         iconTint = Color(0xFF25D366),
-                        badgeBackground = Color(0xFFE8F5E9),
                         title = "WhatsApp (Evolution API)",
                         category = "Messaging, APK Dispatch & Remote AI",
                         status = when {
@@ -1316,23 +1310,32 @@ private fun ConnectorFilterChip(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color(0xFF1E1F23),
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else Color(0xFF2A2C32),
         ),
-        shape = RoundedCornerShape(16.dp),
-    )
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF9CA3AF),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+        )
+    }
 }
 
 @Composable
 private fun ModernConnectorCard(
     icon: ImageVector,
     iconTint: Color,
-    badgeBackground: Color,
+    badgeBackground: Color = iconTint.copy(alpha = 0.15f),
     title: String,
     category: String,
     status: VmStatus,
@@ -1349,8 +1352,15 @@ private fun ModernConnectorCard(
     expandedContent: @Composable () -> Unit,
 ) {
     val spacing = VmTheme.spacing
+    val isConnected = status == VmStatus.CONNECTED
 
-    VmCard(
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF151619),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isConnected) iconTint.copy(alpha = 0.45f) else Color(0xFF24262C),
+        ),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -1366,12 +1376,13 @@ private fun ModernConnectorCard(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    modifier = Modifier.weight(1f),
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(badgeBackground),
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(iconTint.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -1386,25 +1397,74 @@ private fun ModernConnectorCard(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE2E2E6),
                         )
                         Text(
                             text = category,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF8E9199),
                         )
                     }
                 }
-                VmStatusBadge(
-                    status = status,
-                    label = statusText,
-                )
+
+                // Sleek glowing status indicator pill
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = when (status) {
+                        VmStatus.CONNECTED -> Color(0xFF10B981).copy(alpha = 0.12f)
+                        VmStatus.CONNECTING -> Color(0xFFF59E0B).copy(alpha = 0.12f)
+                        VmStatus.ERROR -> Color(0xFFEF4444).copy(alpha = 0.12f)
+                        else -> Color(0xFF26282E)
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        when (status) {
+                            VmStatus.CONNECTED -> Color(0xFF10B981).copy(alpha = 0.4f)
+                            VmStatus.CONNECTING -> Color(0xFFF59E0B).copy(alpha = 0.4f)
+                            VmStatus.ERROR -> Color(0xFFEF4444).copy(alpha = 0.4f)
+                            else -> Color(0xFF32353D)
+                        },
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(
+                                    when (status) {
+                                        VmStatus.CONNECTED -> Color(0xFF10B981)
+                                        VmStatus.CONNECTING -> Color(0xFFF59E0B)
+                                        VmStatus.ERROR -> Color(0xFFEF4444)
+                                        else -> Color(0xFF6B7280)
+                                    },
+                                ),
+                        )
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = when (status) {
+                                VmStatus.CONNECTED -> Color(0xFF34D399)
+                                VmStatus.CONNECTING -> Color(0xFFFBBF24)
+                                VmStatus.ERROR -> Color(0xFFF87171)
+                                else -> Color(0xFF9CA3AF)
+                            },
+                        )
+                    }
+                }
             }
 
             // Description
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color(0xFFA0A3AD),
+                lineHeight = 18.sp,
             )
 
             // Tags Pill Row
@@ -1417,13 +1477,14 @@ private fun ModernConnectorCard(
                 tags.forEach { tag ->
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        color = Color(0xFF1C1D21),
+                        border = BorderStroke(1.dp, Color(0xFF292B32)),
                     ) {
                         Text(
                             text = tag,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = Color(0xFF8E919B),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                         )
                     }
                 }
@@ -1432,25 +1493,26 @@ private fun ModernConnectorCard(
             // Live status banner if present
             statusMessage?.let { msg ->
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF1E2026),
+                    border = BorderStroke(1.dp, Color(0xFF2E313A)),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(16.dp),
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(15.dp),
                         )
                         Text(
                             text = msg,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            color = Color(0xFFD1D5DB),
                         )
                     }
                 }
@@ -1463,25 +1525,50 @@ private fun ModernConnectorCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (primaryActionText != null && onPrimaryAction != null) {
-                    VmButton(
-                        text = primaryActionText,
-                        onClick = onPrimaryAction,
-                        style = VmButtonStyle.Primary,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = iconTint,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onPrimaryAction),
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(vertical = 9.dp),
+                        ) {
+                            Text(
+                                text = primaryActionText,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                        }
+                    }
                 }
                 if (secondaryActionText != null && onSecondaryAction != null) {
-                    OutlinedButton(
-                        onClick = onSecondaryAction,
-                        shape = RoundedCornerShape(8.dp),
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF22242B),
+                        border = BorderStroke(1.dp, Color(0xFF32353E)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onSecondaryAction),
                     ) {
-                        Text(secondaryActionText, style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            text = secondaryActionText,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFE2E2E6),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                        )
                     }
                 }
                 IconButton(onClick = onToggleExpand) {
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = if (isExpanded) "Collapse" else "Expand configuration",
+                        tint = Color(0xFF8E919B),
                     )
                 }
             }
@@ -1493,7 +1580,10 @@ private fun ModernConnectorCard(
                 exit = fadeOut() + shrinkVertically(),
             ) {
                 Column {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = spacing.xs),
+                        color = Color(0xFF26282E),
+                    )
                     expandedContent()
                 }
             }

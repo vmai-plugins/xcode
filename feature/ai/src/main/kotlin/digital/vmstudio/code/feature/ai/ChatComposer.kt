@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
@@ -112,6 +113,7 @@ internal fun ModernComposer(
     onStop: () -> Unit,
     onOpenPreview: (() -> Unit)? = null,
     onOpenFiles: (() -> Unit)? = null,
+    onTriggerCloudBuild: (() -> Unit)? = null,
     onDetach: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -169,6 +171,16 @@ internal fun ModernComposer(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onOpenFiles()
+                            },
+                        )
+                    }
+                    if (onTriggerCloudBuild != null) {
+                        MentionChip(
+                            label = "/build",
+                            icon = Icons.Default.Build,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onTriggerCloudBuild()
                             },
                         )
                     }

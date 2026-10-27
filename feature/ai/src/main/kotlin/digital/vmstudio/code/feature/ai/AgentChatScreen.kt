@@ -48,14 +48,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.widget.Toast
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -250,6 +256,74 @@ fun AgentChatScreen(
         state.conversationId?.let { chats.chatColors[it] } ?: state.chatBubbleColorHex
     }
 
+    var showCloudBuildDialog by remember { mutableStateOf(false) }
+    var isCloudBuilding by remember { mutableStateOf(false) }
+
+    if (showCloudBuildDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isCloudBuilding) showCloudBuildDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Build,
+                        contentDescription = null,
+                        tint = Color(0xFF26A69A),
+                    )
+                    Text("GitHub Cloud APK Builder")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Dispatch an automated Cloud APK Build on GitHub Actions?",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "• Cloud runner compiles latest main\n• Publishes directly to App Hub (apps.vmstudio.digital)\n• Ready to install on your phone in minutes",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (isCloudBuilding) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(top = 8.dp),
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text("Dispatching to GitHub Actions...", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isCloudBuilding,
+                    onClick = {
+                        isCloudBuilding = true
+                        viewModel.triggerCloudBuild { success, msg ->
+                            isCloudBuilding = false
+                            showCloudBuildDialog = false
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                ) {
+                    Text("Build & Deploy Now", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isCloudBuilding,
+                    onClick = { showCloudBuildDialog = false },
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -305,6 +379,7 @@ fun AgentChatScreen(
                     onAddNewProject = onAddNewProject,
                     onQuickCreateProject = viewModel::quickCreateProject,
                     onOpenChatHistory = onOpenChatHistory,
+                    onTriggerCloudBuild = { showCloudBuildDialog = true },
                     requestOpenProjects = requestOpenProjects,
                     onRequestOpenProjectsConsumed = { requestOpenProjects = false },
                 )
@@ -561,6 +636,7 @@ fun AgentChatScreen(
                 } else state.serverId?.let { sid ->
                     { onOpenFiles(sid, state.workingDirectory.trim()) }
                 },
+                onTriggerCloudBuild = { showCloudBuildDialog = true },
                 onDetach = viewModel::detachToBackground,
             )
         }

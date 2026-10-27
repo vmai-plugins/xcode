@@ -17,10 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
@@ -65,7 +62,7 @@ import digital.vmstudio.code.navigation.VmNavHost
 import digital.vmstudio.code.navigation.navigateToNewChat
 import kotlinx.coroutines.launch
 
-private const val DRAWER_RECENT_CHATS = 15
+private const val DRAWER_RECENT_CHATS = 50
 
 @Composable
 fun VmApp(
@@ -362,27 +359,6 @@ private fun ColumnScope.DrawerNavigationItems(
     }
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-    NavigationDrawerItem(
-        label = { Text("Projects") },
-        icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-        selected = currentRoute == VmDestination.Projects.route,
-        onClick = { onNavigate(VmDestination.Projects) },
-        modifier = Modifier.padding(horizontal = 12.dp),
-    )
-    NavigationDrawerItem(
-        label = { Text("Files") },
-        icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
-        selected = currentRoute == VmDestination.Files.route,
-        onClick = { onNavigate(VmDestination.Files) },
-        modifier = Modifier.padding(horizontal = 12.dp),
-    )
-    NavigationDrawerItem(
-        label = { Text("Cloud & Connectors Hub") },
-        icon = { Icon(Icons.Default.Cloud, contentDescription = null) },
-        selected = currentRoute == VmDestination.Connectors.route,
-        onClick = { onNavigate(VmDestination.Connectors) },
-        modifier = Modifier.padding(horizontal = 12.dp),
-    )
     NavigationDrawerItem(
         label = { Text("Settings") },
         icon = { Icon(Icons.Default.Settings, contentDescription = null) },

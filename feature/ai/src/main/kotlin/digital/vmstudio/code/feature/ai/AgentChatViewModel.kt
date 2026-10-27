@@ -647,6 +647,28 @@ class AgentChatViewModel @Inject constructor(
         requestGithubRepositories()
     }
 
+    fun triggerCloudBuild(
+        workflowFileName: String = "nightly.yml",
+        onTriggered: (Boolean, String) -> Unit = { _, _ -> },
+    ) {
+        viewModelScope.launch {
+            try {
+                when (val result = githubRepositoryClient.dispatchWorkflow("vmai-plugins/xcode", workflowFileName, "main")) {
+                    is VmResult.Success -> {
+                        onTriggered(true, "Cloud APK build '$workflowFileName' dispatched to GitHub Actions! Finished APK will deploy to App Hub.")
+                    }
+                    is VmResult.Failure -> {
+                        onTriggered(false, result.error.summary)
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                onTriggered(false, exception.message ?: "Failed to trigger cloud build")
+            }
+        }
+    }
+
     fun refreshGithubRepositories() {
         if (_uiState.value.isLoadingGithubRepositories) return
         hasLoadedGithubRepositories = true

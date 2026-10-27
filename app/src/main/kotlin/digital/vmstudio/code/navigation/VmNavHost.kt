@@ -382,6 +382,9 @@ fun VmNavHost(
         composable(VmDestination.Settings.route) {
             MenuScaffold(title = "Settings", onOpenMenu = onOpenMenu) {
                 SettingsScreen(
+                    onOpenProjects = { navController.navigate(VmDestination.Projects.route) },
+                    onOpenFiles = { navController.navigate(VmDestination.Files.route) },
+                    onOpenConnectors = { navController.navigate(VmDestination.Connectors.route) },
                     onOpenAi = { navController.navigate(VmDestination.SettingsAi.route) },
                     onOpenAgent = { navController.navigate(VmDestination.SettingsAgent.route) },
                     onOpenAppearance = { navController.navigate(VmDestination.SettingsAppearance.route) },

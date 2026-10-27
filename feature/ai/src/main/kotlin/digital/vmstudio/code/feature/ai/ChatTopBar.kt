@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
@@ -109,6 +110,7 @@ internal fun ChatTopBar(
     onAddNewProject: (() -> Unit)? = null,
     onQuickCreateProject: ((name: String, isLocal: Boolean) -> Unit)? = null,
     onOpenChatHistory: (() -> Unit)? = null,
+    onTriggerCloudBuild: (() -> Unit)? = null,
     requestOpenProjects: Boolean = false,
     onRequestOpenProjectsConsumed: () -> Unit = {},
 ) {
@@ -190,6 +192,16 @@ internal fun ChatTopBar(
                     )
                 }
             }
+            if (onTriggerCloudBuild != null) {
+                IconButton(onClick = onTriggerCloudBuild) {
+                    Icon(
+                        imageVector = Icons.Default.Build,
+                        contentDescription = "Build Cloud APK",
+                        tint = Color(0xFF26A69A),
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+            }
             if (artifactsCount > 0 && onOpenArtifacts != null) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -243,6 +255,23 @@ internal fun ChatTopBar(
                             onClick = {
                                 showMore = false
                                 onOpenArtifacts()
+                            },
+                        )
+                    }
+                    if (onTriggerCloudBuild != null) {
+                        DropdownMenuItem(
+                            text = { Text("Build Cloud APK") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Build,
+                                    contentDescription = null,
+                                    tint = Color(0xFF26A69A),
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            onClick = {
+                                showMore = false
+                                onTriggerCloudBuild()
                             },
                         )
                     }

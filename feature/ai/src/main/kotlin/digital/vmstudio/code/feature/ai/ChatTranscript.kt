@@ -675,17 +675,11 @@ private fun AssistantReply(text: String) {
     var isSpeaking by remember { mutableStateOf(false) }
     var ttsInstance by remember { mutableStateOf<TextToSpeech?>(null) }
 
-    DisposableEffect(context) {
-        var tts: TextToSpeech? = null
-        tts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.getDefault()
-            }
-        }
-        ttsInstance = tts
+    DisposableEffect(Unit) {
         onDispose {
-            tts?.stop()
-            tts?.shutdown()
+            ttsInstance?.stop()
+            ttsInstance?.shutdown()
+            ttsInstance = null
         }
     }
 
@@ -729,14 +723,21 @@ private fun AssistantReply(text: String) {
             IconButton(
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    val tts = ttsInstance
-                    if (tts != null) {
-                        if (isSpeaking) {
-                            tts.stop()
-                            isSpeaking = false
+                    if (isSpeaking) {
+                        ttsInstance?.stop()
+                        isSpeaking = false
+                    } else {
+                        val speechText = cleanTtsText ?: text.take(500)
+                        if (ttsInstance == null) {
+                            ttsInstance = TextToSpeech(context) { status ->
+                                if (status == TextToSpeech.SUCCESS) {
+                                    ttsInstance?.language = Locale.getDefault()
+                                    ttsInstance?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "tts_reply")
+                                    isSpeaking = true
+                                }
+                            }
                         } else {
-                            val speechText = cleanTtsText ?: text.take(500)
-                            tts.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "tts_reply")
+                            ttsInstance?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "tts_reply")
                             isSpeaking = true
                         }
                     }
@@ -820,7 +821,7 @@ internal fun FollowTail(listState: LazyListState, transcript: List<TranscriptIte
         if (last >= 0) {
             val visibleLast = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             if (visibleLast < last) {
-                listState.animateScrollToItem(last)
+                listState.scrollToItem(last)
             }
         }
     }
