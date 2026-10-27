@@ -132,7 +132,7 @@ class OmniRouteAgentLoop @Inject constructor(
                 currentIteration++
                 currentCoroutineContext().ensureActive()
 
-                val budget = config.contextChars ?: MAX_HISTORY_CHARS
+                val budget = effectiveContextBudget(currentModel, config.contextChars)
                 var target = GatewayTarget(baseUrl, key, dialect, currentModel, budget)
                 val effectivePrompt = buildString {
                     config.systemPrompt?.let { append(it) }
@@ -280,7 +280,7 @@ class OmniRouteAgentLoop @Inject constructor(
             // Images are sent once; later turns keep only the text.
             // Kept trimmed: up to 16 sessions of untrimmed tool output could hold tens
             // of MB for the life of the process. Twice the send budget keeps headroom.
-            val budget = config.contextChars ?: MAX_HISTORY_CHARS
+            val budget = effectiveContextBudget(currentModel, config.contextChars)
             sessions.put(sessionId, trimHistory(history.closedForResume(), budget * 2))
         }
     }
@@ -1584,6 +1584,16 @@ internal const val MAX_HISTORY_CHARS = 100_000
 
 /** Older tool results are shortened to this once the history is over budget. */
 internal const val TRIMMED_TOOL_OUTPUT_CHARS = 1_500
+
+internal fun effectiveContextBudget(model: String, userConfiguredChars: Int?): Int {
+    if (userConfiguredChars != null && userConfiguredChars > 0) return userConfiguredChars
+    val lower = model.lowercase()
+    return when {
+        lower.contains(":free") || lower.contains("groq") || lower.contains("qwen") || lower.contains("gpt-oss") || lower.contains("kimi") -> 55_000
+        lower.contains("claude") || lower.contains("gemini") || lower.contains("opus") || lower.contains("pro-") -> 350_000
+        else -> 120_000
+    }
+}
 
 internal fun capToolOutput(output: String, limit: Int = MAX_TOOL_OUTPUT_CHARS): String =
     if (output.length <= limit) {

@@ -77,7 +77,7 @@ internal fun GitHubFileTreeSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFF1E1F22),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
             modifier = Modifier
@@ -148,12 +148,12 @@ internal fun GitHubFileTreeSheet(
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFF5865F2),
-                    unfocusedBorderColor = Color(0xFF35373C),
-                    focusedContainerColor = Color(0xFF2B2D31),
-                    unfocusedContainerColor = Color(0xFF2B2D31),
-                    focusedTextColor = Color(0xFFE3E5E8),
-                    unfocusedTextColor = Color(0xFFE3E5E8),
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -168,7 +168,7 @@ internal fun GitHubFileTreeSheet(
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(
-                        color = Color(0xFF5865F2),
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(32.dp),
                     )
                 }
@@ -182,7 +182,7 @@ internal fun GitHubFileTreeSheet(
                     Text(
                         text = if (searchQuery.isBlank()) "No files found in repository." else "No matching files found.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF8E919A),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {
@@ -195,7 +195,7 @@ internal fun GitHubFileTreeSheet(
                     items(blobFiles, key = { it.path }) { item ->
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF2B2D31),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {

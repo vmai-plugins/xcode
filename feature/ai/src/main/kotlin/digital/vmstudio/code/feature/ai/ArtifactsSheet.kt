@@ -270,8 +270,8 @@ private fun ArtifactCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF1E1F22),
-                    border = BorderStroke(1.dp, Color(0xFF2E3036)),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable(onClick = onOpenDiff),
@@ -291,15 +291,15 @@ private fun ArtifactCard(
                             text = "Diff",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFFE2E2E5),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF1E1F22),
-                    border = BorderStroke(1.dp, Color(0xFF2E3036)),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable(onClick = onOpenFile),
@@ -319,7 +319,7 @@ private fun ArtifactCard(
                             text = "Open",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFFE2E2E5),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }

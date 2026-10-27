@@ -344,7 +344,7 @@ private fun DiffContent(
 private fun FileDiffHeader(fileDiff: FileDiff) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF1E1F22),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -366,12 +366,12 @@ private fun FileDiffHeader(fileDiff: FileDiff) {
                 text = fileDiff.displayPath.substringAfterLast('/'),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFFE2E2E5),
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = fileDiff.displayPath,
                 style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                color = Color(0xFF8E919A),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -403,7 +403,7 @@ private fun DiffLineRow(line: DiffLine) {
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF2B2D31),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -413,7 +413,7 @@ private fun DiffLineRow(line: DiffLine) {
                     Text(
                         text = line.text.trim(),
                         style = VmTheme.code.mono.copy(fontSize = 10.sp),
-                        color = Color(0xFF8E919A),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

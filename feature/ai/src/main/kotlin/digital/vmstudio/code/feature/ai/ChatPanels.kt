@@ -342,7 +342,7 @@ internal fun BackgroundRunsSection(
 
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF1E1F22),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = spacing.md, vertical = 4.dp),
@@ -368,12 +368,12 @@ internal fun BackgroundRunsSection(
                         text = "${runs.size} task${if (runs.size > 1) "s" else ""} running",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFE2E2E5),
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF2B2D31))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     ) {
                         Text(
@@ -478,7 +478,7 @@ internal fun QueuedTasksShelf(
 
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF1E1F22),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = spacing.md, vertical = 4.dp),
@@ -495,24 +495,24 @@ internal fun QueuedTasksShelf(
                     text = "Queued Messages",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFE2E2E5),
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF333539))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 ) {
                     Text(
                         text = queued.size.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFC4C6D0),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(
                     text = "Sends after agent finishes working",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF8E919A),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
@@ -520,7 +520,7 @@ internal fun QueuedTasksShelf(
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = Color(0xFF8E919A),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )
             }

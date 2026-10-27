@@ -152,7 +152,7 @@ internal fun ToolBatchRow(
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1E1F22),
+            color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
                 .clickable {
@@ -175,13 +175,13 @@ internal fun ToolBatchRow(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF2B2D31))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .padding(horizontal = 4.dp, vertical = 1.dp),
                     ) {
                         Text(
                             text = "${batch.tools.size}",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = Color(0xFFC4C6D0),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -242,17 +242,20 @@ internal fun TranscriptRow(
                 .padding(vertical = 4.dp),
             contentAlignment = Alignment.CenterEnd,
         ) {
-            val bubbleColor = remember(chatBubbleColorHex) {
-                if (!chatBubbleColorHex.isNullOrBlank()) {
+            val defaultBubbleColor = MaterialTheme.colorScheme.primaryContainer
+            val defaultTextColor = MaterialTheme.colorScheme.onPrimaryContainer
+            val hasCustomColor = !chatBubbleColorHex.isNullOrBlank()
+            val bubbleColor = remember(chatBubbleColorHex, defaultBubbleColor) {
+                if (hasCustomColor) {
                     try {
                         val clean = chatBubbleColorHex.trim().removePrefix("#")
                         val full = if (clean.length == 6) "FF$clean" else clean
                         Color(full.toLong(16))
                     } catch (_: Exception) {
-                        Color(0xFF1E1F23)
+                        defaultBubbleColor
                     }
                 } else {
-                    Color(0xFF1E1F23)
+                    defaultBubbleColor
                 }
             }
             Surface(
@@ -264,7 +267,7 @@ internal fun TranscriptRow(
                 Text(
                     text = item.text,
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = Color(0xFFF3F4F6),
+                    color = if (hasCustomColor) Color(0xFFF3F4F6) else defaultTextColor,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
@@ -371,8 +374,8 @@ private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
         AnimatedVisibility(visible = expanded) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF141416),
-                border = BorderStroke(1.dp, Color(0xFF27272A)),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp, bottom = 4.dp),
@@ -380,7 +383,7 @@ private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
                 Text(
                     text = item.text,
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                    color = Color(0xFFD1D5DB),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(10.dp),
                 )
             }
@@ -525,8 +528,8 @@ private fun ToolRow(
         AnimatedVisibility(visible = expanded && hasOutput) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF141416),
-                border = BorderStroke(1.dp, Color(0xFF27272A)),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp, bottom = 4.dp),

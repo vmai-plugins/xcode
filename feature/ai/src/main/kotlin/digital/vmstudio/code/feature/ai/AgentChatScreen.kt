@@ -93,7 +93,12 @@ fun AgentChatScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
     val listState = rememberLazyListState()
-    var composerText by remember { mutableStateOf("") }
+    var composerText by remember { mutableStateOf(state.initialPrompt.orEmpty()) }
+    androidx.compose.runtime.LaunchedEffect(state.initialPrompt) {
+        if (!state.initialPrompt.isNullOrBlank() && composerText.isBlank()) {
+            composerText = state.initialPrompt.orEmpty()
+        }
+    }
     var showDirectoryDialog by remember { mutableStateOf(false) }
     var requestOpenProjects by remember { mutableStateOf(false) }
     var directoryServerId by remember { mutableStateOf<String?>(null) }

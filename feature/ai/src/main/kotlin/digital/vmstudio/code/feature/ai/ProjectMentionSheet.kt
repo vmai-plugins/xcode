@@ -124,7 +124,7 @@ internal fun ProjectMentionSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF1E1F22),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
             modifier = Modifier
@@ -200,14 +200,14 @@ internal fun ProjectMentionSheet(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Clear search",
-                                tint = Color(0xFF8E919A),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 } else null,
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF2B2D31),
-                    unfocusedContainerColor = Color(0xFF2B2D31),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                 ),
@@ -229,8 +229,8 @@ internal fun ProjectMentionSheet(
                         onClick = { selectedCategory = category },
                         label = { Text(category.title) },
                         colors = FilterChipDefaults.filterChipColors(
-                            containerColor = Color(0xFF2B2D31),
-                            labelColor = Color(0xFF8E919A),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                             selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         ),
@@ -465,7 +465,7 @@ private fun MentionItemRow(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF1E1F22)),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -486,19 +486,19 @@ private fun MentionItemRow(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (!branch.isNullOrBlank()) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFF1E1F22),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
                             Text(
                                 text = branch,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFF8E919A),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                             )
                         }

@@ -351,7 +351,12 @@ fun VmNavHost(
             AgentChat(navController, onOpenMenu, startWatchingRuns)
         }
 
-        composable(VmDestination.GeneralChat.route) {
+        composable(VmDestination.GeneralChat.route) { backStackEntry ->
+            val pendingPrompt = navController.previousBackStackEntry?.savedStateHandle?.get<String>("initialPrompt")
+            if (pendingPrompt != null) {
+                backStackEntry.savedStateHandle["initialPrompt"] = pendingPrompt
+                navController.previousBackStackEntry?.savedStateHandle?.remove<String>("initialPrompt")
+            }
             AgentChat(navController, onOpenMenu, startWatchingRuns)
         }
 
@@ -373,7 +378,7 @@ fun VmNavHost(
                 onSolveWithAi = { title, detail ->
                     val taskPrompt = if (detail.isNotBlank()) "Task: $title\n\nDetails:\n$detail" else "Task: $title"
                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(taskPrompt))
-                    android.widget.Toast.makeText(context, "Task prompt copied to clipboard! Opening AI Agent...", android.widget.Toast.LENGTH_SHORT).show()
+                    navController.currentBackStackEntry?.savedStateHandle?.set("initialPrompt", taskPrompt)
                     navController.navigate(VmDestination.GeneralChat.route)
                 },
             )

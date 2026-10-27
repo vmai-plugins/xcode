@@ -139,7 +139,7 @@ internal fun ChatTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF1E1F22))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .clickable(enabled = canSwitchProject) {
                         showProjects = true
                         onOpenGithubPicker?.invoke()
@@ -149,7 +149,7 @@ internal fun ChatTopBar(
                 Icon(
                     imageVector = Icons.Default.Folder,
                     contentDescription = null,
-                    tint = if (workingDirectory.isNotBlank()) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
+                    tint = if (workingDirectory.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(15.dp),
                 )
                 Spacer(modifier = Modifier.size(6.dp))
@@ -157,7 +157,7 @@ internal fun ChatTopBar(
                     text = displayTitle,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFE2E2E5),
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),

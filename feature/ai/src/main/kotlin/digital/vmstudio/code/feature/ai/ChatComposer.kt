@@ -67,6 +67,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import digital.vmstudio.code.core.git.GitHubRepository
@@ -138,8 +139,8 @@ internal fun ModernComposer(
             .fillMaxWidth()
             .padding(horizontal = spacing.md, vertical = spacing.xs),
         shape = RoundedCornerShape(22.dp),
-        color = Color(0xFF1E1F22),
-        border = BorderStroke(1.dp, Color(0xFF2E3036)),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
             AttachmentChips(attachments = attachments, onRemove = onRemoveAttachment)
@@ -184,6 +185,46 @@ internal fun ModernComposer(
                             },
                         )
                     }
+                    MentionChip(
+                        label = "/test",
+                        icon = Icons.Default.Check,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                            val updated = if (prefix.isBlank()) "Run all unit tests and report any failures with suggested fixes." else "$prefix Run unit tests and report failures."
+                            onTextChange(updated.trimStart())
+                        },
+                    )
+                    MentionChip(
+                        label = "/fix",
+                        icon = Icons.Default.Build,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                            val updated = if (prefix.isBlank()) "Analyze recent errors or warnings and apply the minimal correct fix." else "$prefix Fix errors and apply minimal fix."
+                            onTextChange(updated.trimStart())
+                        },
+                    )
+                    MentionChip(
+                        label = "/review",
+                        icon = Icons.Default.Source,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                            val updated = if (prefix.isBlank()) "Review uncommitted git changes for bugs, security vulnerabilities, and code quality." else "$prefix Review git changes."
+                            onTextChange(updated.trimStart())
+                        },
+                    )
+                    MentionChip(
+                        label = "/explain",
+                        icon = Icons.Default.AutoAwesome,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                            val updated = if (prefix.isBlank()) "Explain how this architecture and data flow works step-by-step." else "$prefix Explain this code."
+                            onTextChange(updated.trimStart())
+                        },
+                    )
                     MentionChip(
                         label = "/diff",
                         icon = Icons.Default.Source,
@@ -328,6 +369,13 @@ internal fun ModernComposer(
                 }
             }
 
+            if (text.isNotBlank() && !showMentions) {
+                DevAccessoryBar(
+                    onInsert = { onTextChange(text + it) },
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+
             TextField(
                 value = text,
                 onValueChange = onTextChange,
@@ -336,7 +384,7 @@ internal fun ModernComposer(
                     Text(
                         text = if (isRunning) "Queue follow-up task…" else "Ask anything, @ to mention, / for actions",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF8E919A),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
                 colors = TextFieldDefaults.colors(
@@ -406,7 +454,7 @@ internal fun ModernComposer(
                 // Dedicated @ Mention Context Button
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFF2B2D31),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
@@ -419,7 +467,7 @@ internal fun ModernComposer(
                         Text(
                             text = "@",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = if (text.contains("@")) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
+                            color = if (text.contains("@")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -463,7 +511,7 @@ internal fun ModernComposer(
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = "Voice prompt",
-                        tint = if (text.isNotBlank()) MaterialTheme.colorScheme.primary else Color(0xFF8E919A),
+                        tint = if (text.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -474,7 +522,7 @@ internal fun ModernComposer(
                     if (onDetach != null) {
                         Surface(
                             shape = CircleShape,
-                            color = Color(0xFF2B2D31),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -487,7 +535,7 @@ internal fun ModernComposer(
                                 Icon(
                                     imageVector = Icons.Default.Schedule,
                                     contentDescription = "Detach to background",
-                                    tint = Color(0xFF6C9EFF),
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(18.dp),
                                 )
                             }
@@ -784,7 +832,7 @@ private fun MentionChip(
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF2B2D31),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
@@ -803,13 +851,53 @@ private fun MentionChip(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFFE2E2E5),
+                color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
             )
         }
     }
 }
 
+
+@Composable
+private fun DevAccessoryBar(
+    onInsert: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptic = LocalHapticFeedback.current
+    val symbols = listOf("Tab", "|", "~", "/", "$", "&&", ";", "-", "_", ":", "\"", "'", "{", "}", "[", "]")
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        symbols.forEach { sym ->
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val insertValue = if (sym == "Tab") "    " else sym
+                        onInsert(insertValue)
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = sym,
+                    style = VmTheme.code.mono.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
 
 private fun attachmentName(context: Context, uri: Uri): String =
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)

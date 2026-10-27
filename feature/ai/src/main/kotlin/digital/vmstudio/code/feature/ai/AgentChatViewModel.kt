@@ -122,6 +122,7 @@ data class AgentChatUiState(
      * app module, and a feature module must not depend on it.
      */
     val watchServerId: String? = null,
+    val initialPrompt: String? = null,
     val error: VmError? = null,
     val availableProjects: List<Project> = emptyList(),
     val selectedModel: String = "",
@@ -201,8 +202,9 @@ class AgentChatViewModel @Inject constructor(
      * it; decoding again turned "+" into spaces and crashed on a "%".
      */
     private val projectPath: String? = savedStateHandle.get<String>(ARG_PATH)
+    private val initialPrompt: String? = savedStateHandle[ARG_INITIAL_PROMPT]
 
-    private val _uiState = MutableStateFlow(AgentChatUiState(serverId = serverId))
+    private val _uiState = MutableStateFlow(AgentChatUiState(serverId = serverId, initialPrompt = initialPrompt))
     val uiState: StateFlow<AgentChatUiState> = _uiState.asStateFlow()
 
     private var runJob: Job? = null
@@ -1626,6 +1628,7 @@ class AgentChatViewModel @Inject constructor(
         const val ARG_SERVER_ID = "serverId"
         const val ARG_PATH = "path"
         const val ARG_CONVERSATION_ID = "conversationId"
+        const val ARG_INITIAL_PROMPT = "initialPrompt"
 
         /** Stable id so the in-progress reply keeps its place in the list. */
         private const val STREAMING_ID = "streaming-draft"
