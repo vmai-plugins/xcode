@@ -35,6 +35,31 @@ class GitHubSettingsViewModel @Inject constructor(
         loadRepositories()
     }
 
+    fun triggerBuild(workflowFileName: String = "nightly.yml", onTriggered: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                when (val result = github.dispatchWorkflow("vmai-plugins/xcode", workflowFileName, "main")) {
+                    is VmResult.Success -> {
+                        _uiState.update { it.copy(isLoading = false) }
+                        onTriggered(true, "Cloud build '$workflowFileName' dispatched to GitHub Actions! Finished APK will be published to Apps Hub.")
+                    }
+                    is VmResult.Failure -> {
+                        val message = result.error.userMessage
+                        _uiState.update { it.copy(isLoading = false, error = message) }
+                        onTriggered(false, message)
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                val message = exception.message ?: "Failed to trigger GitHub workflow"
+                _uiState.update { it.copy(isLoading = false, error = message) }
+                onTriggered(false, message)
+            }
+        }
+    }
+
     fun setToken(token: String, onSaved: () -> Unit = {}) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
