@@ -136,7 +136,11 @@ class VmProjectHubClient @Inject constructor(
 
     suspend fun getEffectiveHubBaseUrl(): String {
         val configured = preferencesRepository.preferences.first().hubBaseUrl.trim()
-        val base = if (configured.isNotBlank()) configured else DEFAULT_HUB_BASE_URL
+        val base = if (configured.isNotBlank() && !configured.contains("saketdhamashram.org")) {
+            configured
+        } else {
+            DEFAULT_HUB_BASE_URL
+        }
         return if (!base.contains("/wp-json/xcodes/v1")) {
             "${base.removeSuffix("/")}/wp-json/xcodes/v1"
         } else {
@@ -760,12 +764,11 @@ class VmProjectHubClient @Inject constructor(
     }
 
     companion object {
-        private const val VM_STUDIO_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
-        private const val SAKET_DHAM_HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
-        const val HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
-        private const val DEFAULT_HUB_BASE_URL = "https://saketdhamashram.org/wp-json/xcodes/v1"
-private const val DEFAULT_HUB_KEY = "xc_b97a8a0607420e8996f3ce2be04ad0647c7f0ec5"
-private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        const val HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
+        const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"
+        private const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
+        private const val DEFAULT_HUB_KEY = "xc_b97a8a0607420e8996f3ce2be04ad0647c7f0ec5"
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
 

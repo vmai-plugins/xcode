@@ -331,7 +331,7 @@ fun ConnectorsScreen(
                             ) {
                                 VmButton(
                                     text = if (state.isSyncingHub) "Provisioning All Services…" else "Connect & Provision Everything",
-                                    onClick = { viewModel.pairHubKey(hubKeyDraft, hubBaseUrlDraft) },
+                                    onClick = { viewModel.pairHubKey(hubKeyDraft) },
                                     loading = state.isSyncingHub,
                                     enabled = hubKeyDraft.isNotBlank() && !state.isSyncingHub,
                                     style = VmButtonStyle.Primary,
@@ -545,27 +545,18 @@ fun ConnectorsScreen(
                             )
                             Text(
                                 text = if (state.hasHubKey) {
-                                    "Your device is paired with ${state.hubBaseUrl}. You can update your Hub URL, Key, or unpair at any time."
+                                    "Your device is paired with vmstudio.digital. Single API key provisioning synchronizes GitHub, AI, VPS, and Drive."
                                 } else {
-                                    "Enter your WordPress Hub URL (e.g. https://saketdhamashram.org) and your Hub API Key (found in WordPress Admin > VM Project Hub > Settings > API Token)."
+                                    "Enter your App Hub API Key to automatically connect and provision all services from vmstudio.digital."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
 
                             OutlinedTextField(
-                                value = hubBaseUrlDraft,
-                                onValueChange = { hubBaseUrlDraft = it },
-                                label = { Text("Hub WordPress Site URL") },
-                                placeholder = { Text("https://saketdhamashram.org") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-
-                            OutlinedTextField(
                                 value = hubKeyDraft,
                                 onValueChange = { hubKeyDraft = it },
-                                label = { Text("Hub API Key (xc_...)") },
+                                label = { Text("App Hub Master API Key (xc_...)") },
                                 placeholder = { Text("xc_...") },
                                 singleLine = true,
                                 visualTransformation = if (hubKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -593,7 +584,7 @@ fun ConnectorsScreen(
                             ) {
                                 VmButton(
                                     text = if (state.isSyncingHub) "Verifying…" else if (state.hasHubKey) "Update & Sync" else "Pair Device",
-                                    onClick = { viewModel.pairHubKey(hubKeyDraft, hubBaseUrlDraft) },
+                                    onClick = { viewModel.pairHubKey(hubKeyDraft) },
                                     enabled = hubKeyDraft.isNotBlank() && !state.isSyncingHub,
                                     style = VmButtonStyle.Primary,
                                     modifier = Modifier.weight(1f),

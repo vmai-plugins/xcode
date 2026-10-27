@@ -128,7 +128,7 @@ class ProjectCreateViewModel @Inject constructor(
                     ?: state.selectedServerId ?: RemoteFileSystem.LOCAL_SERVER_ID
             }
             val newPath = when (source) {
-                ProjectSource.WORDPRESS -> "/vmhub/${state.name.ifBlank { "saketdhamashram" }}"
+                ProjectSource.WORDPRESS -> "/vmhub/${state.name.ifBlank { "project" }}"
                 ProjectSource.LOCAL -> defaultProjectPath(isLocal = true, state.name)
                 ProjectSource.GDRIVE -> defaultProjectPath(isLocal = true, state.name)
                 ProjectSource.VPS -> "~/projects/${state.name.ifBlank { "vps-app" }}"
@@ -295,7 +295,7 @@ class ProjectCreateViewModel @Inject constructor(
         } else {
             "Cloning repository..."
         }
-        ProjectSource.WORDPRESS -> "Connecting to WordPress (saketdhamashram.org)..."
+        ProjectSource.WORDPRESS -> "Connecting to VM Project Hub (vmstudio.digital)..."
         ProjectSource.LOCAL -> "Initializing local workspace on phone..."
         ProjectSource.GDRIVE -> "Connecting Google Drive workspace..."
         ProjectSource.VPS -> "Creating remote cloud workspace on VPS..."

@@ -81,7 +81,7 @@ data class ConnectorsUiState(
     val hubProjectCount: Int? = null,
     val hubTaskCount: Int? = null,
     val hasHubKey: Boolean = false,
-    val hubBaseUrl: String = "https://saketdhamashram.org",
+    val hubBaseUrl: String = "https://vmstudio.digital",
     val isSyncingHub: Boolean = false,
     val hubStatusMessage: String? = null,
     val vpsConnectionState: digital.vmstudio.code.core.ssh.connection.SshConnectionState = digital.vmstudio.code.core.ssh.connection.SshConnectionState.Disconnected,
@@ -562,16 +562,16 @@ class ConnectorsViewModel @Inject constructor(
             extraState.update { it.copy(hubStatusMessage = "Hub Key cannot be empty") }
             return
         }
-        val targetUrl = customBaseUrl?.trim()?.takeIf { it.isNotBlank() } ?: "https://saketdhamashram.org"
+        val targetUrl = customBaseUrl?.trim()?.takeIf { it.isNotBlank() } ?: "https://vmstudio.digital"
         viewModelScope.launch {
-            extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Verifying Hub Key with $targetUrl…") }
+            extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Connecting & provisioning from $targetUrl…") }
             preferencesRepository.setHubBaseUrl(targetUrl)
             when (val testRes = projectHubClient.testHubKey(trimmed, targetUrl)) {
                 is VmResult.Failure -> {
                     extraState.update {
                         it.copy(
                             isSyncingHub = false,
-                            hubStatusMessage = "Pairing failed: ${testRes.error.summary}. Check key in WordPress Admin > VM Project Hub.",
+                            hubStatusMessage = "Pairing failed: ${testRes.error.summary}. Check key in vmstudio.digital.",
                         )
                     }
                 }
