@@ -1,5 +1,6 @@
 package digital.vmstudio.code.core.ai.omniroute.agent
 
+import digital.vmstudio.code.core.sftp.model.RemotePath
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -20,7 +21,6 @@ internal object PathGuard {
 
     /** Null when [path] may be used; otherwise a message to hand back to the model. */
     fun problem(workingDirectory: String, path: String): String? {
-        val root = normalize(workingDirectory)
         val cleanPath = when {
             workingDirectory.startsWith("~") && (path == workingDirectory || path.startsWith("$workingDirectory/")) -> path
             path.startsWith("~") -> return "Home-relative paths are not available. Use a path inside $workingDirectory."
@@ -38,15 +38,13 @@ internal object PathGuard {
         if (cleanPath.startsWith("content://")) {
             return "Cannot use content:// URIs in a remote or POSIX workspace."
         }
-        val full = when {
-            cleanPath.startsWith("/") || (workingDirectory.startsWith("~") && cleanPath.startsWith("~")) -> cleanPath
-            else -> "$workingDirectory/$cleanPath"
-        }
-        val target = normalize(full)
-        val inside = root == "/" || target == root || target.startsWith("$root/")
+
+        // Use RemotePath for robust confinement
+        val confined = RemotePath.confine(workingDirectory, cleanPath)
+        
         return when {
-            !inside -> "That path is outside the project folder ($root). File tools only work inside it."
-            isSecret(target) -> "That path holds credentials, so the agent may not read or change it."
+            confined == null -> "That path is outside the project folder ($workingDirectory). File tools only work inside it."
+            isSecret(confined) -> "That path holds credentials, so the agent may not read or change it."
             else -> null
         }
     }
@@ -54,15 +52,9 @@ internal object PathGuard {
     fun resolve(workingDirectory: String, path: String): String? {
         if (isTreeUri(workingDirectory)) return resolveTreeUriPath(workingDirectory, path)
         if (path.startsWith("content://")) return null
-        val full = when {
-            path.startsWith("/") || (workingDirectory.startsWith("~") && path.startsWith("~")) -> path
-            else -> "$workingDirectory/$path"
-        }
-        val target = normalize(full)
-        val root = normalize(workingDirectory)
-        return target.takeIf {
-            root == "/" || target == root || target.startsWith("$root/")
-        }
+        
+        // Use RemotePath for robust resolution
+        return RemotePath.confine(workingDirectory, path)
     }
 
     private fun isTreeUri(path: String): Boolean =
@@ -115,20 +107,6 @@ internal object PathGuard {
         URLEncoder.encode(segment, StandardCharsets.UTF_8.name())
             .replace("+", "%20")
             .replace("%7E", "~")
-
-    internal fun normalize(path: String): String {
-        val startsWithTilde = path.startsWith("~")
-        val parts = ArrayDeque<String>()
-        path.split('/').forEach { part ->
-            when (part) {
-                "", "." -> Unit
-                ".." -> parts.removeLastOrNull()
-                else -> parts.addLast(part)
-            }
-        }
-        val prefix = if (startsWithTilde) "" else "/"
-        return prefix + parts.joinToString("/")
-    }
 
     private fun isSecret(path: String): Boolean {
         val segments = path.split('/').filter { it.isNotEmpty() }
