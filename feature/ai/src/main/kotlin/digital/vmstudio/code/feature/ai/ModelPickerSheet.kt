@@ -158,13 +158,10 @@ private fun ModelPickerSheet(
     }
     var filter by remember { mutableStateOf(initialTab) }
 
-    // Auto-sync whenever opening the sheet if not synced recently (older than 5 minutes) or empty
+    // Only sync if model catalog has never synced before
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        if (omniModels.isConfigured && !isSyncing) {
-            val isStale = (System.currentTimeMillis() - omniModels.syncedAtMillis) > 300_000L
-            if (omniModels.syncedAtMillis == 0L || omniModels.freeIds.isEmpty() || isStale) {
-                onSync()
-            }
+        if (omniModels.isConfigured && !isSyncing && omniModels.syncedAtMillis == 0L && omniModels.ids.isEmpty()) {
+            onSync()
         }
     }
 
@@ -227,12 +224,18 @@ private fun ModelPickerSheet(
                     }
                     item(key = "header-$vendor") { SectionLabel(headerTitle) }
                     items(ids, key = { "omni-$it" }) { id ->
+                        val isSmart = isSmartRouteModel(id)
+                        val isReasoning = id.contains("reasoning", ignoreCase = true) || id.contains("opus", ignoreCase = true)
+                        val isFast = id.contains("fast", ignoreCase = true)
                         ModelRow(
                             title = id.substringAfterLast('/'),
                             subtitle = smartRouteDescription(id) ?: id.takeIf { '/' in it },
                             vendor = vendor ?: id,
                             selected = id == selectedModel,
                             free = id in omniModels.freeIds,
+                            isSmart = isSmart,
+                            isReasoning = isReasoning,
+                            isFast = isFast,
                         ) { onPick(id) }
                     }
                 }
@@ -367,12 +370,29 @@ private fun FreeBadge() {
 }
 
 @Composable
+private fun CapabilityBadge(text: String, background: Color, foreground: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = foreground,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(background)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
 private fun ModelRow(
     title: String,
     subtitle: String?,
     vendor: String,
     selected: Boolean,
     free: Boolean,
+    isSmart: Boolean = false,
+    isReasoning: Boolean = false,
+    isFast: Boolean = false,
     onClick: () -> Unit,
 ) {
     val background = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
@@ -406,7 +426,15 @@ private fun ModelRow(
                 )
             }
         }
-        if (free) FreeBadge()
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (free) FreeBadge()
+            if (isSmart) CapabilityBadge("SMART", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+            else if (isReasoning) CapabilityBadge("THINK", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+            else if (isFast) CapabilityBadge("FAST", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+        }
         if (selected) {
             Icon(
                 imageVector = Icons.Default.Check,

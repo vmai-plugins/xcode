@@ -38,10 +38,13 @@ class OmniRouteModelCatalog @Inject constructor(
 
     val models: Flow<OmniRouteModels> = preferences.preferences
         .map { prefs ->
+            val effectiveIds = prefs.aiAvailableModelIds.ifEmpty { BUILTIN_TIER_MODELS }
+            val effectiveFreeIds = prefs.aiFreeModelIds +
+                digital.vmstudio.code.core.common.preferences.UserPreferences.DEFAULT_FREE_AI_MODELS +
+                effectiveIds.filter(GatewayModelPricing::isFreeModelId)
             OmniRouteModels(
-                ids = prioritizeSmartModels(prefs.aiAvailableModelIds),
-                freeIds = prefs.aiFreeModelIds +
-                    prefs.aiAvailableModelIds.filter(GatewayModelPricing::isFreeModelId),
+                ids = prioritizeSmartModels(effectiveIds),
+                freeIds = effectiveFreeIds,
                 syncedAtMillis = prefs.aiModelsSyncedAtMillis,
                 isConfigured = prefs.aiBaseUrl.isNotBlank(),
             )
@@ -77,7 +80,7 @@ class OmniRouteModelCatalog @Inject constructor(
     }
 
     companion object {
-        const val STALE_AFTER_MILLIS: Long = 5 * 60 * 1000L
+        const val STALE_AFTER_MILLIS: Long = 24 * 60 * 60 * 1000L
 
         private val PREFERRED_DEFAULT_MODELS = listOf(
             "auto/best-coding",
@@ -102,6 +105,14 @@ class OmniRouteModelCatalog @Inject constructor(
             "opus",
             "opus-nvidia",
             "Kimi Coding",
+        )
+
+        val BUILTIN_TIER_MODELS = SMART_PRIORITY_ORDER + listOf(
+            "groq/openai/gpt-oss-120b",
+            "groq/qwen/qwen3.8-27b",
+            "groq/moonshotai/kimi-k2-instruct-0905",
+            "antigravity/claude-3-7-sonnet",
+            "antigravity/gemini-2.0-flash",
         )
 
         fun prioritizeSmartModels(ids: List<String>): List<String> {
