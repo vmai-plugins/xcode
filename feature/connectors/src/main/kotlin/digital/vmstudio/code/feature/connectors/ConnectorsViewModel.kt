@@ -423,32 +423,22 @@ class ConnectorsViewModel @Inject constructor(
         }
     }
 
-    fun testSheetsConnection(
-        spreadsheetId: String,
-        token: String,
-        range: String = "Sheet1!A1:E5",
-    ) {
+    fun saveSheetsToken(token: String, spreadsheetId: String) {
         viewModelScope.launch {
-            extraState.update { it.copy(isTestingSheet = true, sheetStatusMessage = "Connecting to Sheets...") }
-            when (val res = googleSheetsClient.getValues(token, spreadsheetId, range)) {
-                is VmResult.Success -> {
-                    extraState.update {
-                        it.copy(
-                            isTestingSheet = false,
-                            sheetPreviewRows = res.value.stringValues,
-                            sheetStatusMessage = "Connected: Loaded ${res.value.stringValues.size} rows.",
-                        )
-                    }
-                }
-                is VmResult.Failure -> {
-                    extraState.update {
-                        it.copy(
-                            isTestingSheet = false,
-                            sheetStatusMessage = "Connection failed: ${res.error.summary}",
-                        )
-                    }
-                }
-            }
+            secureCredentialStore.saveSecret(
+                "google_sheets_token",
+                Secret(token, SecretType.OAUTH_TOKEN)
+            )
+            userPreferencesRepository.setSavedSheetsSpreadsheetId(spreadsheetId)
+            extraState.update { it.copy(hasSheetsToken = true, savedSheetsToken = token, savedSpreadsheetId = spreadsheetId) }
+        }
+    }
+
+    fun clearSheetsToken() {
+        viewModelScope.launch {
+            secureCredentialStore.clearSecret("google_sheets_token")
+            userPreferencesRepository.setSavedSheetsSpreadsheetId("")
+            extraState.update { it.copy(hasSheetsToken = false, savedSheetsToken = null, savedSpreadsheetId = null) }
         }
     }
 
