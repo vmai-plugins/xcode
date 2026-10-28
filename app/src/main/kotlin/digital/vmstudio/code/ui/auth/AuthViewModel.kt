@@ -120,19 +120,15 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun skipSignIn(onSignedIn: () -> Unit) {
+    fun signInWithGitHub(context: Context) {
         if (_uiState.value.isLoading) return
-        viewModelScope.launch {
-            preferencesRepository.setUserProfile(
-                email = "Guest User",
-                name = "Guest Developer",
-                avatarUrl = null,
-                idToken = null,
-            )
-            preferencesRepository.setHasSignedIn(true)
-            _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-            onSignedIn()
-        }
+
+        val clientId = "YOUR_GITHUB_CLIENT_ID" // TODO: Add to local.properties
+        val redirectUri = "vmstudio://auth/github"
+        val authUrl = "https://github.com/login/oauth/authorize?client_id=$clientId&redirect_uri=${Uri.encode(redirectUri)}&scope=repo,user"
+
+        val intent = CustomTabsIntent.Builder().build()
+        intent.launchUrl(context, Uri.parse(authUrl))
     }
 
     private fun generateHashedNonce(): String {
