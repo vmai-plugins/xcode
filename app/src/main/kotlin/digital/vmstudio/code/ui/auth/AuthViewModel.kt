@@ -126,11 +126,20 @@ class AuthViewModel @Inject constructor(
     fun handleGitHubAuthCode(code: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            // Implementation detail: 
-            // 1. Call your backend/server to exchange `code` for `access_token`
-            // 2. preferencesRepository.storeOAuthToken(type = OAUTH_ACCESS_TOKEN, token = ...)
-            Log.d(TAG, "Exchanging GitHub code: $code")
-            _uiState.value = _uiState.value.copy(isLoading = false)
+            when (val result = gitHubAuthClient.exchangeCodeForToken(code)) {
+                is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                    Log.d(TAG, "GitHub Token exchanged successfully.")
+                    preferencesRepository.setHasSignedIn(true)
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+                }
+                is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                    Log.e(TAG, "GitHub Token exchange failed: ${result.error.summary}")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Failed to authenticate with GitHub: ${result.error.summary}"
+                    )
+                }
+            }
         }
     }
 
