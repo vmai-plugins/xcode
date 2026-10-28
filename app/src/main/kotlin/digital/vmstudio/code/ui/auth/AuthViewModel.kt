@@ -29,6 +29,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
+    private val gitHubAuthClient: digital.vmstudio.code.core.connectors.github.GitHubAuthClient,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
