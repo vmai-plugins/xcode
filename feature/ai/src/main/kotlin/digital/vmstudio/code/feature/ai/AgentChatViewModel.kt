@@ -236,6 +236,8 @@ class AgentChatViewModel @Inject constructor(
     private var listRunsUntil = 0L
     private var hasLoadedGithubRepositories = false
     private val itemCounter = AtomicLong(0L)
+    /** Atomic to prevent race between background polling and user-initiated refresh */
+    private val listRunsUntil = AtomicLong(0L)
 
     init {
         applyStoredDefaults()
