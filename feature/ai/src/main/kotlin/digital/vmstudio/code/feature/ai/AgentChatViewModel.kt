@@ -53,6 +53,18 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
+/** SavedStateHandle argument keys */
+const val ARG_SERVER_ID = "serverId"
+const val ARG_CONVERSATION_ID = "conversationId"
+const val ARG_PATH = "path"
+const val ARG_INITIAL_PROMPT = "initialPrompt"
+
+/** Streaming/background constants */
+private const val STREAMING_ID = "__streaming__"
+private const val BACKGROUND_POLL_MILLIS = 5_000L
+private const val PENDING_START_MILLIS = 60_000L
+private const val GATEWAY_SESSION_PREFIX = "gw_"
+
 /** One rendered entry in the transcript. */
 sealed interface TranscriptItem {
     val id: String
