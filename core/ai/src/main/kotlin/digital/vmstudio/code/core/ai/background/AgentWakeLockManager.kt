@@ -7,7 +7,6 @@ import androidx.core.content.getSystemService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
-import java.util.Optional
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,7 +17,6 @@ import javax.inject.Singleton
 @Singleton
 class AgentWakeLockManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val keepAlive: Optional<AgentExecutionKeepAlive>,
 ) {
     private val powerManager = context.getSystemService<PowerManager>()
     private val wifiManager =
@@ -33,11 +31,6 @@ class AgentWakeLockManager @Inject constructor(
         synchronized(lock) {
             activeHolders++
             if (activeHolders == 1) {
-                runCatching {
-                    keepAlive.ifPresent { it.onExecutionStarted() }
-                }.onFailure {
-                    VmLog.w(LogCategory.AI, TAG, "Failed to notify keepAlive start: ${it.message}")
-                }
                 runCatching {
                     if (wakeLock == null) {
                         wakeLock = powerManager?.newWakeLock(
@@ -73,11 +66,6 @@ class AgentWakeLockManager @Inject constructor(
                 activeHolders--
             }
             if (activeHolders == 0) {
-                runCatching {
-                    keepAlive.ifPresent { it.onExecutionStopped() }
-                }.onFailure {
-                    VmLog.w(LogCategory.AI, TAG, "Failed to notify keepAlive stop: ${it.message}")
-                }
                 runCatching {
                     if (wakeLock?.isHeld == true) {
                         wakeLock?.release()
