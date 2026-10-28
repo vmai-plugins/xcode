@@ -250,6 +250,22 @@ class AgentChatViewModel @Inject constructor(
     /** Atomic to prevent race between background polling and user-initiated refresh */
     private val listRunsUntil = AtomicLong(0L)
 
+    /** Polling for background runs */
+    private var pollingJob: Job? = null
+
+    private fun startPolling() {
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(BACKGROUND_POLL_MILLIS)
+                val visible = _uiState.subscriptionCount.value > 0
+                val starting = System.currentTimeMillis() < listRunsUntil.get()
+                val anyRunning = _uiState.value.backgroundRuns.any { it.isRunning }
+                if (visible && (starting || anyRunning)) refreshBackgroundRuns()
+            }
+        }
+    }
+
     init {
         applyStoredDefaults()
         viewModelScope.launch {
@@ -319,20 +335,8 @@ class AgentChatViewModel @Inject constructor(
         }
         refreshBackgroundRuns()
         scanServerGitRepos()
-        // Live status for detached runs while the chat is open: re-read the list
-        // only while something is still running, so an idle chat makes no SSH calls.
-        viewModelScope.launch {
-            while (true) {
-                delay(BACKGROUND_POLL_MILLIS)
-                // Only while the chat is on screen (collected while started): in the
-                // background the run service already watches, and a second poller
-                // kept the radio and the SSH connection awake.
-                val visible = _uiState.subscriptionCount.value > 0
-                val starting = System.currentTimeMillis() < listRunsUntil
-                val anyRunning = _uiState.value.backgroundRuns.any { it.isRunning }
-                if (visible && (starting || anyRunning)) refreshBackgroundRuns()
-            }
-        }
+        
+        startPolling()
     }
 
     fun scanServerGitRepos() {
