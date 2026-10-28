@@ -114,6 +114,7 @@ dependencies {
     implementation(projects.feature.editor)
     implementation(projects.feature.tasks)
     implementation(projects.feature.connectors)
+    implementation(projects.feature.browser)
 
     implementation("androidx.credentials:credentials:1.3.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
