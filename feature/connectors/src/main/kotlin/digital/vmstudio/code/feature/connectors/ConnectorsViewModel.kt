@@ -423,8 +423,33 @@ class ConnectorsViewModel @Inject constructor(
         }
     }
 
-    fun selectFilter(filter: ConnectorFilter) {
-        extraState.update { it.copy(selectedFilter = filter) }
+    fun testSheetsConnection(
+        spreadsheetId: String,
+        token: String,
+        range: String = "Sheet1!A1:E5",
+    ) {
+        viewModelScope.launch {
+            extraState.update { it.copy(isTestingSheet = true, sheetStatusMessage = "Connecting to Sheets...") }
+            when (val res = googleSheetsClient.getValues(token, spreadsheetId, range)) {
+                is VmResult.Success -> {
+                    extraState.update {
+                        it.copy(
+                            isTestingSheet = false,
+                            sheetPreviewRows = res.value.stringValues,
+                            sheetStatusMessage = "Connected: Loaded ${res.value.stringValues.size} rows.",
+                        )
+                    }
+                }
+                is VmResult.Failure -> {
+                    extraState.update {
+                        it.copy(
+                            isTestingSheet = false,
+                            sheetStatusMessage = "Connection failed: ${res.error.summary}",
+                        )
+                    }
+                }
+            }
+        }
     }
 
     // --- GitHub -------------------------------------------------------------
