@@ -245,7 +245,6 @@ class AgentChatViewModel @Inject constructor(
     }
 
     /** Until then the run list is re-read even though nothing is listed as running yet. */
-    private var listRunsUntil = 0L
     private var hasLoadedGithubRepositories = false
     private val itemCounter = AtomicLong(0L)
     /** Atomic to prevent race between background polling and user-initiated refresh */
