@@ -558,11 +558,32 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
 
-        if (tool in FILE_TOOLS) {
-            val default = if (tool == OmniRouteTool.LIST_DIRECTORY) "." else null
-            val path = filePathArgument(call.argumentsJson) ?: default
-            val problem = path?.let { PathGuard.problem(workingDirectory, it) }
-            if (problem != null) return ToolOutcome(problem, isError = true)
+        // PATH CONFINEMENT: Apply to ALL tools that accept paths, not just FILE_TOOLS
+        val pathArg = when (tool) {
+            OmniRouteTool.READ_FILE,
+            OmniRouteTool.WRITE_FILE,
+            OmniRouteTool.EDIT_FILE,
+            OmniRouteTool.LIST_DIRECTORY,
+            OmniRouteTool.GREP_SEARCH -> filePathArgument(call.argumentsJson)
+            OmniRouteTool.RUN_COMMAND,
+            OmniRouteTool.RUN_BUILD -> argument(call.argumentsJson, "cwd") ?: argument(call.argumentsJson, "directory")
+            else -> null
+        }
+        val default = if (tool == OmniRouteTool.LIST_DIRECTORY) "." else null
+        val path = pathArg ?: default
+        val problem = path?.let { PathGuard.problem(workingDirectory, it) }
+        if (problem != null) return ToolOutcome(problem, isError = true)
+
+        // COMMAND GUARD: Validate destructive commands before execution
+        if (tool == OmniRouteTool.RUN_COMMAND || tool == OmniRouteTool.RUN_BUILD) {
+            val command = argument(call.argumentsJson, "command") ?: argument(call.argumentsJson, "commands")?.let { jsonArrayToString(it) } ?: ""
+            val validation = commandGuard.validate(command, workingDirectory, serverId)
+            if (!validation.isAllowed) {
+                return ToolOutcome(
+                    "Command blocked: ${validation.reason}. Use a safer alternative or request elevated permissions.",
+                    isError = true,
+                )
+            }
         }
 
         return when (tool) {
