@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -87,8 +90,18 @@ fun TerminalView(
         val columns = floor(widthPx / metrics.width).toInt().coerceAtLeast(1)
         val rows = floor(heightPx / metrics.height).toInt().coerceAtLeast(1)
 
-        LaunchedEffect(columns, rows) {
-            onSizeChanged(columns, rows)
+        LaunchedEffect(Unit) {
+            var isFirst = true
+            snapshotFlow { columns to rows }
+                .collectLatest { (c, r) ->
+                    if (isFirst) {
+                        isFirst = false
+                        onSizeChanged(c, r)
+                    } else {
+                        delay(150L)
+                        onSizeChanged(c, r)
+                    }
+                }
         }
 
         Canvas(

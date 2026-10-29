@@ -361,7 +361,6 @@ fun VmNavHost(
         }
 
         composable(VmDestination.Tasks.route) {
-            val context = androidx.compose.ui.platform.LocalContext.current
             val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
             TasksScreen(
                 onNavigateBack = { navController.popBackStack() },

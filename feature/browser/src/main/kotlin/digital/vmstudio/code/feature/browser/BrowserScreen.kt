@@ -1,8 +1,12 @@
 package digital.vmstudio.code.feature.browser
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.net.http.SslError
 import android.view.ViewGroup
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -54,6 +58,7 @@ fun BrowserScreen(
     var currentUrl by remember { mutableStateOf(url) }
     var progress by remember { mutableFloatStateOf(0f) }
     var isLoading by remember { mutableStateOf(false) }
+    var lastLoadedUrl by remember { mutableStateOf(url) }
 
     BackHandler(enabled = canGoBack) {
         webView?.goBack()
@@ -148,10 +153,19 @@ fun BrowserScreen(
                             loadsImagesAutomatically = true
                             useWideViewPort = true
                             loadWithOverviewMode = true
-                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                             setSupportZoom(true)
                             builtInZoomControls = true
                             displayZoomControls = false
+                        }
+                        setDownloadListener { downloadUrl, _, _, _, _ ->
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                            }
                         }
                         webChromeClient = object : WebChromeClient() {
                             override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -177,13 +191,23 @@ fun BrowserScreen(
                                 canGoBack = view?.canGoBack() == true
                                 canGoForward = view?.canGoForward() == true
                             }
+
+                            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                                val host = error?.url?.let { Uri.parse(it).host } ?: ""
+                                if (host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2" || host.startsWith("192.168.") || host.startsWith("10.")) {
+                                    handler?.proceed()
+                                } else {
+                                    handler?.cancel()
+                                }
+                            }
                         }
                         webView = this
                         loadUrl(url)
                     }
                 },
                 update = { view ->
-                    if (url.isNotBlank() && view.url != url && !view.url.isNullOrBlank()) {
+                    if (url.isNotBlank() && url != lastLoadedUrl) {
+                        lastLoadedUrl = url
                         view.loadUrl(url)
                     }
                 },

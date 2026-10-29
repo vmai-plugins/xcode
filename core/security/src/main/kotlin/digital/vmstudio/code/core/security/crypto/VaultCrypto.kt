@@ -66,8 +66,16 @@ class VaultCrypto @Inject constructor() {
     private fun deriveKey(passphrase: CharArray, salt: ByteArray): SecretKeySpec {
         val factory = SecretKeyFactory.getInstance(KDF_ALGORITHM)
         val spec = PBEKeySpec(passphrase, salt, PBKDF2_ITERATIONS, KEY_SIZE_BITS)
-        val keyBytes = factory.generateSecret(spec).encoded
-        return SecretKeySpec(keyBytes, "AES")
+        return try {
+            val keyBytes = factory.generateSecret(spec).encoded
+            try {
+                SecretKeySpec(keyBytes, "AES")
+            } finally {
+                keyBytes.fill(0)
+            }
+        } finally {
+            spec.clearPassword()
+        }
     }
 
     private fun mapVaultError(throwable: Throwable): VmError = when (throwable) {

@@ -2,6 +2,7 @@ package digital.vmstudio.code.core.ai.omniroute.agent
 
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,11 +75,18 @@ class DefaultFileEditApprovalGate @Inject constructor() : FileEditApprovalGate {
         outstanding = decision
         _pending.value = request
         try {
-            decision.await()
+            // Guard against infinite suspension if the app is backgrounded or left unattended
+            withTimeoutOrNull(APPROVAL_TIMEOUT_MS) {
+                decision.await()
+            } ?: false
         } finally {
             _pending.value = null
             outstanding = null
         }
+    }
+
+    companion object {
+        private const val APPROVAL_TIMEOUT_MS = 180_000L // 3 minutes
     }
 
     override fun resolve(id: String, approved: Boolean) {

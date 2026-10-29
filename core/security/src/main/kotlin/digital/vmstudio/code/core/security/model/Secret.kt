@@ -39,7 +39,16 @@ class Secret private constructor(private var bytes: ByteArray?) {
      * since the intermediate String would otherwise linger in the heap.
      */
     fun <R> useAsChars(block: (CharArray) -> R): R {
-        val chars = use { String(it, Charsets.UTF_8).toCharArray() }
+        val chars = use { byteArr ->
+            val byteBuffer = java.nio.ByteBuffer.wrap(byteArr)
+            val charBuffer = Charsets.UTF_8.newDecoder().decode(byteBuffer)
+            val array = CharArray(charBuffer.remaining())
+            charBuffer.get(array)
+            if (charBuffer.hasArray()) {
+                charBuffer.array().fill(NUL_CHAR)
+            }
+            array
+        }
         return try {
             block(chars)
         } finally {
