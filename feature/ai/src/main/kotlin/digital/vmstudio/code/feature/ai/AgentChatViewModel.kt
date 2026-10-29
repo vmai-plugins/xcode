@@ -1650,6 +1650,15 @@ class AgentChatViewModel @Inject constructor(
         }
     }
 
+    fun rewindToPrompt(promptId: String) {
+        _uiState.update { current ->
+            val index = current.transcript.indexOfFirst { it.id == promptId }
+            if (index >= 0) {
+                current.copy(transcript = current.transcript.take(index))
+            } else current
+        }
+    }
+
     private fun append(item: TranscriptItem) {
         _uiState.update { it.copy(transcript = it.transcript + item) }
     }

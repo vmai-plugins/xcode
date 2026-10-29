@@ -231,31 +231,18 @@ internal fun TranscriptRow(
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
     onPreview: ((String) -> Unit)? = null,
+    onEditPrompt: ((String) -> Unit)? = null,
     chatBubbleColorHex: String? = null,
 ) {
     val spacing = VmTheme.spacing
 
     when (item) {
-        is TranscriptItem.UserPrompt -> Row(
+        is TranscriptItem.UserPrompt -> Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalAlignment = Alignment.End,
         ) {
-            if (onEditPrompt != null) {
-                IconButton(
-                    onClick = { onEditPrompt(item) },
-                    modifier = Modifier.size(24.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit prompt",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
             val defaultBubbleColor = MaterialTheme.colorScheme.primaryContainer
             val defaultTextColor = MaterialTheme.colorScheme.onPrimaryContainer
             val hasCustomColor = !chatBubbleColorHex.isNullOrBlank()
@@ -284,6 +271,52 @@ internal fun TranscriptRow(
                     color = if (hasCustomColor) Color(0xFFF3F4F6) else defaultTextColor,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
+            }
+
+            val context = LocalContext.current
+            val clipboardManager = LocalClipboardManager.current
+            val haptic = LocalHapticFeedback.current
+
+            Row(
+                modifier = Modifier.padding(top = 2.dp, end = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Copy Prompt to clipboard
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        clipboardManager.setText(AnnotatedString(item.text))
+                        Toast.makeText(context, "Copied prompt", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.size(26.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy prompt",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+
+                // Edit Prompt (populate ChatComposer)
+                if (onEditPrompt != null) {
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onEditPrompt(item.text)
+                            Toast.makeText(context, "Loaded into composer", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.size(26.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit prompt in composer",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                }
             }
         }
 

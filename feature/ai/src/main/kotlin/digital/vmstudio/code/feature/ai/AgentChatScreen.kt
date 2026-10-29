@@ -536,6 +536,12 @@ fun AgentChatScreen(
                                     onOpenDiff = openDiff,
                                     onRollback = viewModel::rollbackFile,
                                     onPreview = previewTarget,
+                                    onEditPrompt = { text ->
+                                        composerText = text
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(groupedTranscript.size)
+                                        }
+                                    },
                                     chatBubbleColorHex = state.chatBubbleColorHex,
                                 )
                                 is TranscriptRowItem.ToolBatch -> ToolBatchRow(
