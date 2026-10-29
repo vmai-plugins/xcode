@@ -236,12 +236,26 @@ internal fun TranscriptRow(
     val spacing = VmTheme.spacing
 
     when (item) {
-        is TranscriptItem.UserPrompt -> Box(
+        is TranscriptItem.UserPrompt -> Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
-            contentAlignment = Alignment.CenterEnd,
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onEditPrompt != null) {
+                IconButton(
+                    onClick = { onEditPrompt(item) },
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit prompt",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
             val defaultBubbleColor = MaterialTheme.colorScheme.primaryContainer
             val defaultTextColor = MaterialTheme.colorScheme.onPrimaryContainer
             val hasCustomColor = !chatBubbleColorHex.isNullOrBlank()
