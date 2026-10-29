@@ -54,9 +54,22 @@ class SftpRemoteFileSystem @Inject constructor(
             path.startsWith("/github/") ||
             path.startsWith("content://")
 
+    private fun safeMkdirs(sftp: SFTPClient, path: String) {
+        val clean = RemotePath.normalise(path)
+        val segments = clean.split('/').filter { it.isNotEmpty() }
+        var current = if (clean.startsWith("/")) "/" else ""
+        for (segment in segments) {
+            current = if (current == "/" || current.isEmpty()) current + segment else "$current/$segment"
+            if (segment.matches(Regex("^[a-zA-Z]:$"))) continue
+            if (sftp.statExistence(current) == null) {
+                runCatching { sftp.mkdir(current) }
+            }
+        }
+    }
+
     private fun expandPath(sftp: SFTPClient, path: String): String {
-        val trimmed = path.trim()
-        if (trimmed == "~" || trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+        val trimmed = path.trim().replace('\\', '/')
+        if (trimmed == "~" || trimmed.startsWith("~/")) {
             val home = runCatching { sftp.canonicalize(".") }.getOrNull()?.trimEnd('/') ?: ""
             if (home.isNotBlank()) {
                 val remainder = if (trimmed == "~") "" else trimmed.removePrefix("~")
@@ -111,18 +124,25 @@ class SftpRemoteFileSystem @Inject constructor(
         if (isLocalOrVirtual(serverId, path)) {
             return localFs.canonicalize(path)
         }
-        return withSftp(serverId, path) { sftp -> sftp.canonicalize(expandPath(sftp, path)) }
+        return withSftp(serverId, path) { sftp ->
+            val canon = sftp.canonicalize(expandPath(sftp, path))
+            RemotePath.normalise(canon)
+        }
     }
 
     override suspend fun homeDirectory(serverId: String): VmResult<String> {
         if (RemoteFileSystem.isLocalServer(serverId)) return localFs.homeDirectory()
-        return withSftp(serverId, ".") { sftp -> sftp.canonicalize(".") }
+        return withSftp(serverId, ".") { sftp ->
+            val canon = sftp.canonicalize(".")
+            RemotePath.normalise(canon)
+        }
     }
 
     override suspend fun createDirectory(serverId: String, path: String): VmResult<Unit> {
         if (isLocalOrVirtual(serverId, path)) return localFs.createDirectory(path)
         return withSftp(serverId, path) { sftp ->
-            sftp.mkdirs(expandPath(sftp, path))
+            val normalised = expandPath(sftp, path)
+            safeMkdirs(sftp, normalised)
             VmLog.i(LogCategory.SFTP, TAG, "Created directory $path")
         }
     }
@@ -131,6 +151,10 @@ class SftpRemoteFileSystem @Inject constructor(
         if (isLocalOrVirtual(serverId, path)) return localFs.createFile(path)
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
+            val parent = RemotePath.parent(normalised)
+            if (!parent.isNullOrBlank() && parent != "/" && !parent.matches(Regex("^/?[a-zA-Z]:$"))) {
+                safeMkdirs(sftp, parent)
+            }
             if (sftp.statExistence(normalised) != null) {
                 error("A file already exists at $normalised")
             }
@@ -157,7 +181,7 @@ class SftpRemoteFileSystem @Inject constructor(
         if (isLocalOrVirtual(serverId, path)) return localFs.delete(path, recursive)
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
-            if (normalised == "/" || normalised.isBlank()) {
+            if (normalised == "/" || normalised.isBlank() || normalised.matches(Regex("^/?[a-zA-Z]:$"))) {
                 error("Refusing to delete root directory: $path")
             }
             val attributes = sftp.lstat(normalised)
@@ -237,8 +261,8 @@ class SftpRemoteFileSystem @Inject constructor(
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
             val parent = RemotePath.parent(normalised)
-            if (!parent.isNullOrBlank() && parent != "/") {
-                runCatching { sftp.mkdirs(parent) }
+            if (!parent.isNullOrBlank() && parent != "/" && !parent.matches(Regex("^/?[a-zA-Z]:$"))) {
+                safeMkdirs(sftp, parent)
             }
             val bytes = content.toByteArray(Charsets.UTF_8)
             // TRUNC so a shorter replacement does not leave the tail of the old file.
@@ -387,6 +411,11 @@ class SftpRemoteFileSystem @Inject constructor(
             }
 
             emit(TransferEvent.Started(totalBytes = total, resumedFromBytes = startOffset))
+
+            val parent = RemotePath.parent(normalised)
+            if (!parent.isNullOrBlank() && parent != "/" && !parent.matches(Regex("^/?[a-zA-Z]:$"))) {
+                safeMkdirs(sftp, parent)
+            }
 
             sftp.open(normalised, modes).use { remote ->
                 RandomAccessFile(source, "r").use { file ->

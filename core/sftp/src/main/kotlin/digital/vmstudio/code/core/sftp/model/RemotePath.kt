@@ -21,26 +21,37 @@ object RemotePath {
     const val SEPARATOR = '/'
     const val ROOT = "/"
 
-    fun isAbsolute(path: String): Boolean = path.startsWith(SEPARATOR) || path.startsWith("content://")
+    fun isAbsolute(path: String): Boolean {
+        val clean = path.replace('\\', '/')
+        return clean.startsWith(SEPARATOR) || clean.startsWith("content://") || isWindowsDrive(clean)
+    }
+
+    fun isWindowsDrive(cleanPath: String): Boolean {
+        if (cleanPath.length >= 2 && cleanPath[0].isLetter() && cleanPath[1] == ':') return true
+        if (cleanPath.length >= 3 && cleanPath[0] == '/' && cleanPath[1].isLetter() && cleanPath[2] == ':') return true
+        return false
+    }
 
     fun name(path: String): String {
-        if (path.startsWith("content://")) {
-            val bang = path.indexOf("!/")
+        val clean = path.replace('\\', '/')
+        if (clean.startsWith("content://")) {
+            val bang = clean.indexOf("!/")
             if (bang >= 0) {
-                val subPath = path.substring(bang + 2).trimEnd(SEPARATOR)
+                val subPath = clean.substring(bang + 2).trimEnd(SEPARATOR)
                 return if (subPath.isEmpty()) ROOT else subPath.substringAfterLast(SEPARATOR)
             }
-            return path
+            return clean
         }
-        return normalise(path).trimEnd(SEPARATOR).substringAfterLast(SEPARATOR).ifEmpty { ROOT }
+        return normalise(clean).trimEnd(SEPARATOR).substringAfterLast(SEPARATOR).ifEmpty { ROOT }
     }
 
     fun parent(path: String): String? {
-        if (path.startsWith("content://")) {
-            val bang = path.indexOf("!/")
+        val clean = path.replace('\\', '/')
+        if (clean.startsWith("content://")) {
+            val bang = clean.indexOf("!/")
             if (bang >= 0) {
-                val uriPart = path.substring(0, bang + 2)
-                val subPath = path.substring(bang + 2).trimEnd(SEPARATOR)
+                val uriPart = clean.substring(0, bang + 2)
+                val subPath = clean.substring(bang + 2).trimEnd(SEPARATOR)
                 if (subPath.isEmpty()) return null
                 val index = subPath.lastIndexOf(SEPARATOR)
                 return when {
@@ -50,7 +61,7 @@ object RemotePath {
             }
             return null
         }
-        val normalised = normalise(path).trimEnd(SEPARATOR)
+        val normalised = normalise(clean).trimEnd(SEPARATOR)
         if (normalised.isEmpty() || normalised == ROOT) return null
         val index = normalised.lastIndexOf(SEPARATOR)
         return when {
@@ -63,9 +74,11 @@ object RemotePath {
     fun extension(path: String): String = name(path).substringAfterLast('.', "")
 
     fun join(base: String, vararg parts: String): String {
-        val builder = StringBuilder(base.trimEnd(SEPARATOR))
+        val cleanBase = base.replace('\\', '/')
+        val builder = StringBuilder(cleanBase.trimEnd(SEPARATOR))
         parts.forEach { part ->
-            val trimmed = part.trim(SEPARATOR)
+            val cleanPart = part.replace('\\', '/')
+            val trimmed = cleanPart.trim(SEPARATOR)
             if (trimmed.isNotEmpty()) {
                 builder.append(SEPARATOR).append(trimmed)
             }
@@ -82,20 +95,22 @@ object RemotePath {
      */
     fun normalise(path: String): String {
         if (path.isEmpty()) return ""
-        if (path.startsWith("content://")) {
-            val bang = path.indexOf("!/")
+        val clean = path.replace('\\', '/')
+        if (clean.startsWith("content://")) {
+            val bang = clean.indexOf("!/")
             if (bang >= 0) {
-                val uriPrefix = path.substring(0, bang + 1)
-                val subPath = path.substring(bang + 1)
+                val uriPrefix = clean.substring(0, bang + 1)
+                val subPath = clean.substring(bang + 1)
                 return uriPrefix + normalise(subPath)
             }
-            return path
+            return clean
         }
-        val absolute = isAbsolute(path)
+        val formatted = if (clean.length >= 2 && clean[0].isLetter() && clean[1] == ':') "/$clean" else clean
+        val absolute = isAbsolute(formatted)
         val stack = ArrayDeque<String>()
         var leadingParents = 0
 
-        path.split(SEPARATOR).forEach { segment ->
+        formatted.split(SEPARATOR).forEach { segment ->
             when (segment) {
                 "", "." -> Unit
                 ".." -> {

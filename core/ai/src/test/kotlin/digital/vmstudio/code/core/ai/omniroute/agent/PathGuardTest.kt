@@ -80,4 +80,19 @@ class PathGuardTest {
         assertNotNull(PathGuard.problem(posixRoot, contentUri))
         assertNull(PathGuard.resolve(posixRoot, contentUri))
     }
+
+    @Test
+    fun `windows paths are accepted and confined in Windows workspaces`() {
+        val winRoot = "D:\\Dev\\x-codes"
+        assertNull(PathGuard.problem(winRoot, "src/Main.kt"))
+        assertNull(PathGuard.problem(winRoot, "D:\\Dev\\x-codes\\README.md"))
+        assertNull(PathGuard.problem(winRoot, "D:/Dev/x-codes/README.md"))
+        assertEquals("/D:/Dev/x-codes/src/Main.kt", PathGuard.resolve(winRoot, "src/Main.kt"))
+        assertEquals("/D:/Dev/x-codes/README.md", PathGuard.resolve(winRoot, "D:\\Dev\\x-codes\\README.md"))
+
+        assertNotNull(PathGuard.problem(winRoot, "../outside.txt"))
+        assertNotNull(PathGuard.problem(winRoot, "C:\\Users\\tripc\\secret.txt"))
+        assertNotNull(PathGuard.problem(winRoot, ".env"))
+        assertNull(PathGuard.resolve(winRoot, "C:\\Users\\tripc\\secret.txt"))
+    }
 }

@@ -1364,7 +1364,7 @@ class OmniRouteAgentLoop @Inject constructor(
     /** Confines paths to [workingDirectory] to prevent escaping the project root. */
     private fun resolvePath(workingDirectory: String, path: String): String {
         PathGuard.resolve(workingDirectory, path)?.let { return it }
-        val root = workingDirectory.trimEnd('/')
+        val root = workingDirectory.replace('\\', '/').trimEnd('/')
         if (root.startsWith("~") && (path.startsWith(root) || !path.startsWith("/"))) {
             val combined = if (path.startsWith(root)) path else "$root/$path"
             return PathGuard.normalize(combined)

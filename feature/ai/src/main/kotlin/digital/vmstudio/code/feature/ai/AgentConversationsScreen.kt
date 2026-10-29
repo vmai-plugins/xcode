@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -203,7 +204,16 @@ private fun ConversationRow(
                 Row(
                     modifier = Modifier.padding(top = spacing.xs),
                     horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (conversation.isRunning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        VmChip(text = "Running…")
+                    }
                     VmChip(text = relativeTime(conversation.updatedAtMillis))
                     if (conversation.totalTokens > 0) {
                         VmChip(text = "${conversation.totalTokens} tokens", monospace = true)

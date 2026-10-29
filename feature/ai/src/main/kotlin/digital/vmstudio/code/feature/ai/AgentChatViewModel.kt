@@ -11,6 +11,7 @@ import digital.vmstudio.code.core.ai.background.AgentWakeLockManager
 import digital.vmstudio.code.core.ai.background.BackgroundAgentRunner
 import digital.vmstudio.code.core.ai.background.OmniRouteBackgroundRunner
 import digital.vmstudio.code.core.ai.background.BackgroundRun
+import digital.vmstudio.code.core.ai.execution.AgentExecutionCoordinator
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.model.AgentRunConfig
@@ -209,6 +210,7 @@ class AgentChatViewModel @Inject constructor(
     private val credentialStore: SecureCredentialStore,
     @ApplicationContext private val context: Context,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
+    private val executionCoordinator: AgentExecutionCoordinator,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -501,6 +503,19 @@ class AgentChatViewModel @Inject constructor(
             }
             checkHealth()
             refreshBackgroundRuns()
+            if (executionCoordinator.isRunning(conversationId)) {
+                _uiState.update { it.copy(isRunning = true) }
+                runJob?.cancel()
+                runJob = viewModelScope.launch {
+                    executionCoordinator.observeEvents(conversationId)?.collect { event ->
+                        applyEvent(event)
+                        if (event is AgentEvent.Completed || event is AgentEvent.Failed) {
+                            _uiState.update { it.copy(isRunning = false) }
+                            processNextQueuedMessage()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1317,53 +1332,37 @@ class AgentChatViewModel @Inject constructor(
                 )
 
                 try {
-                    providers.active().run(config).collect { event ->
-                        if (runJob !== selfJob && selfJob !in detachedJobs) return@collect
-                        conversations.record(conversationId, event)
-                        applyTaskEvent(taskId, event)
-                        if (runJob === selfJob) {
-                            applyEvent(event)
-                        } else if (event is AgentEvent.Completed || event is AgentEvent.Failed) {
-                            val statusMsg = when (event) {
-                                is AgentEvent.Completed -> if (event.isError) {
-                                    "Background task ended with error: ${event.resultText ?: prompt.take(50)}"
-                                } else {
-                                    "Background task completed: ${prompt.take(60)}"
-                                }
-                                is AgentEvent.Failed -> "Background task failed: ${event.error.summary}"
-                                else -> null
-                            }
-                            statusMsg?.let { msg ->
-                                append(
-                                    TranscriptItem.Diagnostic(
-                                        id = nextId(),
-                                        text = msg,
-                                        isStderr = event is AgentEvent.Failed ||
-                                            (event is AgentEvent.Completed && event.isError),
-                                    ),
-                                )
-                            }
+                    val eventFlow = executionCoordinator.submitRun(
+                        conversationId = conversationId,
+                        taskId = taskId,
+                        prompt = prompt,
+                    ) { emitEvent ->
+                        providers.active().run(config).collect { event ->
+                            emitEvent(event)
+                        }
+                    }
+
+                    eventFlow.collect { event ->
+                        applyEvent(event)
+                        if (event is AgentEvent.Completed || event is AgentEvent.Failed) {
+                            _uiState.update { it.copy(isRunning = false) }
                         }
                     }
                 } catch (cancelled: CancellationException) {
-                    withContext(NonCancellable) { taskId?.let { tasks.cancel(it) } }
                     throw cancelled
                 } catch (failure: Throwable) {
-                    taskId?.let { tasks.fail(it, failure.message ?: "The run failed") }
-                    if (runJob === selfJob) {
-                        deltas.clear()
-                        _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
-                        append(
-                            TranscriptItem.Failure(
-                                id = nextId(),
-                                error = VmError.Ai(
-                                    summary = "The run failed",
-                                    reason = failure.message,
-                                    cause = failure,
-                                ),
+                    deltas.clear()
+                    _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                    append(
+                        TranscriptItem.Failure(
+                            id = nextId(),
+                            error = VmError.Ai(
+                                summary = "The run failed",
+                                reason = failure.message,
+                                cause = failure,
                             ),
-                        )
-                    }
+                        ),
+                    )
                 }
                 if (runJob === selfJob) {
                     _uiState.update { it.copy(isRunning = false) }
@@ -1439,6 +1438,7 @@ class AgentChatViewModel @Inject constructor(
     /** Stops the run. Cancelling collection terminates the remote process too. */
     fun stop() {
         deltas.clear()
+        _uiState.value.conversationId?.let { executionCoordinator.stopRun(it) }
         runJob?.cancel()
         runJob = null
         detachedJobs.forEach { it.cancel() }

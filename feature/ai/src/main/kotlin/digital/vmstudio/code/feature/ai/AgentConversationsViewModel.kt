@@ -3,6 +3,7 @@ package digital.vmstudio.code.feature.ai
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.vmstudio.code.core.ai.execution.AgentExecutionCoordinator
 import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
@@ -25,6 +26,7 @@ data class ConversationSummary(
     val totalTokens: Long,
     /** Present when the backend can continue this conversation rather than restart. */
     val isResumable: Boolean,
+    val isRunning: Boolean = false,
 )
 
 data class AgentConversationsUiState(
@@ -46,6 +48,7 @@ class AgentConversationsViewModel @Inject constructor(
     private val conversations: AgentConversationRepository,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     private val userPreferences: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
+    private val executionCoordinator: AgentExecutionCoordinator,
 ) : ViewModel() {
 
     private val error = MutableStateFlow<VmError?>(null)
@@ -55,24 +58,25 @@ class AgentConversationsViewModel @Inject constructor(
     }
 
     val uiState: StateFlow<AgentConversationsUiState> = combine(
-        conversations.observeConversations().map { list ->
-            list.map { conversation ->
-                ConversationSummary(
-                    id = conversation.id,
-                    title = conversation.title,
-                    workingDirectory = conversation.workingDirectory,
-                    serverId = conversation.serverId,
-                    updatedAtMillis = conversation.updatedAtMillis,
-                    totalTokens = conversation.promptTokens + conversation.completionTokens,
-                    isResumable = conversation.isResumable,
-                )
-            }
-        },
+        conversations.observeConversations(),
+        executionCoordinator.runningConversations,
         userPreferences.preferences.map { it.chatColors },
         error,
-    ) { list, colors, currentError ->
+    ) { list, runningSet, colors, currentError ->
+        val summaries = list.map { conversation ->
+            ConversationSummary(
+                id = conversation.id,
+                title = conversation.title,
+                workingDirectory = conversation.workingDirectory,
+                serverId = conversation.serverId,
+                updatedAtMillis = conversation.updatedAtMillis,
+                totalTokens = conversation.promptTokens + conversation.completionTokens,
+                isResumable = conversation.isResumable,
+                isRunning = conversation.id in runningSet,
+            )
+        }
         AgentConversationsUiState(
-            conversations = list,
+            conversations = summaries,
             chatColors = colors,
             isLoading = false,
             error = currentError,

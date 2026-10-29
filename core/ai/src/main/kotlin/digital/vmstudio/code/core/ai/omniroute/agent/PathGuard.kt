@@ -24,7 +24,7 @@ internal object PathGuard {
         val cleanPath = when {
             workingDirectory.startsWith("~") && (path == workingDirectory || path.startsWith("$workingDirectory/")) -> path
             path.startsWith("~") -> return "Home-relative paths are not available. Use a path inside $workingDirectory."
-            else -> path
+            else -> path.replace('\\', '/')
         }
         if (isTreeUri(workingDirectory)) {
             val target = resolveTreeUriPath(workingDirectory, cleanPath)
@@ -38,10 +38,8 @@ internal object PathGuard {
         if (cleanPath.startsWith("content://")) {
             return "Cannot use content:// URIs in a remote or POSIX workspace."
         }
-
         // Use RemotePath for robust confinement
         val confined = RemotePath.confine(workingDirectory, cleanPath)
-        
         return when {
             confined == null -> "That path is outside the project folder ($workingDirectory). File tools only work inside it."
             isSecret(confined) -> "That path holds credentials, so the agent may not read or change it."
@@ -51,10 +49,9 @@ internal object PathGuard {
 
     fun resolve(workingDirectory: String, path: String): String? {
         if (isTreeUri(workingDirectory)) return resolveTreeUriPath(workingDirectory, path)
-        if (path.startsWith("content://")) return null
-        
-        // Use RemotePath for robust resolution
-        return RemotePath.confine(workingDirectory, path)
+        val cleanPath = path.replace('\\', '/')
+        if (cleanPath.startsWith("content://")) return null
+        return RemotePath.confine(workingDirectory, cleanPath)
     }
 
     private fun isTreeUri(path: String): Boolean =
@@ -108,6 +105,7 @@ internal object PathGuard {
             .replace("+", "%20")
             .replace("%7E", "~")
 
+    internal fun normalize(path: String): String = RemotePath.normalise(path)
     private fun isSecret(path: String): Boolean {
         val segments = path.split('/').filter { it.isNotEmpty() }
         val name = segments.lastOrNull().orEmpty().lowercase()
