@@ -499,6 +499,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     permissionMode = config.permissionMode,
                     allowedTools = allowedTools,
                     driveToken = config.googleDriveToken,
+                    sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
                 )
             }
         } else {
@@ -511,6 +512,7 @@ class OmniRouteAgentLoop @Inject constructor(
                 permissionMode = config.permissionMode,
                 allowedTools = allowedTools,
                 driveToken = config.googleDriveToken,
+                sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
             )
         }
 
@@ -538,6 +540,7 @@ class OmniRouteAgentLoop @Inject constructor(
         permissionMode: AgentPermissionMode,
         allowedTools: Set<OmniRouteTool>,
         driveToken: String? = null,
+        sheetsToken: String? = null,
     ): ToolOutcome {
         if (tool == null) {
             return ToolOutcome("Unknown tool \"${call.name}\".", isError = true)
@@ -588,8 +591,8 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.WEB_FETCH -> webFetch(call)
             OmniRouteTool.GOOGLE_DRIVE_LIST -> googleDriveList(call, driveToken)
             OmniRouteTool.GOOGLE_DRIVE_READ -> googleDriveRead(call, driveToken)
-            OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call, driveToken)
-            OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call, driveToken)
+            OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call, sheetsToken ?: driveToken)
+            OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call, sheetsToken ?: driveToken)
         }
     }
 

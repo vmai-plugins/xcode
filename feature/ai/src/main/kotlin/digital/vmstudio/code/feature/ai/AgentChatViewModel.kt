@@ -1312,6 +1312,17 @@ class AgentChatViewModel @Inject constructor(
                     }
                 }
 
+                val gsheetsToken = preferenceStore.preferences.first().googleSheetsTokenCredentialId?.let { id ->
+                    when (val secRes = credentialStore.read(id)) {
+                        is VmResult.Success -> {
+                            val token = secRes.value.useAsString { it }
+                            secRes.value.wipe()
+                            token
+                        }
+                        is VmResult.Failure -> null
+                    }
+                }
+
                 val config = AgentRunConfig(
                     serverId = server,
                     workingDirectory = state.workingDirectory.trim(),
@@ -1327,6 +1338,7 @@ class AgentChatViewModel @Inject constructor(
                     maxIterations = preferences.preferences.first().agentMaxIterations,
                     maxCommandsPerRun = preferences.preferences.first().agentMaxCommandsPerRun,
                     googleDriveToken = gdriveToken,
+                    googleSheetsToken = gsheetsToken ?: gdriveToken,
                 )
 
                 try {

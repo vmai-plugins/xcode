@@ -35,9 +35,12 @@ import java.nio.charset.CodingErrorAction
 import java.io.RandomAccessFile
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @Singleton
 class SftpRemoteFileSystem @Inject constructor(
@@ -500,28 +503,48 @@ class SftpRemoteFileSystem @Inject constructor(
 
     // --- internals -------------------------------------------------------------
 
+    private val clientLocks = ConcurrentHashMap<String, Mutex>()
+    private val cachedClients = ConcurrentHashMap<String, SFTPClient>()
+
+    private fun clientLockFor(serverId: String): Mutex =
+        clientLocks.computeIfAbsent(serverId) { Mutex() }
+
     /**
-     * Opens a short-lived SFTP channel for one operation.
+     * Executes a metadata/file operation using a pooled SFTP client.
      *
-     * A channel per operation rather than a cached one: a long download would
-     * otherwise block directory listings on the same channel, and a channel that
-     * dies mid-browse would take every other pending operation with it.
+     * Caches the SFTP channel per server to eliminate repeated channel handshakes,
+     * which otherwise exhaust sshd MaxSessions on high-frequency agent tool walks.
+     * If an operation fails, the channel is invalidated and cleanly recreated.
      */
     private suspend fun <T> withSftp(
         serverId: String,
         path: String,
         block: suspend (SFTPClient) -> T,
     ): VmResult<T> = withContext(ioDispatcher) {
-        connectionManager.session(serverId).flatMap { session: SshSession ->
-            session.openSftp().flatMap { sftp ->
+        val mutex = clientLockFor(serverId)
+        mutex.withLock {
+            connectionManager.session(serverId).flatMap { session: SshSession ->
+                val cached = cachedClients[serverId]
+                val sftp = if (cached != null) {
+                    cached
+                } else {
+                    when (val openRes = session.openSftp()) {
+                        is VmResult.Success -> {
+                            cachedClients[serverId] = openRes.value
+                            openRes.value
+                        }
+                        is VmResult.Failure -> return@flatMap openRes
+                    }
+                }
+
                 try {
                     VmResult.Success(block(sftp))
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (throwable: Throwable) {
-                    VmResult.Failure(mapSftpError(throwable, path))
-                } finally {
+                    cachedClients.remove(serverId)
                     runCatching { sftp.close() }
+                    VmResult.Failure(mapSftpError(throwable, path))
                 }
             }
         }

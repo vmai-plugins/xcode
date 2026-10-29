@@ -177,5 +177,16 @@ sealed class VmDestination(val route: String) {
     data object Onboarding : VmDestination("onboarding")
 
     data object ActivityTimeline : VmDestination("activity")
+
+    data class Browser(val url: String) : VmDestination(routeFor(url)) {
+        companion object {
+            const val ARG_URL = "url"
+            const val ROUTE_PATTERN = "browser?$ARG_URL={$ARG_URL}"
+            fun routeFor(url: String): String {
+                val encoded = android.net.Uri.encode(url)
+                return "browser?$ARG_URL=$encoded"
+            }
+        }
+    }
 }
 

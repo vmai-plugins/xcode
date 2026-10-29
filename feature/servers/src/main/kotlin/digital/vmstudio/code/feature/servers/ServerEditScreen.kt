@@ -345,7 +345,7 @@ fun ServerEditScreen(
                         label = "Port",
                         error = state.errorFor(ServerField.PORT),
                         keyboardType = KeyboardType.Number,
-                        modifier = Modifier.weight(0.35f),
+                        modifier = Modifier.width(100.dp),
                     )
                     VmField(
                         value = state.draft.username,
@@ -353,7 +353,7 @@ fun ServerEditScreen(
                         label = "Username",
                         supporting = "e.g. root, tripc, ubuntu",
                         error = state.errorFor(ServerField.USERNAME),
-                        modifier = Modifier.weight(0.65f),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
@@ -591,10 +591,10 @@ private fun VmField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
             focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             focusedLabelColor = MaterialTheme.colorScheme.primary,
             unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
             errorBorderColor = MaterialTheme.colorScheme.error,
@@ -651,10 +651,10 @@ private fun SecretField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
             focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             focusedLabelColor = MaterialTheme.colorScheme.primary,
             unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
             errorBorderColor = MaterialTheme.colorScheme.error,

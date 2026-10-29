@@ -264,6 +264,7 @@ class ServerEditViewModel @Inject constructor(
     }
 
     fun consumeSaved() {
+        temporaryCreatedServerId = null
         _uiState.update { it.copy(savedServerId = null) }
     }
 

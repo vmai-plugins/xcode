@@ -476,6 +476,23 @@ fun VmNavHost(
                 AboutSettingsScreen()
             }
         }
+
+        composable(
+            route = VmDestination.Browser.ROUTE_PATTERN,
+            arguments = listOf(
+                navArgument(VmDestination.Browser.ARG_URL) {
+                    type = NavType.StringType
+                    defaultValue = "https://google.com"
+                },
+            ),
+        ) { backStackEntry ->
+            val rawUrl = backStackEntry.arguments?.getString(VmDestination.Browser.ARG_URL).orEmpty()
+            val url = android.net.Uri.decode(rawUrl).ifBlank { "https://google.com" }
+            digital.vmstudio.code.feature.browser.BrowserScreen(
+                url = url,
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
     }
 }
 

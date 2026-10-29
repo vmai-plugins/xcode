@@ -48,11 +48,13 @@ import digital.vmstudio.code.ui.VmApp
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private val authViewModel: digital.vmstudio.code.ui.auth.AuthViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        handleDeepLink(intent)
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -78,6 +80,22 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLink(intent)
+    }
+
+    private fun handleDeepLink(intent: android.content.Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme == "vmstudio" && uri.host == "auth" && uri.path == "/github") {
+            val code = uri.getQueryParameter("code")
+            if (!code.isNullOrBlank()) {
+                authViewModel.handleGitHubAuthCode(code)
             }
         }
     }

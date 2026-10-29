@@ -180,6 +180,7 @@ data class AgentRunConfig(
     /** Pre-configured squad preset defining specialized system instructions. */
     val squadPreset: AgentSquadPreset = AgentSquadPreset.FULL_STACK,
     val googleDriveToken: String? = null,
+    val googleSheetsToken: String? = null,
 ) {
     companion object {
         /**
