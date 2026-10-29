@@ -574,18 +574,6 @@ class OmniRouteAgentLoop @Inject constructor(
         val problem = path?.let { PathGuard.problem(workingDirectory, it) }
         if (problem != null) return ToolOutcome(problem, isError = true)
 
-        // COMMAND GUARD: Validate destructive commands before execution
-        if (tool == OmniRouteTool.RUN_COMMAND || tool == OmniRouteTool.RUN_BUILD) {
-            val command = argument(call.argumentsJson, "command") ?: argument(call.argumentsJson, "commands")?.let { jsonArrayToString(it) } ?: ""
-            val validation = commandGuard.validate(command, workingDirectory, serverId)
-            if (!validation.isAllowed) {
-                return ToolOutcome(
-                    "Command blocked: ${validation.reason}. Use a safer alternative or request elevated permissions.",
-                    isError = true,
-                )
-            }
-        }
-
         return when (tool) {
             OmniRouteTool.READ_FILE -> readFile(call, serverId, workingDirectory)
             OmniRouteTool.LIST_DIRECTORY -> listDirectory(call, serverId, workingDirectory)

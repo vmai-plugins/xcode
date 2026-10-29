@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
@@ -62,9 +63,6 @@ const val ARG_INITIAL_PROMPT = "initialPrompt"
 
 /** Streaming/background constants */
 private const val STREAMING_ID = "__streaming__"
-private const val BACKGROUND_POLL_MILLIS = 5_000L
-private const val PENDING_START_MILLIS = 60_000L
-private const val GATEWAY_SESSION_PREFIX = "gw_"
 
 /** One rendered entry in the transcript. */
 sealed interface TranscriptItem {
@@ -596,7 +594,7 @@ class AgentChatViewModel @Inject constructor(
                     _uiState.update { it.copy(watchServerId = server) }
                     // A run registers on the server a moment after it starts, so the
                     // first read can miss it; keep reading for a minute.
-                    listRunsUntil = System.currentTimeMillis() + PENDING_START_MILLIS
+                    listRunsUntil.set(System.currentTimeMillis() + PENDING_START_MILLIS)
                     refreshBackgroundRuns()
                 }
                 is VmResult.Failure -> _uiState.update { it.copy(error = result.error) }

@@ -123,6 +123,20 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun skipSignIn(onSignedIn: () -> Unit) {
+        viewModelScope.launch {
+            preferencesRepository.setUserProfile(
+                email = "Guest User",
+                name = "Guest Developer",
+                avatarUrl = null,
+                idToken = null,
+            )
+            preferencesRepository.setHasSignedIn(true)
+            _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+            onSignedIn()
+        }
+    }
+
     fun handleGitHubAuthCode(code: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)

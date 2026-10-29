@@ -1,6 +1,7 @@
 package digital.vmstudio.code.core.connectors.github
 
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.common.result.flatMap
 import digital.vmstudio.code.core.common.result.vmCatching
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import kotlinx.serialization.Serializable
@@ -24,22 +25,35 @@ class GitHubAuthClient @Inject constructor(
 ) {
 
     @Serializable
+    private data class TokenRequest(
+        val client_id: String,
+        val client_secret: String,
+        val code: String,
+    )
+
+    @Serializable
     private data class TokenResponse(
         val access_token: String,
-        val token_type: String,
-        val scope: String
+        val token_type: String = "",
+        val scope: String = "",
     )
 
     suspend fun exchangeCodeForToken(
         code: String,
-        clientId: String,
-        clientSecret: String
-    ): VmResult<String> = vmCatching {
-        val requestBody = buildMap {
-            put("client_id", clientId)
-            put("client_secret", clientSecret)
-            put("code", code)
-        }.let { json.encodeToString(MapSerializer(String.serializer(), String.serializer()), it) }
+        clientId: String = "",
+        clientSecret: String = "",
+    ): VmResult<String> {
+        if (clientId.isBlank() || clientSecret.isBlank()) {
+            return VmResult.Failure(
+                digital.vmstudio.code.core.common.error.VmError.Validation(
+                    summary = "GitHub OAuth credentials are not configured yet.",
+                )
+            )
+        }
+        val requestBody = json.encodeToString(
+            TokenRequest.serializer(),
+            TokenRequest(client_id = clientId, client_secret = clientSecret, code = code),
+        )
 
         val request = Request.Builder()
             .url("https://github.com/login/oauth/access_token")
@@ -47,8 +61,11 @@ class GitHubAuthClient @Inject constructor(
             .addHeader("Accept", "application/json")
             .build()
 
-        val response = httpClient.execute(request)
-        val tokenResponse = json.decodeFromString<TokenResponse>(response.body?.string() ?: "")
-        tokenResponse.access_token
+        return httpClient.execute(request).flatMap { responseBody ->
+            vmCatching {
+                val tokenResponse = json.decodeFromString<TokenResponse>(responseBody)
+                tokenResponse.access_token
+            }
+        }
     }
 }
