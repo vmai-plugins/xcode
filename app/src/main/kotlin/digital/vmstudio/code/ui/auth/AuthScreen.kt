@@ -1,5 +1,6 @@
 package digital.vmstudio.code.ui.auth
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,19 +14,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +49,14 @@ fun AuthScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showTokenInput by remember { mutableStateOf(false) }
+    var tokenText by remember { mutableStateOf("") }
+
+    LaunchedEffect(uiState.isSignedIn) {
+        if (uiState.isSignedIn) {
+            onSignedIn()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -51,28 +68,29 @@ fun AuthScreen(
         Icon(
             imageVector = Icons.Default.AccountCircle,
             contentDescription = null,
-            modifier = Modifier.size(96.dp),
+            modifier = Modifier.size(92.dp),
             tint = MaterialTheme.colorScheme.primary,
         )
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = "Welcome to X-Codes",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = "Sign in securely via Google to sync your repositories, preferences, and workspace settings.",
+            text = "Sign in with Google to sync your repositories, servers, and AI preferences across devices.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(36.dp))
 
+        // Primary: 1-Tap Google Sign-In via Browser / Custom Tabs (with Play Services fallback)
         Button(
             onClick = {
-                viewModel.signInWithGoogle(context, onSignedIn)
+                viewModel.signInWithGoogleBrowser(context)
             },
             enabled = !uiState.isLoading,
             shape = RoundedCornerShape(12.dp),
@@ -80,7 +98,7 @@ fun AuthScreen(
                 .fillMaxWidth()
                 .height(54.dp),
         ) {
-            if (uiState.isLoading) {
+            if (uiState.isLoading && !showTokenInput) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),
                     color = MaterialTheme.colorScheme.onPrimary,
@@ -95,7 +113,67 @@ fun AuthScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Secondary: Expandable Token Entry
+        AnimatedVisibility(visible = showTokenInput) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                OutlinedTextField(
+                    value = tokenText,
+                    onValueChange = { tokenText = it },
+                    label = { Text("API Key or Hub Token") },
+                    placeholder = { Text("xc_... or token") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    leadingIcon = {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(20.dp))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        viewModel.signInWithToken(tokenText, onSignedIn)
+                    },
+                    enabled = tokenText.isNotBlank() && !uiState.isLoading,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                ) {
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text("Log In with Token")
+                    }
+                }
+            }
+        }
+
+        if (!showTokenInput) {
+            TextButton(
+                onClick = { showTokenInput = true },
+                enabled = !uiState.isLoading,
+            ) {
+                Text(
+                    text = "Or sign in with an API Token",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedButton(
             onClick = {
@@ -105,7 +183,7 @@ fun AuthScreen(
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp),
+                .height(52.dp),
         ) {
             Text(
                 text = "Continue as Guest",

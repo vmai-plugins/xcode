@@ -50,8 +50,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="vmstudio"
-                    android:host="auth"
-                    android:path="/github" />
+                    android:host="auth" />
             </intent-filter>
         </activity>
 

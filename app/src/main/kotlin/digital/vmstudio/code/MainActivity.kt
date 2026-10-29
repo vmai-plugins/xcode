@@ -92,10 +92,20 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDeepLink(intent: android.content.Intent?) {
         val uri = intent?.data ?: return
-        if (uri.scheme == "vmstudio" && uri.host == "auth" && uri.path == "/github") {
-            val code = uri.getQueryParameter("code")
-            if (!code.isNullOrBlank()) {
-                authViewModel.handleGitHubAuthCode(code)
+        if (uri.scheme == "vmstudio" && uri.host == "auth") {
+            when (uri.path) {
+                "/github" -> {
+                    val code = uri.getQueryParameter("code")
+                    if (!code.isNullOrBlank()) {
+                        authViewModel.handleGitHubAuthCode(code)
+                    }
+                }
+                "/google" -> {
+                    val code = uri.getQueryParameter("code")
+                    if (!code.isNullOrBlank()) {
+                        authViewModel.handleGoogleAuthCode(code)
+                    }
+                }
             }
         }
     }

@@ -30,10 +30,93 @@ import javax.inject.Inject
 class AuthViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
     private val gitHubAuthClient: digital.vmstudio.code.core.connectors.github.GitHubAuthClient,
+    private val googleAuthClient: digital.vmstudio.code.core.connectors.google.GoogleAuthClient,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+
+    /**
+     * Initiates Google Sign-In via Chrome Custom Tabs / external browser with PKCE.
+     * Avoids native Play Services SHA-1 fingerprint developer errors and works across all Android devices.
+     */
+    fun signInWithGoogleBrowser(context: Context) {
+        if (_uiState.value.isLoading) return
+        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
+        val uri = googleAuthClient.buildAuthorizationUri()
+        try {
+            val customTabsIntent = CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .build()
+            customTabsIntent.launchUrl(context, uri)
+        } catch (e: Exception) {
+            Log.w(TAG, "CustomTabs failed, falling back to standard ACTION_VIEW", e)
+            try {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (err: Exception) {
+                Log.e(TAG, "Failed to launch web browser for Google sign-in", err)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "Could not open a web browser to complete Google Sign-In.",
+                )
+            }
+        }
+    }
+
+    fun handleGoogleAuthCode(code: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            when (val result = googleAuthClient.exchangeCodeForProfile(code)) {
+                is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                    val profile = result.value
+                    Log.d(TAG, "Google profile retrieved for ${profile.email}")
+                    preferencesRepository.setUserProfile(
+                        email = profile.email,
+                        name = profile.name ?: profile.email.substringBefore('@'),
+                        avatarUrl = profile.picture,
+                        idToken = profile.idToken,
+                    )
+                    preferencesRepository.setHasSignedIn(true)
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
+                }
+                is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                    Log.e(TAG, "Google OAuth exchange failed: ${result.error.summary}")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Google Sign-In failed: ${result.error.summary}",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Secondary sign-in using an API token or Hub key.
+     */
+    fun signInWithToken(token: String, onSignedIn: () -> Unit) {
+        val trimmed = token.trim()
+        if (trimmed.isBlank()) {
+            _uiState.value = _uiState.value.copy(error = "Please enter a valid API key or token.")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            preferencesRepository.setHubApiKey(trimmed)
+            preferencesRepository.setUserProfile(
+                email = "token-user@vmstudio.digital",
+                name = "API Developer",
+                avatarUrl = null,
+                idToken = null,
+            )
+            preferencesRepository.setHasSignedIn(true)
+            _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
+            onSignedIn()
+        }
+    }
 
     fun signInWithGoogle(context: Context, onSignedIn: () -> Unit) {
         if (_uiState.value.isLoading) return
@@ -177,4 +260,5 @@ class AuthViewModel @Inject constructor(
 data class AuthUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
+    val isSignedIn: Boolean = false,
 )
