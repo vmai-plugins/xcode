@@ -24,7 +24,7 @@ internal object PathGuard {
         val cleanPath = when {
             workingDirectory.startsWith("~") && (path == workingDirectory || path.startsWith("$workingDirectory/")) -> path
             path.startsWith("~") -> return "Home-relative paths are not available. Use a path inside $workingDirectory."
-            else -> path
+            else -> path.replace('\\', '/')
         }
         if (isTreeUri(workingDirectory)) {
             val target = resolveTreeUriPath(workingDirectory, cleanPath)
@@ -38,9 +38,11 @@ internal object PathGuard {
         if (cleanPath.startsWith("content://")) {
             return "Cannot use content:// URIs in a remote or POSIX workspace."
         }
+        val isWinDrive = (cleanPath.length >= 2 && cleanPath[0].isLetter() && cleanPath[1] == ':') ||
+            (cleanPath.length >= 3 && cleanPath[0] == '/' && cleanPath[1].isLetter() && cleanPath[2] == ':')
         val full = when {
-            cleanPath.startsWith("/") || (workingDirectory.startsWith("~") && cleanPath.startsWith("~")) -> cleanPath
-            else -> "$workingDirectory/$cleanPath"
+            cleanPath.startsWith("/") || isWinDrive || (workingDirectory.startsWith("~") && cleanPath.startsWith("~")) -> cleanPath
+            else -> "${workingDirectory.replace('\\', '/')}/$cleanPath"
         }
         val target = normalize(full)
         val inside = root == "/" || target == root || target.startsWith("$root/")
@@ -53,10 +55,13 @@ internal object PathGuard {
 
     fun resolve(workingDirectory: String, path: String): String? {
         if (isTreeUri(workingDirectory)) return resolveTreeUriPath(workingDirectory, path)
-        if (path.startsWith("content://")) return null
+        val cleanPath = path.replace('\\', '/')
+        if (cleanPath.startsWith("content://")) return null
+        val isWinDrive = (cleanPath.length >= 2 && cleanPath[0].isLetter() && cleanPath[1] == ':') ||
+            (cleanPath.length >= 3 && cleanPath[0] == '/' && cleanPath[1].isLetter() && cleanPath[2] == ':')
         val full = when {
-            path.startsWith("/") || (workingDirectory.startsWith("~") && path.startsWith("~")) -> path
-            else -> "$workingDirectory/$path"
+            cleanPath.startsWith("/") || isWinDrive || (workingDirectory.startsWith("~") && cleanPath.startsWith("~")) -> cleanPath
+            else -> "${workingDirectory.replace('\\', '/')}/$cleanPath"
         }
         val target = normalize(full)
         val root = normalize(workingDirectory)
@@ -117,9 +122,11 @@ internal object PathGuard {
             .replace("%7E", "~")
 
     internal fun normalize(path: String): String {
-        val startsWithTilde = path.startsWith("~")
+        val clean = path.replace('\\', '/')
+        val startsWithTilde = clean.startsWith("~")
+        val formatted = if (clean.length >= 2 && clean[0].isLetter() && clean[1] == ':') "/$clean" else clean
         val parts = ArrayDeque<String>()
-        path.split('/').forEach { part ->
+        formatted.split('/').forEach { part ->
             when (part) {
                 "", "." -> Unit
                 ".." -> parts.removeLastOrNull()

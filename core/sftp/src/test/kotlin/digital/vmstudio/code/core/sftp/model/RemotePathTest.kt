@@ -149,4 +149,45 @@ class RemotePathTest {
             assertFalse("$path should not be sensitive", RemotePath.looksSensitive(path))
         }
     }
+
+    // --- Windows SFTP path compatibility --------------------------------------
+
+    @Test
+    fun `windows paths are recognized as absolute and normalized`() {
+        assertTrue(RemotePath.isAbsolute("C:\\Users\\tripc"))
+        assertTrue(RemotePath.isAbsolute("D:/Dev/x-codes"))
+        assertTrue(RemotePath.isAbsolute("/C:/Users/tripc"))
+
+        assertEquals("/C:/Users/tripc", RemotePath.normalise("C:\\Users\\tripc"))
+        assertEquals("/C:/Users/tripc", RemotePath.normalise("C:/Users/tripc"))
+        assertEquals("/D:/Dev/x-codes", RemotePath.normalise("D:\\Dev\\x-codes"))
+        assertEquals("/D:/Dev/x-codes", RemotePath.normalise("/D:/Dev/x-codes"))
+        assertEquals("/C:", RemotePath.normalise("C:"))
+        assertEquals("/C:", RemotePath.normalise("C:\\"))
+        assertEquals("/C:", RemotePath.normalise("/C:/"))
+    }
+
+    @Test
+    fun `windows path hierarchy navigation works`() {
+        assertEquals("tripc", RemotePath.name("C:\\Users\\tripc"))
+        assertEquals("x-codes", RemotePath.name("/D:/Dev/x-codes"))
+        assertEquals("/C:/Users", RemotePath.parent("C:\\Users\\tripc"))
+        assertEquals("/C:", RemotePath.parent("/C:/Users"))
+        assertEquals("/", RemotePath.parent("/C:"))
+        assertNull(RemotePath.parent("/"))
+
+        assertEquals("/D:/Dev/x-codes/README.md", RemotePath.join("D:\\Dev\\x-codes", "README.md"))
+        assertEquals("/D:/Dev/x-codes/src", RemotePath.resolve("D:\\Dev\\x-codes", "src"))
+        assertEquals("/D:/Dev/x-codes/src/Main.kt", RemotePath.resolve("D:\\Dev\\x-codes", "D:\\Dev\\x-codes\\src\\Main.kt"))
+
+        val root = "D:\\Dev\\x-codes"
+        assertEquals("/D:/Dev/x-codes/src/Main.kt", RemotePath.confine(root, "src/Main.kt"))
+        assertEquals("/D:/Dev/x-codes/src/Main.kt", RemotePath.confine(root, "D:\\Dev\\x-codes\\src\\Main.kt"))
+        assertEquals("/D:/Dev/x-codes/src/Main.kt", RemotePath.confine("/D:/Dev/x-codes", "/D:/Dev/x-codes/src/Main.kt"))
+        assertNull(RemotePath.confine(root, "../outside.txt"))
+        assertNull(RemotePath.confine(root, "C:\\Users\\tripc"))
+
+        assertEquals("src/Main.kt", RemotePath.relativise(root, "D:\\Dev\\x-codes\\src\\Main.kt"))
+        assertEquals(".", RemotePath.relativise(root, "D:/Dev/x-codes"))
+    }
 }

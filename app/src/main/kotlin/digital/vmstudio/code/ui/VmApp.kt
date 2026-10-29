@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -324,22 +326,32 @@ private fun ColumnScope.DrawerNavigationItems(
                 },
                 selected = chat.id == currentConversationId,
                 badge = {
-                    Box {
-                        IconButton(
-                            onClick = { onChatMenuClick(chat.id) },
-                            modifier = Modifier.size(32.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "Rename or delete chat",
-                                modifier = Modifier.size(18.dp),
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (chat.isRunning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Box {
+                            IconButton(
+                                onClick = { onChatMenuClick(chat.id) },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Rename or delete chat",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            ConversationMenu(
+                                expanded = chatMenuFor == chat.id,
+                                onDismiss = onChatMenuDismiss,
+                                onAction = { action -> onChatAction(chat to action) },
                             )
                         }
-                        ConversationMenu(
-                            expanded = chatMenuFor == chat.id,
-                            onDismiss = onChatMenuDismiss,
-                            onAction = { action -> onChatAction(chat to action) },
-                        )
                     }
                 },
                 onClick = { onSelectChat(chat.id) },
