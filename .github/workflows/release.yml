@@ -104,20 +104,36 @@ jobs:
             --generate-notes || \
           gh release upload "$TARGET_TAG" "xcodes-${VERSION}.apk" --clobber
 
-      - name: Deploy APK to apps.vmstudio.digital
-        if: env.DEPLOY_SSH_KEY != '' && success()
+      - name: Deploy APK to App Hub VPS
+        if: ${{ secrets.DEPLOY_SSH_KEY != '' }}
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
           TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
           META_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info
+          VMPJ_KEY: ${{ secrets.VMPJ_KEY || 'xc_a081cf117bf790917874c8a0f5dee6634442fa9d' }}
         run: |
           set -e
           mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
-          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR $META_DIR"
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR $META_DIR /home/vmstudio/htdocs/vmstudio.digital/apps /home/vmstudio/htdocs/vmstudio.digital/apps/x-codes"
           scp -i ~/.ssh/id_rsa "xcodes-${VERSION}.apk" "${DEPLOY_HOST}:${TARGET_DIR}/app-release.apk"
+          
+          # Deploy to all App Hub web locations
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" \
-            "cd $TARGET_DIR && cp -f app-release.apk xcodes-latest.apk && cp -f app-release.apk xcodes-${VERSION}.apk && chmod 644 app-release.apk xcodes-latest.apk xcodes-${VERSION}.apk && cp -f app-release.apk /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes-latest.apk 2>/dev/null || true; mkdir -p /home/vmstudio/htdocs/vmstudio.digital/apps 2>/dev/null || true; cp -f app-release.apk /home/vmstudio/htdocs/vmstudio.digital/apps/x-codes-latest.apk 2>/dev/null || true"
+            "cp -f ${TARGET_DIR}/app-release.apk /home/vmstudio/htdocs/vmstudio.digital/apps/xcodes-${VERSION}.apk && \
+             cp -f ${TARGET_DIR}/app-release.apk /home/vmstudio/htdocs/vmstudio.digital/apps/xcodes-latest.apk && \
+             cp -f ${TARGET_DIR}/app-release.apk /home/vmstudio/htdocs/vmstudio.digital/apps/x-codes/xcodes-latest.apk && \
+             chmod 644 ${TARGET_DIR}/app-release.apk /home/vmstudio/htdocs/vmstudio.digital/apps/xcodes-${VERSION}.apk /home/vmstudio/htdocs/vmstudio.digital/apps/xcodes-latest.apk /home/vmstudio/htdocs/vmstudio.digital/apps/x-codes/xcodes-latest.apk"
+
+          # Update version metadata on VPS
+          ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" \
+            "sed -i \"s/'version_name'          => '[0-9.]*'/'version_name'          => '${VERSION}'/g\" /home/vmstudio/htdocs/vmstudio.digital/wp-content/plugins/vm-project-hub/includes/class-vmpj-rest.php 2>/dev/null || true"
+
+          # Update Project #25 on App Hub REST API
+          curl -s -X POST -H "Content-Type: application/json" \
+            -H "X-VMPJ-Key: ${VMPJ_KEY}" \
+            -d "{\"name\":\"X-Codes (Android IDE App)\",\"status\":\"live\",\"live_url\":\"https://vmstudio.digital/apps/xcodes-${VERSION}.apk\",\"app_urls\":\"v${VERSION} Direct APK: https://vmstudio.digital/apps/xcodes-${VERSION}.apk\\nMirror APK: https://apps.vmstudio.digital/x-codes/app-release.apk\\nGitHub Release: https://github.com/vmai-plugins/xcode/releases/download/v${VERSION}/xcodes-${VERSION}.apk\"}" \
+            "https://vmstudio.digital/wp-json/xcodes/v1/projects/25" || true
 
           cat > meta.json <<EOF
           {
@@ -134,4 +150,4 @@ jobs:
           scp -i ~/.ssh/id_rsa meta.json "${DEPLOY_HOST}:${META_DIR}/release-${VERSION}.json" || true
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "cd $META_DIR && ln -sf release-${VERSION}.json xcodes-latest.json" || true
 
-          echo "Successfully published xcodes-${VERSION}.apk to https://apps.vmstudio.digital/x-codes/xcodes-latest.apk"
+          echo "Successfully published xcodes-${VERSION}.apk to App Hub!"

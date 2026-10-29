@@ -104,7 +104,7 @@ jobs:
             --notes "Debug build of main at ${SHA}. Installs next to a release build. On your phone: tap the .apk below, then allow installs from your browser if asked. Stable link to the latest: https://github.com/${GITHUB_REPOSITORY}/releases/download/nightly/xcodes-nightly.apk"
 
       - name: Deploy APK to apps.vmstudio.digital
-        if: env.DEPLOY_SSH_KEY != '' && success()
+        if: ${{ secrets.DEPLOY_SSH_KEY != '' }}
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}

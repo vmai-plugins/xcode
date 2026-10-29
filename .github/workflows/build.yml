@@ -67,7 +67,7 @@ jobs:
           if-no-files-found: error
 
       - name: Deploy APK to apps.vmstudio.digital
-        if: env.DEPLOY_SSH_KEY != '' && github.ref == 'refs/heads/main' && success()
+        if: ${{ secrets.DEPLOY_SSH_KEY != '' && github.ref == 'refs/heads/main' }}
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
