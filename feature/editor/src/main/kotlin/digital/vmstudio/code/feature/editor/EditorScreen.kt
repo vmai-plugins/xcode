@@ -330,6 +330,8 @@ fun EditorScreen(
                         onOverwrite = { viewModel.save(overwrite = true) },
                         onValueChange = viewModel::onTextFieldValueChange,
                         onClearSaveError = viewModel::clearSaveError,
+                        onUndo = viewModel::undo,
+                        onRedo = viewModel::redo,
                     )
                 }
             }
@@ -346,6 +348,8 @@ private fun EditorContent(
     onOverwrite: () -> Unit,
     onValueChange: (TextFieldValue) -> Unit,
     onClearSaveError: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
 ) {
     val spacing = VmTheme.spacing
     val verticalScrollState = rememberScrollState()
@@ -452,6 +456,10 @@ private fun EditorContent(
                     ),
                 )
             },
+            onUndo = onUndo,
+            onRedo = onRedo,
+            canUndo = snapshot.canUndo,
+            canRedo = snapshot.canRedo,
         )
     }
 }
@@ -506,6 +514,10 @@ private fun editorColorScheme(): ColorScheme {
 @Composable
 private fun DeveloperSymbolBar(
     onInsert: (String, Int) -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    canUndo: Boolean,
+    canRedo: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val symbols = remember {
@@ -516,6 +528,8 @@ private fun DeveloperSymbolBar(
             "[ ]" to ("[]" to 1),
             "\" \"" to ("\"\"" to 1),
             "' '" to ("''" to 1),
+            "//" to ("// " to 3),
+            "/* */" to ("/*  */" to 3),
             "< >" to ("<>" to 1),
             ";" to (";" to 1),
             ":" to (":" to 1),
@@ -554,6 +568,39 @@ private fun DeveloperSymbolBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Quick Undo & Redo docked right above keyboard for mobile thumb reach
+            IconButton(
+                onClick = onUndo,
+                enabled = canUndo,
+                modifier = Modifier.height(34.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = "Undo",
+                    modifier = Modifier.padding(2.dp),
+                    tint = if (canUndo) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                )
+            }
+            IconButton(
+                onClick = onRedo,
+                enabled = canRedo,
+                modifier = Modifier.height(34.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Redo,
+                    contentDescription = "Redo",
+                    modifier = Modifier.padding(2.dp),
+                    tint = if (canRedo) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .height(20.dp)
+                    .widthIn(min = 1.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
             symbols.forEach { (label, insertion) ->
                 val (symbol, offset) = insertion
                 Surface(

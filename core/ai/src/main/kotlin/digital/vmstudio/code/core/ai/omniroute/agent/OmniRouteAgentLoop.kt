@@ -128,6 +128,11 @@ class OmniRouteAgentLoop @Inject constructor(
             val commandCount = java.util.concurrent.atomic.AtomicInteger(0)
             var currentIteration = 0
 
+            val projectRules = loadProjectRules(serverId, workingDirectory)
+            if (projectRules != null) {
+                emit(AgentEvent.Diagnostic("📋 Loaded workspace rules from ${projectRules.first}", isStderr = false))
+            }
+
             while (currentCoroutineContext().isActive && currentIteration < maxIterations) {
                 currentIteration++
                 currentCoroutineContext().ensureActive()
@@ -139,6 +144,10 @@ class OmniRouteAgentLoop @Inject constructor(
                     if (config.squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK) {
                         if (isNotEmpty()) append("\n\n")
                         append(config.squadPreset.promptInstruction)
+                    }
+                    projectRules?.let { (_, rulesText) ->
+                        if (isNotEmpty()) append("\n\n")
+                        append(rulesText)
                     }
                 }.ifBlank { null }
                 var nextTurnResult = nextTurn(target, workingDirectory, allowedTools, history, effectivePrompt)
@@ -267,7 +276,7 @@ class OmniRouteAgentLoop @Inject constructor(
                             "call_" + UUID.randomUUID().toString().take(TOOL_ID_LENGTH)
                         }
                         history += toolRound(turn.truncated, streamedText, calls) { call ->
-                            runToolCall(call, target, config, autonomyLevel, allowedTools, commandCount, maxCommands)
+                            runToolCall(call, target, config, autonomyLevel, allowedTools, commandCount, maxCommands, projectRules)
                         }
                     }
                 }
@@ -488,6 +497,7 @@ class OmniRouteAgentLoop @Inject constructor(
         allowedTools: Set<OmniRouteTool>,
         commandCount: java.util.concurrent.atomic.AtomicInteger,
         maxCommands: Int,
+        projectRules: Pair<String, String>? = null,
     ): OmniRouteMessage.ToolResult {
         val tool = OmniRouteTool.fromToolName(call.name)
         val path = filePathArgument(call.argumentsJson)
@@ -526,6 +536,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     allowedTools = allowedTools,
                     commandCount = commandCount,
                     maxCommands = maxCommands,
+                    projectRules = projectRules,
                 )
             }
             OmniRouteTool.RUN_COMMAND, OmniRouteTool.RUN_BUILD -> {
@@ -589,6 +600,7 @@ class OmniRouteAgentLoop @Inject constructor(
         allowedTools: Set<OmniRouteTool>,
         commandCount: java.util.concurrent.atomic.AtomicInteger,
         maxCommands: Int,
+        projectRules: Pair<String, String>? = null,
     ): ToolOutcome {
         val role = argument(call.argumentsJson, "role")?.trim() ?: "specialist"
         val prompt = argument(call.argumentsJson, "prompt")?.trim()
@@ -654,6 +666,9 @@ class OmniRouteAgentLoop @Inject constructor(
                 append("You are a specialized subagent working in $subagentWorkDir.\n")
                 append(roleInstruction)
                 append("\nTask: ").append(prompt)
+                projectRules?.let { (_, rulesText) ->
+                    append("\n\n").append(rulesText)
+                }
                 append("\nWhen finished, provide a concise summary of your findings and actions.")
             }
 
@@ -692,6 +707,7 @@ class OmniRouteAgentLoop @Inject constructor(
                             allowedTools = subagentTools,
                             commandCount = commandCount,
                             maxCommands = maxCommands,
+                            projectRules = projectRules,
                         )
                     }
                 }
@@ -912,6 +928,49 @@ class OmniRouteAgentLoop @Inject constructor(
             is VmResult.Success -> ToolOutcome("Appended row(s) to Google Sheet $spreadsheetId: ${result.value}", isError = false)
             is VmResult.Failure -> ToolOutcome("Failed to append to Google Sheet: ${result.error.summaryWithReason()}", isError = true)
         }
+    }
+
+    private suspend fun readProjectFileSnippet(
+        serverId: String,
+        workingDirectory: String,
+        relativePath: String,
+        maxBytes: Long,
+    ): String? {
+        val resolved = resolvePath(workingDirectory, relativePath)
+        parseGitHubPath(resolved)?.let { (repoFullName, path) ->
+            return when (val result = gitHubRepositoryClient.getFileContent(repoFullName, path)) {
+                is VmResult.Success -> result.value.take(maxBytes.toInt())
+                is VmResult.Failure -> null
+            }
+        }
+        return when (val result = remoteFileSystem.readText(serverId, resolved, maxBytes)) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> null
+        }
+    }
+
+    private suspend fun loadProjectRules(
+        serverId: String,
+        workingDirectory: String,
+    ): Pair<String, String>? {
+        val candidates = listOf(
+            ".xcodes/rules.md",
+            ".xcodes/rules",
+            ".xcodes/SKILL.md",
+            "CLAUDE.md",
+            ".cursorrules",
+            ".windsurfrules",
+            "AGENTS.md",
+        )
+        for (candidate in candidates) {
+            val content = readProjectFileSnippet(serverId, workingDirectory, candidate, 16 * 1024L)
+            if (!content.isNullOrBlank()) {
+                val header = "=== Project Workspace Rules & Guidelines (from $candidate) ==="
+                val text = "$header\n${content.trim()}\n=================================================="
+                return candidate to text
+            }
+        }
+        return null
     }
 
     private suspend fun readFile(
