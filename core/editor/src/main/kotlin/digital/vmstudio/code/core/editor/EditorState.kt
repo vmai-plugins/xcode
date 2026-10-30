@@ -92,6 +92,11 @@ class EditorState(
         commitChange()
         if (undoStack.isEmpty()) return
         redoStack.addLast(checkpointText)
+        while (redoStack.size > MAX_UNDO_SIZE ||
+            (redoStack.size > 1 && redoStack.sumOf { it.length } > MAX_UNDO_CHARS)
+        ) {
+            redoStack.removeFirst()
+        }
         val previous = undoStack.removeLast()
         checkpointText = previous
         applyText(previous)

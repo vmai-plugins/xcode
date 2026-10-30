@@ -199,6 +199,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     }
 
                     is OmniRouteTurn.Text -> {
+                        turn.reasoning?.let { emit(AgentEvent.Reasoning(it)) }
                         turn.usage?.let { (input, output) ->
                             inputTokensTotal += input
                             outputTokensTotal += output
@@ -266,6 +267,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     }
 
                     is OmniRouteTurn.ToolCalls -> {
+                        turn.reasoning?.let { emit(AgentEvent.Reasoning(it)) }
                         turn.usage?.let { (input, output) ->
                             inputTokensTotal += input
                             outputTokensTotal += output

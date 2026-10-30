@@ -35,6 +35,7 @@ sealed interface OmniRouteTurn {
         val text: String,
         val usage: Pair<Long, Long>?,
         val truncated: Boolean = false,
+        val reasoning: String? = null,
     ) : OmniRouteTurn
 
     /** [truncated]: cut off at the token limit; the last call's arguments are incomplete. */
@@ -43,6 +44,7 @@ sealed interface OmniRouteTurn {
         val usage: Pair<Long, Long>?,
         val truncated: Boolean = false,
         val text: String? = null,
+        val reasoning: String? = null,
     ) : OmniRouteTurn
 
     data class ParseFailed(val reason: String) : OmniRouteTurn
@@ -220,27 +222,24 @@ object OmniRouteToolCodec {
 
         val truncated = isLengthStop(choice.stringOrNull("finish_reason"))
         val rawText = message.stringOrNull("content").orEmpty()
-        val reasoning = message.stringOrNull("reasoning_content")
-            ?: message.stringOrNull("reasoning")
-            ?: ""
-        val text = when {
-            rawText.isNotBlank() -> rawText
-            reasoning.isNotBlank() -> reasoning
-            else -> ""
-        }
+        val reasoning = (message.stringOrNull("reasoning_content")
+            ?: message.stringOrNull("reasoning"))?.takeIf { it.isNotBlank() }
+        val text = rawText.ifBlank { reasoning.orEmpty() }
+        val explicitReasoning = reasoning.takeIf { it != text }
         if (toolCalls.isNotEmpty()) {
             return OmniRouteTurn.ToolCalls(
                 calls = toolCalls,
                 usage = usage,
                 truncated = truncated,
                 text = text.takeIf { it.isNotBlank() },
+                reasoning = explicitReasoning,
             )
         }
 
         if (text.isBlank()) {
             return OmniRouteTurn.ParseFailed("The gateway response carried neither text nor tool calls.")
         }
-        return OmniRouteTurn.Text(text, usage, truncated)
+        return OmniRouteTurn.Text(text, usage, truncated, reasoning = explicitReasoning)
     }
 
     // --- Anthropic dialect -----------------------------------------------------------
@@ -369,13 +368,12 @@ object OmniRouteToolCodec {
 
         val toolCalls = mutableListOf<OmniRouteToolCall>()
         val text = StringBuilder()
+        val reasoning = StringBuilder()
         for (element in blocks) {
             val block = element as? JsonObject ?: continue
             when (block.stringOrNull("type")) {
                 "text" -> block.stringOrNull("text")?.let(text::append)
-                "thinking" -> block.stringOrNull("thinking")?.let { thinkingContent ->
-                    if (text.isEmpty()) text.append(thinkingContent)
-                }
+                "thinking" -> block.stringOrNull("thinking")?.let(reasoning::append)
                 "tool_use" -> {
                     val id = block.stringOrNull("id").orEmpty()
                     val name = block.stringOrNull("name")
@@ -393,11 +391,20 @@ object OmniRouteToolCodec {
 
         val truncated = isLengthStop(root.stringOrNull("stop_reason"))
         val contentText = text.toString()
-        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(toolCalls, usage, truncated, text = contentText.takeIf { it.isNotBlank() })
-        if (contentText.isBlank()) {
+        val reasoningText = reasoning.toString().takeIf { it.isNotBlank() }
+        val effectiveText = contentText.ifBlank { reasoningText.orEmpty() }
+        val explicitReasoning = reasoningText.takeIf { it != effectiveText }
+        if (toolCalls.isNotEmpty()) return OmniRouteTurn.ToolCalls(
+            calls = toolCalls,
+            usage = usage,
+            truncated = truncated,
+            text = contentText.takeIf { it.isNotBlank() },
+            reasoning = explicitReasoning,
+        )
+        if (effectiveText.isBlank()) {
             return OmniRouteTurn.ParseFailed("The gateway response carried neither text nor tool calls.")
         }
-        return OmniRouteTurn.Text(contentText, usage, truncated)
+        return OmniRouteTurn.Text(effectiveText, usage, truncated, reasoning = explicitReasoning)
     }
 
     // --- shared ----------------------------------------------------------------------
