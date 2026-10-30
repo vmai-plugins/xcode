@@ -210,7 +210,7 @@ class EditorViewModel @Inject constructor(
         val current = editor?.textFieldValue ?: return
         if (query.isEmpty()) return
         val text = current.text
-        val currentOffset = if (forward) current.selection.max else current.selection.min
+        val currentOffset = (if (forward) current.selection.max else current.selection.min).coerceIn(0, text.length)
         val index = if (forward) {
             val next = text.indexOf(query, currentOffset, ignoreCase = true)
             if (next >= 0) next else text.indexOf(query, 0, ignoreCase = true)

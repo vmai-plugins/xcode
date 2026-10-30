@@ -523,6 +523,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     workingDirectory = config.workingDirectory,
                     autonomyLevel = autonomyLevel,
                     permissionMode = config.permissionMode,
+                    allowedTools = allowedTools,
                     commandCount = commandCount,
                     maxCommands = maxCommands,
                 )
@@ -585,6 +586,7 @@ class OmniRouteAgentLoop @Inject constructor(
         workingDirectory: String,
         autonomyLevel: AgentAutonomyLevel,
         permissionMode: AgentPermissionMode,
+        allowedTools: Set<OmniRouteTool>,
         commandCount: java.util.concurrent.atomic.AtomicInteger,
         maxCommands: Int,
     ): ToolOutcome {
@@ -620,14 +622,18 @@ class OmniRouteAgentLoop @Inject constructor(
 
         val subagentTools = if (role.equals("research", ignoreCase = true) || role.equals("explorer", ignoreCase = true)) {
             setOf(OmniRouteTool.READ_FILE, OmniRouteTool.LIST_DIRECTORY, OmniRouteTool.GREP_SEARCH, OmniRouteTool.WEB_FETCH)
+                .filter { it in allowedTools }.toSet()
         } else {
             buildSet {
                 add(OmniRouteTool.READ_FILE)
                 add(OmniRouteTool.LIST_DIRECTORY)
                 add(OmniRouteTool.GREP_SEARCH)
+                if (OmniRouteTool.WEB_FETCH in allowedTools) add(OmniRouteTool.WEB_FETCH)
                 if (permissionMode != AgentPermissionMode.PLAN) {
                     add(OmniRouteTool.WRITE_FILE)
                     add(OmniRouteTool.EDIT_FILE)
+                    if (OmniRouteTool.RUN_COMMAND in allowedTools) add(OmniRouteTool.RUN_COMMAND)
+                    if (OmniRouteTool.RUN_BUILD in allowedTools) add(OmniRouteTool.RUN_BUILD)
                 }
             }
         }
@@ -746,7 +752,7 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.RUN_BUILD -> argument(call.argumentsJson, "cwd") ?: argument(call.argumentsJson, "directory")
             else -> null
         }
-        val default = if (tool == OmniRouteTool.LIST_DIRECTORY) "." else null
+        val default = if (tool == OmniRouteTool.LIST_DIRECTORY || tool == OmniRouteTool.GREP_SEARCH) "." else null
         val path = pathArg ?: default
         val problem = path?.let { PathGuard.problem(workingDirectory, it) }
         if (problem != null) return ToolOutcome(problem, isError = true)
@@ -1067,6 +1073,8 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         val lineMatches = mutableListOf<String>()
         val queue = ArrayDeque<String>()
+        val visitedDirs = mutableSetOf<String>()
+        visitedDirs.add(rootPath)
         queue.add(rootPath)
         var filesInspected = 0
         while (queue.isNotEmpty() && lineMatches.size < GREP_MAX_LINES && filesInspected < 300) {
@@ -1077,7 +1085,9 @@ class OmniRouteAgentLoop @Inject constructor(
                         val name = entry.name
                         if (name.startsWith(".") || name == "build" || name == "node_modules" || name == ".git") continue
                         if (entry.isDirectory) {
-                            queue.add(entry.path)
+                            if (visitedDirs.add(entry.path)) {
+                                queue.add(entry.path)
+                            }
                         } else {
                             filesInspected++
                             if (regex.containsMatchIn(name)) {

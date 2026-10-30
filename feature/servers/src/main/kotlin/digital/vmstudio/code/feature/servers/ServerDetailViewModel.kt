@@ -245,7 +245,7 @@ class ServerDetailViewModel @Inject constructor(
             if (memLine != null) {
                 val parts = memLine.split(Regex("\\s+")).filter { it.isNotBlank() }
                 if (parts.size >= 3) {
-                    val total = parts[1].toLongOrNull() ?: 1L
+                    val total = parts[1].toLongOrNull()?.takeIf { it > 0 } ?: 1L
                     val used = parts[2].toLongOrNull() ?: 0L
                     ramPercent = ((used.toDouble() / total) * 100).toInt().coerceIn(0, 100)
                     ramSummary = "${used}MB / ${total}MB ($ramPercent%)"
