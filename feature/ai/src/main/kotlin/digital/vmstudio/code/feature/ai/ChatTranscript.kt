@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -335,6 +337,8 @@ internal fun TranscriptRow(
 
         is TranscriptItem.Reasoning -> CollapsibleReasoning(item)
 
+        is TranscriptItem.SubagentRun -> SubagentRow(item)
+
         is TranscriptItem.ToolCall ->
             ToolRow(item, onOpenDiff = onOpenDiff, onRollback = onRollback, onPreview = onPreview)
 
@@ -433,6 +437,133 @@ private fun CollapsibleReasoning(item: TranscriptItem.Reasoning) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(10.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Antigravity-style Subagent Swarm Execution Card.
+ */
+@Composable
+private fun SubagentRow(item: TranscriptItem.SubagentRun) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val roleColor = when (item.role.lowercase()) {
+        "research", "explorer" -> Color(0xFF38BDF8)
+        "architect" -> Color(0xFFA78BFA)
+        "auditor", "security" -> Color(0xFFF87171)
+        "tester", "qa" -> Color(0xFF34D399)
+        "coder", "developer" -> Color(0xFFFBBF24)
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, roleColor.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (item.isRunning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = roleColor,
+                        )
+                    } else if (item.isError) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = "Failed",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Complete",
+                            tint = VmTheme.colors.success,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = roleColor.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            text = item.role.uppercase(),
+                            style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                            color = roleColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+
+                    Text(
+                        text = item.prompt,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = if (expanded) Int.MAX_VALUE else 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    HorizontalDivider(color = VmTheme.colors.divider)
+                    if (!item.summary.isNullOrBlank()) {
+                        Text(
+                            text = "Report & Findings:",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = VmTheme.colors.codeSurface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = item.summary,
+                                style = VmTheme.code.mono.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(8.dp),
+                            )
+                        }
+                    } else if (item.isRunning) {
+                        Text(
+                            text = "Executing subagent loop in background...",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontStyle = FontStyle.Italic),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }

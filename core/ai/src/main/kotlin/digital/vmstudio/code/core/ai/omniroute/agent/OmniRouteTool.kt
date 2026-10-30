@@ -77,6 +77,10 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "google_drive_read",
         "Read contents of a Google Drive file, code file, or export a Google Doc/Sheet to text/markdown/CSV. Requires file_id.",
     ),
+    INVOKE_SUBAGENT(
+        "invoke_subagent",
+        "Launch an autonomous specialized subagent in the background or parallel loop (e.g. role='research', 'architect', 'coder', 'auditor', 'tester'). The subagent performs the given prompt and returns its findings and execution report.",
+    ),
     ;
 
     companion object {
@@ -273,6 +277,27 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
         }
         putJsonArray("required") {
             add("file_id")
+        }
+    }
+    OmniRouteTool.INVOKE_SUBAGENT -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("role") {
+                put("type", "string")
+                put("description", "Specialist role: 'research', 'architect', 'coder', 'auditor', or 'tester'.")
+            }
+            putJsonObject("prompt") {
+                put("type", "string")
+                put("description", "Clear, actionable task description with specific requirements for what to return or perform.")
+            }
+            putJsonObject("path") {
+                put("type", "string")
+                put("description", "Optional target directory or file path for the subagent to focus on.")
+            }
+        }
+        putJsonArray("required") {
+            add("role")
+            add("prompt")
         }
     }
 }

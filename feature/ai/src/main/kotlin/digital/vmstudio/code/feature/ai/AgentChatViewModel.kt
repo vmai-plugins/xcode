@@ -103,6 +103,16 @@ sealed interface TranscriptItem {
         val isError: Boolean,
     ) : TranscriptItem
 
+    data class SubagentRun(
+        override val id: String,
+        val subagentId: String,
+        val role: String,
+        val prompt: String,
+        val isRunning: Boolean,
+        val summary: String? = null,
+        val isError: Boolean = false,
+    ) : TranscriptItem
+
     data class Failure(override val id: String, val error: VmError) : TranscriptItem
 }
 
@@ -117,7 +127,7 @@ data class AgentChatUiState(
     val workingDirectory: String = "",
     val transcript: List<TranscriptItem> = emptyList(),
     val isRunning: Boolean = false,
-    val permissionMode: AgentPermissionMode = AgentPermissionMode.PLAN,
+    val permissionMode: AgentPermissionMode = AgentPermissionMode.ACCEPT_EDITS,
     val health: AiProviderHealth? = null,
     val isCheckingHealth: Boolean = false,
     val conversationId: String? = null,
@@ -1566,6 +1576,29 @@ class AgentChatViewModel @Inject constructor(
                 )
             }
 
+            is AgentEvent.SubagentSpawned -> append(
+                TranscriptItem.SubagentRun(
+                    id = nextId(),
+                    subagentId = event.subagentId,
+                    role = event.role,
+                    prompt = event.prompt,
+                    isRunning = true,
+                ),
+            )
+
+            is AgentEvent.SubagentCompleted -> _uiState.update { state ->
+                val updated = state.transcript.map { item ->
+                    if (item is TranscriptItem.SubagentRun && item.subagentId == event.subagentId) {
+                        item.copy(
+                            isRunning = false,
+                            summary = event.summary,
+                            isError = event.isError,
+                        )
+                    } else item
+                }
+                state.copy(transcript = updated)
+            }
+
             is AgentEvent.Completed -> {
                 _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
                 append(
@@ -1741,6 +1774,10 @@ private fun List<TranscriptItem>.toConversationTurns(): List<ConversationTurn> =
                 "Ran tool ${item.name} (${item.summary}):\n${item.output.take(2000)}"
             }
             ConversationTurn(fromUser = false, text = desc)
+        }
+        is TranscriptItem.SubagentRun -> {
+            val summaryText = item.summary?.let { "\nReport: $it" }.orEmpty()
+            ConversationTurn(fromUser = false, text = "Subagent [${item.role}] executed task: ${item.prompt}$summaryText")
         }
         else -> null
     }

@@ -56,6 +56,21 @@ sealed interface AgentEvent {
         val output: String,
     ) : AgentEvent
 
+    /** A specialized subagent was spawned by the lead coordinator. */
+    data class SubagentSpawned(
+        val subagentId: String,
+        val role: String,
+        val prompt: String,
+    ) : AgentEvent
+
+    /** A subagent completed its execution task. */
+    data class SubagentCompleted(
+        val subagentId: String,
+        val role: String,
+        val summary: String,
+        val isError: Boolean,
+    ) : AgentEvent
+
     /** Terminal event of a successful run. */
     data class Completed(
         val sessionId: String?,

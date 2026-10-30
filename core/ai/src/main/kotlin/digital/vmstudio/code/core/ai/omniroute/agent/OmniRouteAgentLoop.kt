@@ -208,6 +208,35 @@ class OmniRouteAgentLoop @Inject constructor(
                             )
                             return@flow
                         }
+                        // Antigravity action loop guard:
+                        // If on the initial turn the model generates text outlining a plan or announcing steps
+                        // instead of immediately calling tools, do not terminate the loop! Steer the model forward.
+                        val hasActionTools = allowedTools.any {
+                            it == OmniRouteTool.EDIT_FILE ||
+                            it == OmniRouteTool.WRITE_FILE ||
+                            it == OmniRouteTool.RUN_COMMAND ||
+                            it == OmniRouteTool.INVOKE_SUBAGENT
+                        }
+                        val isPlanningResponse = currentIteration == 1 && hasActionTools && (
+                            turn.text.lines().count { it.trimStart().matches(Regex("""^(\d+\.|\*|-)\s+.*""")) } >= 2 ||
+                            turn.text.contains("I will", ignoreCase = true) ||
+                            turn.text.contains("Steps to", ignoreCase = true) ||
+                            turn.text.contains("Let's proceed", ignoreCase = true) ||
+                            turn.text.contains("Plan:", ignoreCase = true)
+                        )
+
+                        if (isPlanningResponse) {
+                            emit(AgentEvent.AssistantMessage(shown))
+                            history += OmniRouteMessage.Assistant(
+                                text = turn.text,
+                                toolCalls = emptyList(),
+                            )
+                            history += OmniRouteMessage.User(
+                                "Proceed with the first step immediately using the available tools. Do not wait for confirmation."
+                            )
+                            continue
+                        }
+
                         emit(AgentEvent.AssistantMessage(shown))
                         history += OmniRouteMessage.Assistant(
                             text = turn.text,
@@ -238,7 +267,7 @@ class OmniRouteAgentLoop @Inject constructor(
                             "call_" + UUID.randomUUID().toString().take(TOOL_ID_LENGTH)
                         }
                         history += toolRound(turn.truncated, streamedText, calls) { call ->
-                            runToolCall(call, config, autonomyLevel, allowedTools, commandCount, maxCommands)
+                            runToolCall(call, target, config, autonomyLevel, allowedTools, commandCount, maxCommands)
                         }
                     }
                 }
@@ -310,6 +339,7 @@ class OmniRouteAgentLoop @Inject constructor(
         val isLocalWorkspace = digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(config.serverId)
         val isGitHubWorkspace = config.workingDirectory.startsWith("/github/")
         add(OmniRouteTool.GREP_SEARCH)
+        add(OmniRouteTool.INVOKE_SUBAGENT)
         // Read-only, but it sends a model-chosen URL off the device, so a
         // restricted run or web access disabled does not get it.
         if (!config.restricted && config.webAccessEnabled) {
@@ -452,6 +482,7 @@ class OmniRouteAgentLoop @Inject constructor(
     /** Runs one tool call, emitting its start and finish, and returns the result for the history. */
     private suspend fun FlowCollector<AgentEvent>.runToolCall(
         call: OmniRouteToolCall,
+        target: GatewayTarget,
         config: AgentRunConfig,
         autonomyLevel: AgentAutonomyLevel,
         allowedTools: Set<OmniRouteTool>,
@@ -460,10 +491,11 @@ class OmniRouteAgentLoop @Inject constructor(
     ): OmniRouteMessage.ToolResult {
         val tool = OmniRouteTool.fromToolName(call.name)
         val path = filePathArgument(call.argumentsJson)
-        val target = path
+        val targetArg = path
             ?: argument(call.argumentsJson, "url")
             ?: argument(call.argumentsJson, "directory")
             ?: argument(call.argumentsJson, "tasks")
+            ?: argument(call.argumentsJson, "role")
         // Resolved to an absolute path, not the raw model argument:
         // a model editing a repo-root file may well call this with
         // just "README.md", and DiffReviewViewModel derives the
@@ -476,20 +508,47 @@ class OmniRouteAgentLoop @Inject constructor(
             AgentEvent.ToolStarted(
                 toolUseId = call.id,
                 name = call.name,
-                summary = summarize(tool, call.name, target),
+                summary = summarize(tool, call.name, targetArg),
                 argumentsJson = call.argumentsJson,
                 affectedPath = resolvedPath,
             ),
         )
 
-        val outcome = if (tool == OmniRouteTool.RUN_COMMAND || tool == OmniRouteTool.RUN_BUILD) {
-            if (commandCount.get() >= maxCommands) {
-                ToolOutcome(
-                    "Command limit reached: maximum $maxCommands commands per run allowed. Command skipped.",
-                    isError = true,
+        val outcome = when (tool) {
+            OmniRouteTool.INVOKE_SUBAGENT -> {
+                invokeSubagent(
+                    call = call,
+                    target = target,
+                    serverId = config.serverId,
+                    workingDirectory = config.workingDirectory,
+                    autonomyLevel = autonomyLevel,
+                    permissionMode = config.permissionMode,
+                    commandCount = commandCount,
+                    maxCommands = maxCommands,
                 )
-            } else {
-                commandCount.incrementAndGet()
+            }
+            OmniRouteTool.RUN_COMMAND, OmniRouteTool.RUN_BUILD -> {
+                if (commandCount.get() >= maxCommands) {
+                    ToolOutcome(
+                        "Command limit reached: maximum $maxCommands commands per run allowed. Command skipped.",
+                        isError = true,
+                    )
+                } else {
+                    commandCount.incrementAndGet()
+                    dispatch(
+                        tool = tool,
+                        call = call,
+                        serverId = config.serverId,
+                        workingDirectory = config.workingDirectory,
+                        autonomyLevel = autonomyLevel,
+                        permissionMode = config.permissionMode,
+                        allowedTools = allowedTools,
+                        driveToken = config.googleDriveToken,
+                        sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
+                    )
+                }
+            }
+            else -> {
                 dispatch(
                     tool = tool,
                     call = call,
@@ -502,18 +561,6 @@ class OmniRouteAgentLoop @Inject constructor(
                     sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
                 )
             }
-        } else {
-            dispatch(
-                tool = tool,
-                call = call,
-                serverId = config.serverId,
-                workingDirectory = config.workingDirectory,
-                autonomyLevel = autonomyLevel,
-                permissionMode = config.permissionMode,
-                allowedTools = allowedTools,
-                driveToken = config.googleDriveToken,
-                sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
-            )
         }
 
         emit(
@@ -529,6 +576,133 @@ class OmniRouteAgentLoop @Inject constructor(
             content = capToolOutput(outcome.output),
             isError = outcome.isError,
         )
+    }
+
+    private suspend fun FlowCollector<AgentEvent>.invokeSubagent(
+        call: OmniRouteToolCall,
+        target: GatewayTarget,
+        serverId: String,
+        workingDirectory: String,
+        autonomyLevel: AgentAutonomyLevel,
+        permissionMode: AgentPermissionMode,
+        commandCount: java.util.concurrent.atomic.AtomicInteger,
+        maxCommands: Int,
+    ): ToolOutcome {
+        val role = argument(call.argumentsJson, "role")?.trim() ?: "specialist"
+        val prompt = argument(call.argumentsJson, "prompt")?.trim()
+            ?: return ToolOutcome("Missing required argument \"prompt\".", isError = true)
+        val path = argument(call.argumentsJson, "path")?.trim()
+
+        val subagentId = "sub_" + UUID.randomUUID().toString().take(8)
+        emit(AgentEvent.SubagentSpawned(subagentId, role, prompt))
+
+        val roleInstruction = when (role.lowercase()) {
+            "research", "explorer", "researcher" ->
+                "Role: Autonomous Research & Codebase Explorer.\n" +
+                "You have read-only tools to explore files, inspect structure, and locate definitions. " +
+                "Do not make code edits. Return a clear, concise report of your findings."
+            "architect", "design" ->
+                "Role: Principal Software Architect.\n" +
+                "Analyze system design, module boundaries, data flows, and contracts. Propose concrete architectural specifications."
+            "auditor", "security" ->
+                "Role: Senior Security Auditor.\n" +
+                "Audit the code for security vulnerabilities, secrets leaks, SQL/command injection, and insecure defaults. Propose fixes."
+            "tester", "qa" ->
+                "Role: Lead QA Engineer.\n" +
+                "Focus on test coverage, edge cases, unit tests, and validation. Propose or write comprehensive tests."
+            "coder", "developer" ->
+                "Role: Specialist Implementation Dev.\n" +
+                "Write clean, idiomatic, maintainable code to satisfy the prompt requirements."
+            else ->
+                "Role: Autonomous Specialist Agent ($role).\n" +
+                "Execute the given task thoroughly and report back your results."
+        }
+
+        val subagentTools = if (role.equals("research", ignoreCase = true) || role.equals("explorer", ignoreCase = true)) {
+            setOf(OmniRouteTool.READ_FILE, OmniRouteTool.LIST_DIRECTORY, OmniRouteTool.GREP_SEARCH, OmniRouteTool.WEB_FETCH)
+        } else {
+            buildSet {
+                add(OmniRouteTool.READ_FILE)
+                add(OmniRouteTool.LIST_DIRECTORY)
+                add(OmniRouteTool.GREP_SEARCH)
+                if (permissionMode != AgentPermissionMode.PLAN) {
+                    add(OmniRouteTool.WRITE_FILE)
+                    add(OmniRouteTool.EDIT_FILE)
+                }
+            }
+        }
+
+        val subagentWorkDir = if (!path.isNullOrBlank()) resolvePath(workingDirectory, path) else workingDirectory
+        val subagentHistory = mutableListOf<OmniRouteMessage>(
+            OmniRouteMessage.User(prompt),
+        )
+
+        val subagentMaxTurns = 6
+        var subagentTurn = 0
+        var finalResult = ""
+        var isError = false
+
+        while (currentCoroutineContext().isActive && subagentTurn < subagentMaxTurns) {
+            subagentTurn++
+            val childPrompt = buildString {
+                append("You are a specialized subagent working in $subagentWorkDir.\n")
+                append(roleInstruction)
+                append("\nTask: ").append(prompt)
+                append("\nWhen finished, provide a concise summary of your findings and actions.")
+            }
+
+            val nextTurnRes = nextTurn(
+                target = target,
+                workingDirectory = subagentWorkDir,
+                allowedTools = subagentTools,
+                history = subagentHistory,
+                extraSystemPrompt = childPrompt,
+            )
+
+            val (turnResult, _) = when (nextTurnRes) {
+                is VmResult.Failure -> {
+                    isError = true
+                    finalResult = "Subagent turn failed: " + nextTurnRes.error.summary
+                    break
+                }
+                is VmResult.Success -> nextTurnRes.value
+            }
+
+            when (turnResult) {
+                is OmniRouteTurn.Text -> {
+                    finalResult = turnResult.text
+                    break
+                }
+                is OmniRouteTurn.ToolCalls -> {
+                    val calls = turnResult.calls.withUniqueIds(mutableSetOf<String>()) {
+                        "subcall_" + UUID.randomUUID().toString().take(8)
+                    }
+                    subagentHistory += toolRound(turnResult.truncated, turnResult.text.orEmpty(), calls) { childCall ->
+                        runToolCall(
+                            call = childCall,
+                            target = target,
+                            config = AgentRunConfig(serverId = serverId, workingDirectory = subagentWorkDir, prompt = prompt),
+                            autonomyLevel = autonomyLevel,
+                            allowedTools = subagentTools,
+                            commandCount = commandCount,
+                            maxCommands = maxCommands,
+                        )
+                    }
+                }
+                is OmniRouteTurn.ParseFailed, is OmniRouteTurn.GatewayError -> {
+                    isError = true
+                    finalResult = "Subagent error: " + ((turnResult as? OmniRouteTurn.GatewayError)?.message ?: "Parse error")
+                    break
+                }
+            }
+        }
+
+        if (finalResult.isBlank()) {
+            finalResult = "Subagent [$role] completed execution."
+        }
+
+        emit(AgentEvent.SubagentCompleted(subagentId, role, finalResult.take(300), isError))
+        return ToolOutcome("### Subagent [$role] Execution Report:\n$finalResult", isError = isError)
     }
 
     private suspend fun dispatch(
@@ -593,6 +767,7 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.GOOGLE_DRIVE_READ -> googleDriveRead(call, driveToken)
             OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call, sheetsToken ?: driveToken)
             OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call, sheetsToken ?: driveToken)
+            OmniRouteTool.INVOKE_SUBAGENT -> ToolOutcome("invoke_subagent is executed directly by the agent loop.", isError = false)
         }
     }
 
@@ -1262,6 +1437,7 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.GREP_SEARCH -> "Search in ${path ?: "?"}"
         OmniRouteTool.WRITE_FILE -> "Write ${path ?: "?"}"
         OmniRouteTool.EDIT_FILE -> "Edit ${path ?: "?"}"
+        OmniRouteTool.INVOKE_SUBAGENT -> "Launch subagent [${path ?: "specialist"}]"
         OmniRouteTool.RUN_COMMAND -> "Run command"
         OmniRouteTool.RUN_BUILD -> "Build ${path ?: "project"}"
         OmniRouteTool.LIST_APKS -> "List APKs in ${path ?: "."}"
@@ -1436,10 +1612,14 @@ class OmniRouteAgentLoop @Inject constructor(
         extraSystemPrompt: String? = null,
     ): String = buildString {
         append(
-            "You are an autonomous AI coding agent working in $workingDirectory on a remote " +
-                "server, reached through tools. First inspect the project structure with " +
-                "list_directory, read_file, or grep_search. ",
+            "You are an autonomous AI coding agent working in $workingDirectory on a project, " +
+                "reached through tools. You operate in an active execution loop: do not just describe " +
+                "what you plan to do or ask the user to do it. Take immediate action using your tools. " +
+                "First inspect the project structure or relevant code with list_directory, read_file, or grep_search. ",
         )
+        if (OmniRouteTool.INVOKE_SUBAGENT in allowedTools) {
+            append("Use invoke_subagent to spawn specialized subagents (research, architect, coder, auditor, tester) for deep investigations, architecture reviews, parallel coding, or security audits. ")
+        }
         if (OmniRouteTool.WEB_FETCH in allowedTools) {
             append("Use web_fetch to read documentation or other public pages when you need them. ")
         }
@@ -1475,8 +1655,7 @@ class OmniRouteAgentLoop @Inject constructor(
             )
         }
         append(
-            "Prefer relative paths under $workingDirectory. For large or multi-step requests, formulate a plan by listing steps first, then execute them sequentially. Validate your results between steps. When done, reply " +
-                "with a clear summary of findings or modifications.",
+            "Prefer relative paths under $workingDirectory. Do not stop until all necessary actions and validations are complete. When done, reply with a clear, concise summary of changes.",
         )
         if (!extraSystemPrompt.isNullOrBlank()) {
             append("\n\n").append(extraSystemPrompt.trim())

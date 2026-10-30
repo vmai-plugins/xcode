@@ -45,7 +45,7 @@ data class UserPreferences(
     val editorFontSizeSp: Float = 13f,
     val terminalFontSizeSp: Float = 12.5f,
     val terminalScrollbackLines: Int = 5_000,
-    val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.SAFE_AUTO,
+    val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.DEVELOPER,
     val hasCompletedOnboarding: Boolean = false,
     val hasSignedIn: Boolean = false,
     val hubApiKey: String? = DEFAULT_HUB_API_KEY,
