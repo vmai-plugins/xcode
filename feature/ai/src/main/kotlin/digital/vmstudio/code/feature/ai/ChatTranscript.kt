@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
@@ -32,7 +33,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -276,6 +276,7 @@ internal fun TranscriptRow(
             }
 
             val context = LocalContext.current
+            @Suppress("DEPRECATION")
             val clipboardManager = LocalClipboardManager.current
             val haptic = LocalHapticFeedback.current
 
@@ -850,6 +851,7 @@ internal fun isWebPage(path: String): Boolean =
 /** A reply as plain text on the page, with copy and voice TTS read-out buttons. */
 @Composable
 private fun AssistantReply(text: String) {
+    @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -926,7 +928,7 @@ private fun AssistantReply(text: String) {
                 modifier = Modifier.size(32.dp),
             ) {
                 Icon(
-                    imageVector = if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
+                    imageVector = if (isSpeaking) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
                     contentDescription = if (isSpeaking) "Stop voice" else "Read out loud",
                     tint = if (isSpeaking) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,

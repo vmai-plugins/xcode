@@ -66,8 +66,12 @@ fun BrowserScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            webView?.stopLoading()
-            webView?.destroy()
+            webView?.let { wv ->
+                (wv.parent as? ViewGroup)?.removeView(wv)
+                wv.stopLoading()
+                wv.clearHistory()
+                wv.destroy()
+            }
             webView = null
         }
     }
@@ -165,6 +169,7 @@ fun BrowserScreen(
                                 }
                                 context.startActivity(intent)
                             } catch (_: Exception) {
+                                android.widget.Toast.makeText(context, "No app found to handle download", android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }
                         webChromeClient = object : WebChromeClient() {
@@ -190,6 +195,21 @@ fun BrowserScreen(
                                 url?.let { currentUrl = it }
                                 canGoBack = view?.canGoBack() == true
                                 canGoForward = view?.canGoForward() == true
+                            }
+
+                            @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+                            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                                isLoading = false
+                            }
+
+                            override fun onReceivedError(
+                                view: WebView?,
+                                request: android.webkit.WebResourceRequest?,
+                                error: android.webkit.WebResourceError?,
+                            ) {
+                                if (request?.isForMainFrame == true) {
+                                    isLoading = false
+                                }
                             }
 
                             override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {

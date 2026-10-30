@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.repository.AgentTask
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
+import digital.vmstudio.code.core.common.log.LogCategory
+import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.project.HubTaskItem
 import digital.vmstudio.code.core.project.VmProjectHubClient
@@ -31,12 +33,14 @@ class TasksViewModel @Inject constructor(
 
     private val hubTasks = MutableStateFlow<List<HubTaskItem>>(emptyList())
     private val isSyncingHub = MutableStateFlow(false)
+    private val hubError = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<TasksUiState> = combine(
         tasks.observeAll(),
         hubTasks,
         isSyncingHub,
-    ) { list, hubList, syncing ->
+        hubError,
+    ) { list, hubList, syncing, error ->
         val projectIds = list.map { it.projectId }.distinct()
         val serverMap = coroutineScope {
             projectIds.map { pid ->
@@ -51,6 +55,7 @@ class TasksViewModel @Inject constructor(
             isSyncingHub = syncing,
             tasks = rows,
             hubTasks = hubList,
+            hubError = error,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -65,11 +70,18 @@ class TasksViewModel @Inject constructor(
     fun syncHubTasks() {
         if (isSyncingHub.value) return
         isSyncingHub.value = true
+        hubError.value = null
         viewModelScope.launch {
             try {
                 when (val res = projectHubClient.fetchTasks()) {
-                    is VmResult.Success -> hubTasks.value = res.value
-                    is VmResult.Failure -> Unit
+                    is VmResult.Success -> {
+                        hubTasks.value = res.value
+                        hubError.value = null
+                    }
+                    is VmResult.Failure -> {
+                        VmLog.w(LogCategory.NETWORK, TAG, "Failed to fetch tasks from VM Project Hub: ${res.error.summary}")
+                        hubError.value = res.error.summary
+                    }
                 }
             } finally {
                 isSyncingHub.value = false
@@ -90,6 +102,8 @@ class TasksViewModel @Inject constructor(
         viewModelScope.launch {
             val result = projectHubClient.updateTaskStatus(item.id, nextStatus)
             if (result is VmResult.Failure) {
+                VmLog.w(LogCategory.NETWORK, TAG, "Failed to update task status on VM Project Hub: ${result.error.summary}")
+                hubError.value = "Failed to update task status: ${result.error.summary}"
                 // Roll back optimistic state on network or server error
                 hubTasks.value = hubTasks.value.map {
                     if (it.id == item.id) it.copy(status = previousStatus) else it
@@ -98,11 +112,16 @@ class TasksViewModel @Inject constructor(
         }
     }
 
+    fun dismissHubError() {
+        hubError.value = null
+    }
+
     fun delete(taskId: String) {
         viewModelScope.launch { tasks.delete(taskId) }
     }
 
     private companion object {
+        private const val TAG = "TasksViewModel"
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }
@@ -118,5 +137,6 @@ data class TasksUiState(
     val isSyncingHub: Boolean = false,
     val tasks: List<TaskRowUi> = emptyList(),
     val hubTasks: List<HubTaskItem> = emptyList(),
+    val hubError: String? = null,
 )
 

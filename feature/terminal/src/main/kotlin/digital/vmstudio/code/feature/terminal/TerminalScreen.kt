@@ -57,7 +57,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.terminal.session.TerminalKey
 import digital.vmstudio.code.core.terminal.session.TerminalSessionState
@@ -324,6 +324,7 @@ private fun TerminalInputBar(
     var controlArmed by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    @Suppress("DEPRECATION")
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Column(

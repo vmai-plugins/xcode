@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -34,7 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ai.repository.TaskRunStatus
 import digital.vmstudio.code.core.ui.component.VmCard
@@ -125,9 +127,9 @@ fun TasksScreen(
                     if (state.hubTasks.isEmpty() && !state.isSyncingHub) {
                         VmEmptyState(
                             icon = Icons.Default.AutoAwesome,
-                            title = "No Project Hub tasks",
-                            description = "Tap 'Sync Hub' to pull Kanban tasks from vmstudio.digital.",
-                            actionLabel = "Sync Hub",
+                            title = if (state.hubError != null) "Sync failed" else "No Project Hub tasks",
+                            description = state.hubError ?: "Tap 'Sync Hub' to pull Kanban tasks from vmstudio.digital.",
+                            actionLabel = if (state.hubError != null) "Retry Sync" else "Sync Hub",
                             onAction = viewModel::syncHubTasks,
                         )
                     } else {
@@ -136,6 +138,40 @@ fun TasksScreen(
                             contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.sm),
                             verticalArrangement = Arrangement.spacedBy(spacing.sm),
                         ) {
+                            if (state.hubError != null) {
+                                item(key = "hub-error") {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.errorContainer,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                text = state.hubError ?: "",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            IconButton(
+                                                onClick = viewModel::dismissHubError,
+                                                modifier = Modifier.size(24.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Dismiss",
+                                                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             items(state.hubTasks, key = { "hub-${it.id}" }) { hubTask ->
                                 HubTaskRow(
                                     item = hubTask,

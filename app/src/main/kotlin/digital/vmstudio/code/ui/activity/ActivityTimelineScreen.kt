@@ -13,12 +13,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -38,7 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -184,7 +184,7 @@ private fun ActivityItemCard(activity: ActivityEntity) {
     val icon = when (activity.category) {
         ActivityCategory.AI, ActivityCategory.AGENT -> Icons.Default.AutoAwesome
         ActivityCategory.GIT -> Icons.Default.AccountTree
-        ActivityCategory.FILE -> Icons.Default.InsertDriveFile
+        ActivityCategory.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
         ActivityCategory.SERVER -> Icons.Default.Dns
         ActivityCategory.TERMINAL -> Icons.Default.Terminal
         else -> Icons.Default.History

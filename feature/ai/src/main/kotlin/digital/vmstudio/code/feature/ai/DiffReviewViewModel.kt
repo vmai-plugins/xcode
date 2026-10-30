@@ -40,18 +40,26 @@ class DiffReviewViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val serverId: String = requireNotNull(savedStateHandle[ARG_SERVER_ID]) {
-        "DiffReview requires a serverId"
-    }
-    private val filePath: String = requireNotNull(savedStateHandle[ARG_FILE_PATH]) {
-        "DiffReview requires a filePath"
-    }
+    private val serverId: String = savedStateHandle.get<String>(ARG_SERVER_ID).orEmpty()
+    private val filePath: String = savedStateHandle.get<String>(ARG_FILE_PATH).orEmpty()
 
     private val _uiState = MutableStateFlow(DiffReviewUiState(filePath = filePath, serverId = serverId))
     val uiState: StateFlow<DiffReviewUiState> = _uiState.asStateFlow()
 
     init {
-        loadDiff()
+        if (serverId.isBlank() || filePath.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    error = VmError.Validation(
+                        summary = "Missing diff coordinates",
+                        reason = "DiffReview requires both serverId and filePath.",
+                    ),
+                )
+            }
+        } else {
+            loadDiff()
+        }
     }
 
     fun loadDiff() {
@@ -166,14 +174,22 @@ class DiffReviewViewModel @Inject constructor(
             when (val commitRes = gitService.commit(serverId, repoPath, message)) {
                 is GitResult.Success -> {
                     if (pushAfter) {
-                        gitService.push(serverId, repoPath)
-                    }
-                    _uiState.update {
-                        it.copy(
-                            isSaving = false,
-                            isCommitted = true,
-                            diff = GitDiff(),
-                        )
+                        when (val pushRes = gitService.push(serverId, repoPath)) {
+                            is GitResult.Success -> _uiState.update {
+                                it.copy(isSaving = false, isCommitted = true, diff = GitDiff())
+                            }
+                            is GitResult.Failure -> _uiState.update {
+                                it.copy(isSaving = false, error = mapGitError(pushRes.error))
+                            }
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isSaving = false,
+                                isCommitted = true,
+                                diff = GitDiff(),
+                            )
+                        }
                     }
                 }
                 is GitResult.Failure -> {

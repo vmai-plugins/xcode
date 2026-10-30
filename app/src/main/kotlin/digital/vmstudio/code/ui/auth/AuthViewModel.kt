@@ -67,6 +67,15 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Resets loading state if the user dismisses an external browser OAuth flow.
+     */
+    fun resetLoading() {
+        if (_uiState.value.isLoading) {
+            _uiState.value = _uiState.value.copy(isLoading = false)
+        }
+    }
+
     fun handleGoogleAuthCode(code: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)

@@ -189,25 +189,42 @@ class ServerDetailViewModel @Inject constructor(
 
     fun restartContainer(name: String) {
         viewModelScope.launch {
-            val sessionResult = connectionManager.session(serverId)
-            if (sessionResult is VmResult.Success) {
-                sessionResult.value.execute("docker restart '$name'", CommandLimits(timeoutMillis = 20_000))
-                refreshTelemetry()
+            when (val sessionResult = connectionManager.session(serverId)) {
+                is VmResult.Success -> {
+                    val res = sessionResult.value.execute("docker restart '$name'", CommandLimits(timeoutMillis = 20_000))
+                    if (res is VmResult.Failure) {
+                        _uiState.update { it.copy(error = res.error) }
+                    } else {
+                        refreshTelemetry()
+                    }
+                }
+                is VmResult.Failure -> {
+                    _uiState.update { it.copy(error = sessionResult.error) }
+                }
             }
         }
     }
 
     fun viewContainerLogs(name: String) {
         viewModelScope.launch {
-            val sessionResult = connectionManager.session(serverId)
-            if (sessionResult is VmResult.Success) {
-                val res = sessionResult.value.execute(
-                    "docker logs --tail 100 '$name'",
-                    CommandLimits(timeoutMillis = 10_000),
-                )
-                if (res is VmResult.Success) {
-                    val output = res.value.stdout.ifBlank { res.value.stderr }.ifBlank { "No logs found." }
-                    _uiState.update { it.copy(containerLogs = name to output) }
+            when (val sessionResult = connectionManager.session(serverId)) {
+                is VmResult.Success -> {
+                    val res = sessionResult.value.execute(
+                        "docker logs --tail 100 '$name'",
+                        CommandLimits(timeoutMillis = 10_000),
+                    )
+                    when (res) {
+                        is VmResult.Success -> {
+                            val output = res.value.stdout.ifBlank { res.value.stderr }.ifBlank { "No logs found." }
+                            _uiState.update { it.copy(containerLogs = name to output) }
+                        }
+                        is VmResult.Failure -> {
+                            _uiState.update { it.copy(error = res.error) }
+                        }
+                    }
+                }
+                is VmResult.Failure -> {
+                    _uiState.update { it.copy(error = sessionResult.error) }
                 }
             }
         }

@@ -50,12 +50,8 @@ class EditorViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val serverId: String = requireNotNull(savedStateHandle[ARG_SERVER_ID]) {
-        "Editor requires a serverId"
-    }
-    private val filePath: String = requireNotNull(savedStateHandle[ARG_FILE_PATH]) {
-        "Editor requires a filePath"
-    }
+    private val serverId: String = savedStateHandle.get<String>(ARG_SERVER_ID).orEmpty()
+    private val filePath: String = savedStateHandle.get<String>(ARG_FILE_PATH).orEmpty()
 
     private val isLoading = MutableStateFlow(true)
     private val isSaving = MutableStateFlow(false)
@@ -116,7 +112,15 @@ class EditorViewModel @Inject constructor(
     }
 
     init {
-        loadFile()
+        if (serverId.isBlank() || filePath.isBlank()) {
+            loadError.value = VmError.Validation(
+                summary = "Missing file coordinates",
+                reason = "Editor requires both a valid serverId and filePath.",
+            )
+            isLoading.value = false
+        } else {
+            loadFile()
+        }
     }
 
     fun loadFile() {
@@ -236,9 +240,11 @@ class EditorViewModel @Inject constructor(
             replaced
         } else {
             val range = current.selection
-            if (range.length > 0 && text.substring(range.min, range.max).equals(target, ignoreCase = true)) {
-                val replaced = text.replaceRange(range.min, range.max, replacement)
-                val searchStart = range.min + replacement.length
+            val min = range.min.coerceIn(0, text.length)
+            val max = range.max.coerceIn(min, text.length)
+            if (max > min && text.substring(min, max).equals(target, ignoreCase = true)) {
+                val replaced = text.replaceRange(min, max, replacement)
+                val searchStart = min + replacement.length
                 val nextMatch = replaced.indexOf(target, searchStart, ignoreCase = true).takeIf { it >= 0 }
                     ?: replaced.indexOf(target, 0, ignoreCase = true).takeIf { it >= 0 }
                 newSelection = if (nextMatch != null) {

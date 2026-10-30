@@ -310,9 +310,15 @@ internal class LocalFileSystemDelegate(
             }
         }
         val file = resolveLocalFile(path)
-        file.parentFile?.mkdirs()
-        file.writeText(content, Charsets.UTF_8)
-        VmResult.Success(Unit)
+        return@withContext try {
+            file.parentFile?.mkdirs()
+            file.writeText(content, Charsets.UTF_8)
+            VmResult.Success(Unit)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            storageFailure("Failed to write file: ${e.message}", path)
+        }
     }
 
     fun download(remotePath: String, destination: File): Flow<TransferEvent> {

@@ -29,7 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ui.component.VmCard
@@ -199,7 +199,7 @@ private fun ServerCard(
                 )
                 Text(
                     text = if (server.isProduction) {
-                        "${server.displayTarget} · Production"
+                        "${server.displayTarget} ï¿½ Production"
                     } else {
                         server.displayTarget
                     },

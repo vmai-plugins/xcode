@@ -162,6 +162,8 @@ object DiffParser {
         while (i < lines.size) {
             val line = lines[i]
             when {
+                line.startsWith("diff --git") -> break
+                line.startsWith("--- ") && (i + 1 < lines.size && lines[i + 1].startsWith("+++ ")) -> break
                 line.startsWith("+") -> { output += DiffLine(text = line.drop(1), type = DiffLineType.ADDED); i++ }
                 line.startsWith("-") -> { output += DiffLine(text = line.drop(1), type = DiffLineType.REMOVED); i++ }
                 line.startsWith(" ") -> { output += DiffLine(text = line.drop(1), type = DiffLineType.UNCHANGED); i++ }

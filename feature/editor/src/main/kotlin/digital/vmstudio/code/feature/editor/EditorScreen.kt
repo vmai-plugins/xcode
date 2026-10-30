@@ -18,14 +18,14 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,7 +55,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.editor.ColorScheme
@@ -204,7 +204,7 @@ fun EditorScreen(
                                 enabled = snapshot.canUndo,
                             ) {
                                 Icon(
-                                    Icons.Default.Undo,
+                                    Icons.AutoMirrored.Filled.Undo,
                                     contentDescription = "Undo",
                                     tint = if (snapshot.canUndo) MaterialTheme.colorScheme.onSurface
                                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
@@ -215,7 +215,7 @@ fun EditorScreen(
                                 enabled = snapshot.canRedo,
                             ) {
                                 Icon(
-                                    Icons.Default.Redo,
+                                    Icons.AutoMirrored.Filled.Redo,
                                     contentDescription = "Redo",
                                     tint = if (snapshot.canRedo) MaterialTheme.colorScheme.onSurface
                                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),

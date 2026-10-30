@@ -131,6 +131,7 @@ private fun BiometricLockGate(
 
     val triggerUnlock = {
         if (isSecure) {
+            @Suppress("DEPRECATION")
             val intent = keyguardManager?.createConfirmDeviceCredentialIntent(
                 "Unlock X-Codes",
                 "Verify your fingerprint, face, or PIN to access your workspaces",

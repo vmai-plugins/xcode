@@ -141,10 +141,20 @@ class EvolutionApiClient @Inject constructor(
             return VmResult.Failure(VmError.FileSystem(summary = "APK file not found", reason = apkFile.absolutePath))
         }
 
+        // WhatsApp / Evolution API payload safety limit: guard against OutOfMemoryError on large files
+        if (apkFile.length() > 50 * 1024 * 1024L) {
+            return VmResult.Failure(
+                VmError.FileSystem(
+                    summary = "APK is too large to send directly via WhatsApp (${apkFile.length() / (1024 * 1024)} MB)",
+                    reason = "Direct upload limit is 50MB. Please use the download link instead.",
+                ),
+            )
+        }
+
         // Evolution API supports base64 data URIs: data:application/vnd.android.package-archive;base64,...
         val bytes = try {
             apkFile.readBytes()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             return VmResult.Failure(VmError.FileSystem(summary = "Could not read APK", reason = e.message))
         }
 

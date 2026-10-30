@@ -32,6 +32,7 @@ import digital.vmstudio.code.core.ssh.command.CommandLimits
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import digital.vmstudio.code.core.update.ApkInstaller
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -360,6 +361,7 @@ class ProjectDetailViewModel @Inject constructor(
                     notificationMessage.value = "Saved $safeName to $locationName"
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 error.value = VmError.Storage(
                     summary = "Could not save APK to Downloads",
                     reason = e.message,
@@ -439,6 +441,7 @@ class ProjectDetailViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 error.value = VmError.Network(
                     summary = "Could not send APK via WhatsApp",
                     reason = e.message,

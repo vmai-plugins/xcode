@@ -264,8 +264,9 @@ class TerminalSession internal constructor(
      * Must be called on [emulatorDispatcher]; it reads emulator state directly.
      */
     private fun publishSnapshot() {
-        val offset = _scrollOffset.value
-        val bottomRow = emulator.buffer.totalRows - offset
+        val maxOffset = emulator.buffer.scrollbackSize.coerceAtLeast(0)
+        val offset = _scrollOffset.value.coerceIn(0, maxOffset)
+        val bottomRow = (emulator.buffer.totalRows - offset).coerceAtLeast(0)
         val topRow = (bottomRow - emulator.rows).coerceAtLeast(0)
 
         val lines = ArrayList<TerminalRowSnapshot>(emulator.rows)

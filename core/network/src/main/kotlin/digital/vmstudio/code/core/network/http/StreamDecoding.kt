@@ -66,13 +66,13 @@ class SseDecoder {
         eventName = null
         val isDone = payload.trim() == DONE_SENTINEL ||
             name == "message_stop" ||
-            payload.contains("\"type\":\"message_stop\"") ||
-            (payload.contains("\"message_stop\"") && payload.contains("\"type\""))
+            ANTHROPIC_STOP_PATTERN.containsMatchIn(payload)
         return SseEvent(name = name, data = payload, isDone = isDone)
     }
 
     private companion object {
         const val DONE_SENTINEL = "[DONE]"
+        val ANTHROPIC_STOP_PATTERN = Regex("""\"type\"\s*:\s*\"message_stop\"""")
     }
 }
 
