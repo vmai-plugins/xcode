@@ -104,15 +104,17 @@ fun TerminalView(
                 }
         }
 
+        val terminalContentDescription = remember(screen.lines) {
+            screen.lines.joinToString("\n") { row ->
+                String(row.chars, 0, row.length).trimEnd()
+            }
+        }
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .semantics {
-                    // TalkBack reads the visible text; the grid itself is not
-                    // meaningfully navigable cell by cell.
-                    contentDescription = screen.lines.joinToString("\n") { row ->
-                        String(row.chars, 0, row.length).trimEnd()
-                    }
+                    contentDescription = terminalContentDescription
                 }
                 .pointerInput(metrics.height) {
                     var accumulated = 0f
@@ -149,18 +151,18 @@ fun TerminalView(
                         var runEnd = column + 1
                         while (runEnd < row.length && row.styles[runEnd] == style) runEnd++
 
-                        val runText = String(row.chars, column, runEnd - column)
+                        val count = runEnd - column
                         val left = column * metrics.width
 
                         if (!palette.hasDefaultBackground(style)) {
                             drawRect(
                                 color = palette.background(style),
                                 topLeft = Offset(left, top),
-                                size = Size((runEnd - column) * metrics.width, metrics.height),
+                                size = Size(count * metrics.width, metrics.height),
                             )
                         }
 
-                        if (runText.isNotBlank()) {
+                        if (!isSpanBlank(row.chars, column, count)) {
                             textPaint.color = palette.foreground(style).toArgb()
                             textPaint.isFakeBoldText =
                                 TerminalStyle.hasFlag(style, TerminalStyle.FLAG_BOLD)
@@ -174,7 +176,7 @@ fun TerminalView(
                                 } else {
                                     0f
                                 }
-                            native.drawText(runText, left, baseline, textPaint)
+                            native.drawText(row.chars, column, count, left, baseline, textPaint)
                         }
 
                         column = runEnd
@@ -205,3 +207,12 @@ private data class CellMetrics(
 /** A little leading; monospace metrics alone pack lines too tightly to scan. */
 private const val LINE_SPACING_PX = 2f
 private const val ITALIC_SKEW = -0.25f
+
+/** Checks if a slice of characters contains only whitespace or null terminators without allocating a String. */
+private fun isSpanBlank(chars: CharArray, start: Int, length: Int): Boolean {
+    for (i in start until (start + length)) {
+        val c = chars[i]
+        if (!c.isWhitespace() && c.code != 0) return false
+    }
+    return true
+}

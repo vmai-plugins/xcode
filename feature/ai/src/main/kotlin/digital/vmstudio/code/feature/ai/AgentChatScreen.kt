@@ -88,6 +88,7 @@ fun AgentChatScreen(
     onOpenFiles: (serverId: String, path: String) -> Unit = { _, _ -> },
     onAddNewProject: (() -> Unit)? = null,
     onOpenChatHistory: (() -> Unit)? = null,
+    onOpenBrowser: ((String) -> Unit)? = null,
     viewModel: AgentChatViewModel = hiltViewModel(),
     conversationsViewModel: AgentConversationsViewModel = hiltViewModel(),
 ) {
@@ -210,7 +211,7 @@ fun AgentChatScreen(
 
     // Always offered: the menu also holds "General chat".
     val canSwitchProject = !state.isRunning
-    val previewTarget = rememberHtmlPreview(state.serverId)
+    val previewTarget = rememberHtmlPreview(state.serverId, onOpenBrowser)
     // A reopened chat learns its server only once restored, so it is read at tap time.
     val openDiff: (String) -> Unit = { path -> state.serverId?.let { onOpenDiff(it, path) } }
     var attachments by remember { mutableStateOf(emptyList<Uri>()) }
@@ -549,48 +550,68 @@ fun AgentChatScreen(
                         .weight(1f)
                         .fillMaxWidth(),
                 ) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .nestedScroll(chatScrollConnection),
-                        contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.xs),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        items(groupedTranscript, key = { it.id }, contentType = { it::class }) { rowItem ->
-                            when (rowItem) {
-                                is TranscriptRowItem.Single -> TranscriptRow(
-                                    item = rowItem.item,
-                                    onOpenDiff = openDiff,
-                                    onRollback = viewModel::rollbackFile,
-                                    onPreview = previewTarget,
-                                    onEditPrompt = { text, promptId ->
-                                        composerText = text
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(groupedTranscript.size)
-                                            composerFocusRequester.requestFocus()
-                                        }
-                                    },
-                                    onDeletePrompt = { promptId, text ->
-                                        viewModel.rewindToPrompt(promptId)
-                                        composerText = text
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(groupedTranscript.size)
-                                            composerFocusRequester.requestFocus()
-                                        }
-                                        Toast.makeText(context, "Turn deleted & prompt loaded for editing", Toast.LENGTH_SHORT).show()
-                                    },
-                                    chatBubbleColorHex = state.chatBubbleColorHex,
-                                )
-                                is TranscriptRowItem.ToolBatch -> ToolBatchRow(
-                                    batch = rowItem,
-                                    onOpenDiff = openDiff,
-                                    onRollback = viewModel::rollbackFile,
-                                    onPreview = previewTarget,
-                                )
+                    val customUriHandler = remember(onOpenBrowser, context) {
+                        object : androidx.compose.ui.platform.UriHandler {
+                            override fun openUri(uri: String) {
+                                if (onOpenBrowser != null && (uri.startsWith("http://", ignoreCase = true) || uri.startsWith("https://", ignoreCase = true))) {
+                                    onOpenBrowser(uri)
+                                } else {
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        })
+                                    }
+                                }
                             }
                         }
-                        runStatus(state.isRunning, state.transcript)
+                    }
+
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        androidx.compose.ui.platform.LocalUriHandler provides customUriHandler,
+                    ) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .nestedScroll(chatScrollConnection),
+                            contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.xs),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            items(groupedTranscript, key = { it.id }, contentType = { it::class }) { rowItem ->
+                                when (rowItem) {
+                                    is TranscriptRowItem.Single -> TranscriptRow(
+                                        item = rowItem.item,
+                                        onOpenDiff = openDiff,
+                                        onRollback = viewModel::rollbackFile,
+                                        onPreview = previewTarget,
+                                        onEditPrompt = { text, promptId ->
+                                            composerText = text
+                                            coroutineScope.launch {
+                                                listState.animateScrollToItem(groupedTranscript.size)
+                                                composerFocusRequester.requestFocus()
+                                            }
+                                        },
+                                        onDeletePrompt = { promptId, text ->
+                                            viewModel.rewindToPrompt(promptId)
+                                            composerText = text
+                                            coroutineScope.launch {
+                                                listState.animateScrollToItem(groupedTranscript.size)
+                                                composerFocusRequester.requestFocus()
+                                            }
+                                            Toast.makeText(context, "Turn deleted & prompt loaded for editing", Toast.LENGTH_SHORT).show()
+                                        },
+                                        chatBubbleColorHex = state.chatBubbleColorHex,
+                                    )
+                                    is TranscriptRowItem.ToolBatch -> ToolBatchRow(
+                                        batch = rowItem,
+                                        onOpenDiff = openDiff,
+                                        onRollback = viewModel::rollbackFile,
+                                        onPreview = previewTarget,
+                                    )
+                                }
+                            }
+                            runStatus(state.isRunning, state.transcript)
+                        }
                     }
 
                     val showScrollToBottom by remember {

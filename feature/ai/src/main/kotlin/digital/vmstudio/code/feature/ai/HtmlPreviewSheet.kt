@@ -69,6 +69,7 @@ internal fun HtmlPreviewSheet(
     serverId: String,
     path: String,
     onDismiss: () -> Unit,
+    onOpenInBrowser: ((String) -> Unit)? = null,
     viewModel: HtmlPreviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -145,9 +146,14 @@ internal fun HtmlPreviewSheet(
                     if (state.mode == PreviewMode.PORT && state.liveUrl.isNotBlank()) {
                         IconButton(
                             onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.liveUrl))
-                                    context.startActivity(intent)
+                                if (onOpenInBrowser != null) {
+                                    onOpenInBrowser(state.liveUrl)
+                                    onDismiss()
+                                } else {
+                                    runCatching {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.liveUrl))
+                                        context.startActivity(intent)
+                                    }
                                 }
                             },
                         ) {
@@ -295,12 +301,20 @@ internal fun HtmlPreviewSheet(
  * Hosts the preview sheet and returns the callback that opens it.
  */
 @Composable
-internal fun rememberHtmlPreview(serverId: String?): ((String) -> Unit)? {
+internal fun rememberHtmlPreview(
+    serverId: String?,
+    onOpenInBrowser: ((String) -> Unit)? = null,
+): ((String) -> Unit)? {
     var path by remember { mutableStateOf<String?>(null) }
     val effectiveServerId = serverId ?: digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.LOCAL_SERVER_ID
     val current = path
     if (current != null) {
-        HtmlPreviewSheet(serverId = effectiveServerId, path = current, onDismiss = { path = null })
+        HtmlPreviewSheet(
+            serverId = effectiveServerId,
+            path = current,
+            onDismiss = { path = null },
+            onOpenInBrowser = onOpenInBrowser,
+        )
     }
     return { selected: String -> path = selected }
 }

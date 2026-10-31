@@ -219,21 +219,33 @@ class OmniRouteAgentLoop @Inject constructor(
                             return@flow
                         }
                         // Antigravity action loop guard:
-                        // If on the initial turn the model generates text outlining a plan or announcing steps
+                        // If on the initial turn the model generates text outlining an actionable plan (e.g. "I will start by...")
                         // instead of immediately calling tools, do not terminate the loop! Steer the model forward.
+                        // Do not trigger for conversational queries, informational questions, or when in PLAN mode.
                         val hasActionTools = allowedTools.any {
                             it == OmniRouteTool.EDIT_FILE ||
                             it == OmniRouteTool.WRITE_FILE ||
                             it == OmniRouteTool.RUN_COMMAND ||
                             it == OmniRouteTool.INVOKE_SUBAGENT
                         }
-                        val isPlanningResponse = currentIteration == 1 && hasActionTools && (
-                            turn.text.lines().count { it.trimStart().matches(Regex("""^(\d+\.|\*|-)\s+.*""")) } >= 2 ||
-                            turn.text.contains("I will", ignoreCase = true) ||
-                            turn.text.contains("Steps to", ignoreCase = true) ||
-                            turn.text.contains("Let's proceed", ignoreCase = true) ||
-                            turn.text.contains("Plan:", ignoreCase = true)
-                        )
+                        val trimmedPrompt = config.prompt.trim()
+                        val isQuestionPrompt = trimmedPrompt.endsWith("?") ||
+                            trimmedPrompt.startsWith("what", ignoreCase = true) ||
+                            trimmedPrompt.startsWith("why", ignoreCase = true) ||
+                            trimmedPrompt.startsWith("how", ignoreCase = true) ||
+                            trimmedPrompt.startsWith("can you explain", ignoreCase = true) ||
+                            trimmedPrompt.startsWith("tell me", ignoreCase = true)
+
+                        val isPlanningResponse = currentIteration == 1 &&
+                            hasActionTools &&
+                            config.permissionMode != digital.vmstudio.code.core.ai.model.AgentPermissionMode.PLAN &&
+                            !isQuestionPrompt && (
+                                turn.text.contains("I will now", ignoreCase = true) ||
+                                turn.text.contains("I will start by", ignoreCase = true) ||
+                                turn.text.contains("Let me start by", ignoreCase = true) ||
+                                turn.text.contains("Here is the plan before I proceed:", ignoreCase = true) ||
+                                (turn.text.contains("Plan:", ignoreCase = true) && turn.text.contains("Step 1", ignoreCase = true))
+                            )
 
                         if (isPlanningResponse) {
                             emit(AgentEvent.AssistantMessage(shown))

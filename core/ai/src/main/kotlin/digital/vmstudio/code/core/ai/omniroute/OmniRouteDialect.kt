@@ -49,6 +49,55 @@ object ChatStreamDecoder {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+    data class DecodedChunk(
+        val textDelta: String? = null,
+        val reasoningDelta: String? = null,
+        val usage: Pair<Long, Long>? = null,
+        val hasError: Boolean = false,
+    )
+
+    /**
+     * Decodes an SSE stream chunk in a single JSON parsing pass, avoiding multiple
+     * repetitive parseToJsonElement allocations per chunk on high-throughput streams.
+     */
+    fun decodeChunk(dialect: OmniRouteDialect, payload: String): DecodedChunk {
+        val root = runCatching { json.parseToJsonElement(payload) }.getOrNull() as? JsonObject
+            ?: return DecodedChunk()
+
+        val text = when (dialect) {
+            OmniRouteDialect.ANTHROPIC_MESSAGES -> anthropicDelta(root)
+            OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN ->
+                openAiDelta(root) ?: anthropicDelta(root)
+        }
+
+        val reasoning = when (dialect) {
+            OmniRouteDialect.ANTHROPIC_MESSAGES -> anthropicReasoning(root)
+            OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.UNKNOWN ->
+                openAiReasoning(root) ?: anthropicReasoning(root)
+        }
+
+        val usage = run {
+            val u = (root["usage"] as? JsonObject)
+                ?: ((root["message"] as? JsonObject)?.get("usage") as? JsonObject)
+            if (u != null) {
+                val input = u.long("input_tokens") ?: u.long("prompt_tokens")
+                val output = u.long("output_tokens") ?: u.long("completion_tokens")
+                if (input != null || output != null) {
+                    (input ?: 0L) to (output ?: 0L)
+                } else null
+            } else null
+        }
+
+        val hasError = root.containsKey("error")
+
+        return DecodedChunk(
+            textDelta = text?.takeIf { it.isNotEmpty() },
+            reasoningDelta = reasoning?.takeIf { it.isNotEmpty() },
+            usage = usage,
+            hasError = hasError,
+        )
+    }
+
     /** Text delta carried by [payload], or null when the chunk carries none. */
     fun textDelta(dialect: OmniRouteDialect, payload: String): String? {
         val root = runCatching { json.parseToJsonElement(payload) }.getOrNull() as? JsonObject

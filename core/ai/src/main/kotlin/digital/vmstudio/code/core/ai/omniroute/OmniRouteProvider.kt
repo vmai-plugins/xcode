@@ -345,12 +345,15 @@ class OmniRouteProvider @Inject constructor(
 
         try {
             httpClient.stream(request).collect { event ->
-                (runCatching { json.parseToJsonElement(event.data) }.getOrNull() as? JsonObject)
-                    ?.let(::gatewayErrorOf)?.let { streamError = it }
-                ChatStreamDecoder.reasoningDelta(dialect, event.data)?.takeIf { it.isNotEmpty() }?.let { rDelta ->
+                val chunk = ChatStreamDecoder.decodeChunk(dialect, event.data)
+                if (chunk.hasError) {
+                    (runCatching { json.parseToJsonElement(event.data) }.getOrNull() as? JsonObject)
+                        ?.let(::gatewayErrorOf)?.let { streamError = it }
+                }
+                chunk.reasoningDelta?.let { rDelta ->
                     reasoning.append(rDelta)
                 }
-                ChatStreamDecoder.textDelta(dialect, event.data)?.takeIf { it.isNotEmpty() }?.let { delta ->
+                chunk.textDelta?.let { delta ->
                     if (reasoning.isNotEmpty()) {
                         emit(AgentEvent.Reasoning(reasoning.toString()))
                         reasoning.setLength(0)
@@ -358,7 +361,7 @@ class OmniRouteProvider @Inject constructor(
                     text.append(delta)
                     emit(AgentEvent.AssistantDelta(delta))
                 }
-                ChatStreamDecoder.usage(event.data)?.let { (input, output) ->
+                chunk.usage?.let { (input, output) ->
                     if (input > 0) inputTokens = input
                     if (output > 0) outputTokens = output
                 }

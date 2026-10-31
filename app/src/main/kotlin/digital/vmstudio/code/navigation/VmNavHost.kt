@@ -517,6 +517,7 @@ private fun AgentChat(
         },
         onAddNewProject = { navController.navigate(VmDestination.ProjectAdd.routeFor()) },
         onOpenChatHistory = { navController.navigate(VmDestination.Chats.route) },
+        onOpenBrowser = { url -> navController.navigate(VmDestination.Browser.routeFor(url)) },
     )
 }
 
