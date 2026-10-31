@@ -707,7 +707,7 @@ class AgentChatViewModel @Inject constructor(
     }
 
     fun triggerCloudBuild(
-        workflowFileName: String = "nightly.yml",
+        workflowFileName: String = "build.yml",
         onTriggered: (Boolean, String) -> Unit = { _, _ -> },
     ) {
         viewModelScope.launch {

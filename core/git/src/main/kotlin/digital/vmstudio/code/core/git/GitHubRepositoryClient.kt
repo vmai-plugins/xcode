@@ -455,10 +455,10 @@ class GitHubRepositoryClient @Inject constructor(
         }
     }
 
-    /** Dispatches a GitHub Actions workflow (e.g. release.yml) to compile APKs in the cloud. */
+    /** Dispatches a GitHub Actions workflow (e.g. build.yml or nightly.yml) to compile APKs in the cloud. */
     suspend fun dispatchWorkflow(
         repoFullName: String,
-        workflowFileName: String = "release.yml",
+        workflowFileName: String = "build.yml",
         ref: String = "main",
     ): VmResult<Unit> {
         val secret = when (val result = readToken()) {
@@ -475,23 +475,9 @@ class GitHubRepositoryClient @Inject constructor(
                     ),
                 )
             }
-            // Candidate targets to try in order: workflowFileName, alternative known names, or numeric ID
-            val workflowCandidates = buildList {
-                add(workflowFileName)
-                if (workflowFileName.endsWith(".yml") || workflowFileName.endsWith(".yaml")) {
-                    if (!workflowFileName.startsWith(".github/workflows/")) {
-                        add(".github/workflows/$workflowFileName")
-                    }
-                }
-                if (workflowFileName.contains("nightly")) {
-                    add("374605859") // GitHub Actions numeric ID for nightly.yml
-                    add("build.yml") // Fallback workflow
-                    add("367239077") // GitHub Actions numeric ID for build.yml
-                } else if (workflowFileName.contains("build")) {
-                    add("367239077")
-                    add("nightly.yml")
-                }
-            }.distinct()
+            // Candidate targets: GitHub Actions accepts only workflow file names (e.g. "build.yml")
+            val baseName = workflowFileName.substringAfterLast('/')
+            val workflowCandidates = listOf(baseName, "build.yml", "nightly.yml").distinct()
 
             var lastFailure: VmResult.Failure? = null
             for (target in workflowCandidates) {
@@ -518,7 +504,15 @@ class GitHubRepositoryClient @Inject constructor(
                     }
                 }
             }
-            lastFailure ?: VmResult.Failure(VmError.Network(summary = "Could not dispatch workflow on GitHub"))
+            val baseError = lastFailure?.error
+            VmResult.Failure(
+                VmError.Network(
+                    summary = "Could not dispatch cloud build on GitHub Actions",
+                    reason = (baseError as? VmError.Network)?.reason ?: baseError?.summary ?: "GitHub API returned an error.",
+                    suggestedAction = "Ensure your GitHub token has 'workflow' and 'repo' scopes in Settings → GitHub Integration.",
+                    statusCode = (baseError as? VmError.Network)?.statusCode,
+                ),
+            )
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (exception: Exception) {

@@ -159,7 +159,7 @@ class TerminalBuffer(
      * regions, and doing it incorrectly mangles output. Columns are truncated or
      * padded, which is what most terminals do on a width change anyway.
      */
-    fun resize(newColumns: Int, newRows: Int, style: Long) {
+    fun resize(newColumns: Int, newRows: Int, style: Long, retainScrollback: Boolean = true) {
         if (newColumns != columns) {
             screen.forEach { it.resize(newColumns) }
             scrollback.forEach { it.resize(newColumns) }
@@ -171,16 +171,20 @@ class TerminalBuffer(
         if (newRows < rows) {
             // Shrinking: rows leaving the top are kept as scrollback rather than
             // discarded, so output the user has already seen is not lost.
+            // When alternate screen is active (e.g. vim/nano), retainScrollback is false
+            // so alternate screen rows do not pollute the shell scrollback.
             repeat(rows - newRows) {
                 val removed = screen.removeAt(0)
-                scrollback.addLast(removed)
-                while (scrollback.size > maxScrollback) scrollback.removeFirst()
+                if (retainScrollback) {
+                    scrollback.addLast(removed)
+                    while (scrollback.size > maxScrollback) scrollback.removeFirst()
+                }
             }
         } else {
             repeat(newRows - rows) {
                 // Prefer pulling a line back out of scrollback so growing the window
                 // reveals previous output instead of blank rows.
-                val restored = scrollback.removeLastOrNull()
+                val restored = if (retainScrollback) scrollback.removeLastOrNull() else null
                 if (restored != null) {
                     restored.resize(newColumns)
                     screen.add(0, restored)

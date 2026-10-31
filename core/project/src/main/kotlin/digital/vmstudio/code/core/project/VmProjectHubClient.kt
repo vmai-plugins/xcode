@@ -131,7 +131,7 @@ class VmProjectHubClient @Inject constructor(
 
     suspend fun getEffectiveHubKey(): String? {
         val configured = preferencesRepository.preferences.first().hubApiKey
-        return configured?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_HUB_KEY
+        return configured?.trim()?.takeIf { it.isNotBlank() }
     }
 
     suspend fun getEffectiveHubBaseUrl(): String {
@@ -768,7 +768,6 @@ class VmProjectHubClient @Inject constructor(
         const val HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
         const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"
         private const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
-        private const val DEFAULT_HUB_KEY = "xc_a081cf117bf790917874c8a0f5dee6634442fa9d"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }

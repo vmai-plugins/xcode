@@ -139,6 +139,11 @@ class CommandGitService @Inject constructor(
                 GitError.CommandFailed(command, -1, "No remote server configured for Git operations."),
             )
         }
+        if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId)) {
+            return GitResult.Failure(
+                GitError.CommandFailed(command, -1, "On-device phone storage uses direct file access. Connect a VPS or GitHub account to sync Git repository history."),
+            )
+        }
         val fullCommand = "cd ${shellQuotePath(repoPath)} && $command"
         // withSession's block returns VmResult by contract; the Git layer then maps
         // that outcome onto GitResult so callers see Git-specific error types.

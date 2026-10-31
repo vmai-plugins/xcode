@@ -90,7 +90,7 @@ class TerminalEmulator(
 
     fun resize(newColumns: Int, newRows: Int) {
         if (newColumns == columns && newRows == rows) return
-        buffer.resize(newColumns, newRows, style)
+        buffer.resize(newColumns, newRows, style, retainScrollback = (mainScreen == null))
         mainScreen?.let { saved ->
             saved.forEach { it.resize(newColumns) }
             while (saved.size > newRows) {

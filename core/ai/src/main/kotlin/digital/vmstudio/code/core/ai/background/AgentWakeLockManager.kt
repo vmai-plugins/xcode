@@ -17,6 +17,7 @@ import javax.inject.Singleton
 @Singleton
 class AgentWakeLockManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val keepAlive: dagger.Lazy<AgentExecutionKeepAlive>,
 ) {
     private val powerManager = context.getSystemService<PowerManager>()
     private val wifiManager =
@@ -52,7 +53,8 @@ class AgentWakeLockManager @Inject constructor(
                         }
                     }
                     wifiLock?.acquire()
-                    VmLog.d(LogCategory.AI, TAG, "Acquired WakeLock & WifiLock for active agent run")
+                    runCatching { keepAlive.get().onExecutionStarted() }
+                    VmLog.d(LogCategory.AI, TAG, "Acquired WakeLock, WifiLock & Foreground KeepAlive")
                 }.onFailure {
                     VmLog.w(LogCategory.AI, TAG, "Failed to acquire wake lock: ${it.message}")
                 }
@@ -73,7 +75,8 @@ class AgentWakeLockManager @Inject constructor(
                     if (wifiLock?.isHeld == true) {
                         wifiLock?.release()
                     }
-                    VmLog.d(LogCategory.AI, TAG, "Released WakeLock & WifiLock")
+                    runCatching { keepAlive.get().onExecutionStopped() }
+                    VmLog.d(LogCategory.AI, TAG, "Released WakeLock, WifiLock & Foreground KeepAlive")
                 }.onFailure {
                     VmLog.w(LogCategory.AI, TAG, "Failed to release wake lock: ${it.message}")
                 }
