@@ -1561,26 +1561,34 @@ class AgentChatViewModel @Inject constructor(
             is AgentEvent.Reasoning -> _uiState.update { state ->
                 val last = state.transcript.lastOrNull()
                 if (last is TranscriptItem.Reasoning) {
-                    val updated = state.transcript.toMutableList()
-                    updated[updated.lastIndex] = last.copy(text = last.text + "\n" + event.text)
-                    state.copy(transcript = updated)
+                    val trimmed = event.text.trim()
+                    if (last.text.trim() == trimmed || last.text.endsWith(trimmed)) {
+                        state
+                    } else {
+                        val updated = state.transcript.toMutableList()
+                        updated[updated.lastIndex] = last.copy(text = last.text + "\n" + event.text)
+                        state.copy(transcript = updated)
+                    }
                 } else {
                     state.copy(transcript = state.transcript + TranscriptItem.Reasoning(nextId(), event.text))
                 }
             }
 
-            is AgentEvent.ToolStarted -> append(
-                TranscriptItem.ToolCall(
-                    // A provider that repeats a tool id must not give two rows one key.
-                    id = toolItemId(event.toolUseId).takeIf { id ->
-                        _uiState.value.transcript.none { it.id == id }
-                    } ?: nextId(),
-                    name = event.name,
-                    summary = event.summary,
-                    affectedPath = event.affectedPath,
-                    isRunning = true,
-                ),
-            )
+            is AgentEvent.ToolStarted -> {
+                _uiState.update { it.copy(transcript = it.transcript.settleStreamingDraft(::nextId)) }
+                append(
+                    TranscriptItem.ToolCall(
+                        // A provider that repeats a tool id must not give two rows one key.
+                        id = toolItemId(event.toolUseId).takeIf { id ->
+                            _uiState.value.transcript.none { it.id == id }
+                        } ?: nextId(),
+                        name = event.name,
+                        summary = event.summary,
+                        affectedPath = event.affectedPath,
+                        isRunning = true,
+                    ),
+                )
+            }
 
             is AgentEvent.ToolFinished -> _uiState.update { state ->
                 state.copy(

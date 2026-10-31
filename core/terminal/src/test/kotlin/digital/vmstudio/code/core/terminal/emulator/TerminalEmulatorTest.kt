@@ -197,6 +197,7 @@ class TerminalEmulatorTest {
         term.write("$ESC[1;2H$ESC[2P")
 
         assertEquals("adef", term.lineText(0))
+        assertEquals(4, term.buffer.screenLine(0).length)
     }
 
     @Test

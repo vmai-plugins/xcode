@@ -514,12 +514,13 @@ class OmniRouteAgentLoop @Inject constructor(
         projectRules: Pair<String, String>? = null,
     ): OmniRouteMessage.ToolResult {
         val tool = OmniRouteTool.fromToolName(call.name)
-        val path = filePathArgument(call.argumentsJson)
+        val argsObj = parseArgumentsObject(call.argumentsJson)
+        val path = filePathArgument(argsObj)
         val targetArg = path
-            ?: argument(call.argumentsJson, "url")
-            ?: argument(call.argumentsJson, "directory")
-            ?: argument(call.argumentsJson, "tasks")
-            ?: argument(call.argumentsJson, "role")
+            ?: argument(argsObj, "url")
+            ?: argument(argsObj, "directory")
+            ?: argument(argsObj, "tasks")
+            ?: argument(argsObj, "role")
         // Resolved to an absolute path, not the raw model argument:
         // a model editing a repo-root file may well call this with
         // just "README.md", and DiffReviewViewModel derives the
@@ -817,7 +818,7 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private suspend fun googleDriveList(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
-        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
+        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
         if (token.isNullOrBlank()) {
             return ToolOutcome("Google Drive operation requires an authenticated Google token.", isError = true)
         }
@@ -838,7 +839,7 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private suspend fun googleDriveRead(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
-        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
+        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
         if (token.isNullOrBlank()) {
             return ToolOutcome("Google Drive operation requires an authenticated Google token.", isError = true)
         }
@@ -878,8 +879,8 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
         val range = argument(call.argumentsJson, "range")
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
-        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
-        val apiKey = argument(call.argumentsJson, "api_key")
+        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        val apiKey = argument(call.argumentsJson, "api_key")?.trim()
         val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
         val url = if (!apiKey.isNullOrBlank()) {
             "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange?key=$apiKey"
@@ -908,7 +909,7 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
         val values = argument(call.argumentsJson, "values")
             ?: return ToolOutcome("Missing required argument \"values\".", isError = true)
-        val token = argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken
+        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
         if (token.isNullOrBlank()) {
             return ToolOutcome(
                 output = "Google Sheets append requires an OAuth 'token' or 'access_token' in tool arguments.",
@@ -1646,14 +1647,17 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     /** JSON booleans arrive as `true`, not `"true"`; [argument] reads strings only. */
-    private fun booleanArgument(argumentsJson: String, key: String): Boolean? {
-        val root = parseArgumentsObject(argumentsJson) ?: return null
-        return (root[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+    private fun booleanArgument(root: JsonObject?, key: String): Boolean? {
+        val obj = root ?: return null
+        return (obj[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
     }
 
-    private fun argument(argumentsJson: String, key: String): String? {
-        val root = parseArgumentsObject(argumentsJson) ?: return null
-        val el = root[key] ?: return null
+    private fun booleanArgument(argumentsJson: String, key: String): Boolean? =
+        booleanArgument(parseArgumentsObject(argumentsJson), key)
+
+    private fun argument(root: JsonObject?, key: String): String? {
+        val obj = root ?: return null
+        val el = obj[key] ?: return null
         return when (el) {
             is JsonPrimitive -> el.content
             is JsonArray -> el.joinToString("\n") { (it as? JsonPrimitive)?.content ?: it.toString() }
@@ -1661,31 +1665,46 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
+    private fun argument(argumentsJson: String, key: String): String? =
+        argument(parseArgumentsObject(argumentsJson), key)
+
+    private fun filePathArgument(root: JsonObject?): String? =
+        argument(root, "path")
+            ?: argument(root, "file_path")
+            ?: argument(root, "filePath")
+            ?: argument(root, "file")
+
     private fun filePathArgument(argumentsJson: String): String? =
-        argument(argumentsJson, "path")
-            ?: argument(argumentsJson, "file_path")
-            ?: argument(argumentsJson, "filePath")
-            ?: argument(argumentsJson, "file")
+        filePathArgument(parseArgumentsObject(argumentsJson))
+
+    private fun contentArgument(root: JsonObject?): String? =
+        argument(root, "content")
+            ?: argument(root, "text")
+            ?: argument(root, "file_text")
+            ?: argument(root, "code")
 
     private fun contentArgument(argumentsJson: String): String? =
-        argument(argumentsJson, "content")
-            ?: argument(argumentsJson, "text")
-            ?: argument(argumentsJson, "file_text")
-            ?: argument(argumentsJson, "code")
+        contentArgument(parseArgumentsObject(argumentsJson))
+
+    private fun targetContentArgument(root: JsonObject?): String? =
+        argument(root, "target_content")
+            ?: argument(root, "target")
+            ?: argument(root, "old_content")
+            ?: argument(root, "old_str")
+            ?: argument(root, "old_string")
 
     private fun targetContentArgument(argumentsJson: String): String? =
-        argument(argumentsJson, "target_content")
-            ?: argument(argumentsJson, "target")
-            ?: argument(argumentsJson, "old_content")
-            ?: argument(argumentsJson, "old_str")
-            ?: argument(argumentsJson, "old_string")
+        targetContentArgument(parseArgumentsObject(argumentsJson))
+
+    private fun replacementContentArgument(root: JsonObject?): String? =
+        argument(root, "replacement_content")
+            ?: argument(root, "replacement")
+            ?: argument(root, "new_content")
+            ?: argument(root, "new_str")
+            ?: argument(root, "new_string")
 
     private fun replacementContentArgument(argumentsJson: String): String? =
-        argument(argumentsJson, "replacement_content")
-            ?: argument(argumentsJson, "replacement")
-            ?: argument(argumentsJson, "new_content")
-            ?: argument(argumentsJson, "new_str")
-            ?: argument(argumentsJson, "new_string")
+        replacementContentArgument(parseArgumentsObject(argumentsJson))
 
     private fun VmError.summaryWithReason(): String = reason?.let { "$summary: $it" } ?: summary
 

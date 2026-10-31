@@ -299,7 +299,8 @@ class TerminalEmulator(
     internal fun insertCharacters(count: Int) {
         val line = buffer.screenLine(cursorRow)
         val shift = count.coerceIn(1, columns - cursorColumn)
-        for (column in columns - 1 downTo cursorColumn + shift) {
+        val limit = minOf(columns, line.length + shift)
+        for (column in limit - 1 downTo cursorColumn + shift) {
             line.setCell(column, line.charAt(column - shift), line.styleAt(column - shift))
         }
         line.clearRange(cursorColumn, cursorColumn + shift, style)
@@ -308,10 +309,16 @@ class TerminalEmulator(
     internal fun deleteCharacters(count: Int) {
         val line = buffer.screenLine(cursorRow)
         val shift = count.coerceIn(1, columns - cursorColumn)
-        for (column in cursorColumn until columns - shift) {
+        val oldLength = line.length
+        val end = minOf(columns - shift, oldLength)
+        for (column in cursorColumn until end) {
             line.setCell(column, line.charAt(column + shift), line.styleAt(column + shift))
         }
-        line.clearRange(columns - shift, columns, style)
+        val clearFrom = maxOf(cursorColumn, oldLength - shift)
+        val clearTo = minOf(columns, oldLength)
+        if (clearTo > clearFrom) {
+            line.clearRange(clearFrom, clearTo, style)
+        }
     }
 
     // --- attributes ----------------------------------------------------------------

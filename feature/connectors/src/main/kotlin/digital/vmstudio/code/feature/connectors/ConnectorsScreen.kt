@@ -126,7 +126,7 @@ fun ConnectorsScreen(
 
     var hubExpanded by remember { mutableStateOf(false) }
     var hubBaseUrlDraft by remember(state.hubBaseUrl) { mutableStateOf(state.hubBaseUrl) }
-    var hubKeyDraft by remember { mutableStateOf("xc_a081cf117bf790917874c8a0f5dee6634442fa9d") }
+    var hubKeyDraft by remember { mutableStateOf("") }
     var hubKeyVisible by remember { mutableStateOf(false) }
 
     var aiExpanded by remember { mutableStateOf(false) }
@@ -305,7 +305,7 @@ fun ConnectorsScreen(
                                 value = hubKeyDraft,
                                 onValueChange = { hubKeyDraft = it },
                                 label = { Text("App Hub Master API Key (xc_...)") },
-                                placeholder = { Text("xc_a081cf117bf790917874c8a0f5dee6634442fa9d") },
+                                placeholder = { Text("xc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") },
                                 singleLine = true,
                                 visualTransformation = if (hubKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {
