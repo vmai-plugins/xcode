@@ -79,6 +79,7 @@ class ProjectCreateViewModel @Inject constructor(
     private val servers: ServerRepository,
     private val commandGuard: CommandGuard,
     private val gitRepositoryDao: GitRepositoryDao,
+    private val githubClient: digital.vmstudio.code.core.git.GitHubRepositoryClient,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -449,7 +450,16 @@ class ProjectCreateViewModel @Inject constructor(
             val owner = coordinates.first
             val repo = coordinates.second
             val effectiveBranch = branch.ifBlank { "main" }
-            val zipUrlString = "https://github.com/$owner/$repo/archive/refs/heads/$effectiveBranch.zip"
+
+            val token = runCatching {
+                githubClient.readToken().getOrNull()?.useAsString { it.trim() }
+            }.getOrNull()
+
+            val zipUrlString = if (!token.isNullOrBlank()) {
+                "https://api.github.com/repos/$owner/$repo/zipball/$effectiveBranch"
+            } else {
+                "https://github.com/$owner/$repo/archive/refs/heads/$effectiveBranch.zip"
+            }
 
             val url = URL(zipUrlString)
             val conn = url.openConnection() as HttpURLConnection
@@ -457,6 +467,11 @@ class ProjectCreateViewModel @Inject constructor(
             conn.connectTimeout = 15000
             conn.readTimeout = 60000
             conn.setRequestProperty("User-Agent", "x-codes-mobile")
+            if (!token.isNullOrBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.setRequestProperty("Accept", "application/vnd.github+json")
+                conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            }
 
             var finalStream: InputStream? = null
             if (conn.responseCode in 300..399) {
@@ -653,8 +668,13 @@ internal fun safeZipEntryFile(targetDir: File, entryPath: String): File? {
 
 internal fun isTrustedGithubArchiveRedirect(uri: java.net.URI): Boolean {
     if (uri.scheme != "https") return false
-    val host = uri.host ?: return false
-    if (!host.equals("codeload.github.com", ignoreCase = true)) return false
+    val host = uri.host?.lowercase() ?: return false
+    val isGithubDomain = host == "codeload.github.com" ||
+        host == "objects.githubusercontent.com" ||
+        host == "raw.githubusercontent.com" ||
+        host.endsWith(".github.com") ||
+        host.endsWith(".githubusercontent.com")
+    if (!isGithubDomain) return false
     if (uri.userInfo != null) return false
     val port = uri.port
     return port == -1 || port == 443

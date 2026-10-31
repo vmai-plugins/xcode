@@ -530,9 +530,14 @@ class SftpRemoteFileSystem @Inject constructor(
         mutex.withLock {
             connectionManager.session(serverId).flatMap { session: SshSession ->
                 val cached = cachedClients[serverId]
-                val sftp = if (cached != null) {
+                val isCachedOpen = cached != null && runCatching { cached.sftpEngine.subsystem.isOpen }.getOrDefault(false)
+                val sftp = if (isCachedOpen && cached != null) {
                     cached
                 } else {
+                    if (cached != null) {
+                        cachedClients.remove(serverId)
+                        runCatching { cached.close() }
+                    }
                     when (val openRes = session.openSftp()) {
                         is VmResult.Success -> {
                             cachedClients[serverId] = openRes.value

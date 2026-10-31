@@ -219,7 +219,12 @@ class SshSession internal constructor(
                 -1
             }
             if (count == -1) {
-                if (lineBuilder.isNotEmpty()) onLine(lineBuilder.toString())
+                if (lineBuilder.isNotEmpty()) {
+                    if (lineBuilder.last() == '\r') {
+                        lineBuilder.setLength(lineBuilder.length - 1)
+                    }
+                    onLine(lineBuilder.toString())
+                }
                 break
             }
             for (i in 0 until count) {

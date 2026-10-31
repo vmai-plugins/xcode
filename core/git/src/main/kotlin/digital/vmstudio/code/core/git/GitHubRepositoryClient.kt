@@ -154,7 +154,7 @@ class GitHubRepositoryClient @Inject constructor(
         }
 
         return try {
-            val token = secret.useAsString { it }
+            val token = secret.useAsString { it.trim() }
             val repositories = mutableListOf<GitHubRepository>()
             var page = 1
             var hasMore = true
@@ -260,7 +260,7 @@ class GitHubRepositoryClient @Inject constructor(
             is VmResult.Failure -> return result
         }
         return try {
-            val token = secret.useAsString { it }
+            val token = secret.useAsString { it.trim() }
             val encodedPath = encodePath(cleanPath)
             val refParam = if (!ref.isNullOrBlank()) "?ref=${encodeParam(ref)}" else ""
             val request = Request.Builder()
@@ -310,7 +310,7 @@ class GitHubRepositoryClient @Inject constructor(
             is VmResult.Failure -> return result
         }
         return try {
-            val token = secret.useAsString { it }
+            val token = secret.useAsString { it.trim() }
             val encodedRef = encodeParam(ref)
             val recursiveParam = if (recursive) "?recursive=1" else ""
             val request = Request.Builder()
@@ -374,7 +374,7 @@ class GitHubRepositoryClient @Inject constructor(
             is VmResult.Failure -> return result
         }
         return try {
-            val token = secret.useAsString { it }
+            val token = secret.useAsString { it.trim() }
             val encodedPath = encodePath(cleanPath)
             val refQuery = if (!branch.isNullOrBlank()) "?ref=${encodeParam(branch)}" else ""
             val metaRequest = Request.Builder()

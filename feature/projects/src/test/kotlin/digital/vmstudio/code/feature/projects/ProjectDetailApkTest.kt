@@ -42,6 +42,7 @@ class ProjectDetailApkTest {
     fun `private archive redirects are restricted to trusted https codeload`() {
         assertTrue(isTrustedGithubArchiveRedirect(URI("https://codeload.github.com/owner/repo/archive.zip")))
         assertTrue(isTrustedGithubArchiveRedirect(URI("https://codeload.github.com:443/owner/repo/archive.zip")))
+        assertTrue(isTrustedGithubArchiveRedirect(URI("https://objects.githubusercontent.com/github-production-release-asset/archive.zip")))
         assertTrue(!isTrustedGithubArchiveRedirect(URI("http://codeload.github.com/owner/repo/archive.zip")))
         assertTrue(!isTrustedGithubArchiveRedirect(URI("https://example.com/owner/repo/archive.zip")))
         assertTrue(!isTrustedGithubArchiveRedirect(URI("https://user@codeload.github.com/owner/repo/archive.zip")))
