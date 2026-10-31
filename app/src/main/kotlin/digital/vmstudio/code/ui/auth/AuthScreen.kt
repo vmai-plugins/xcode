@@ -87,10 +87,10 @@ fun AuthScreen(
         )
         Spacer(modifier = Modifier.height(36.dp))
 
-        // Primary: 1-Tap Google Sign-In via Browser / Custom Tabs (with Play Services fallback)
+        // Primary: 1-Tap Native Google Sign-In (Credential Manager - no redirect URI required)
         Button(
             onClick = {
-                viewModel.signInWithGoogleBrowser(context)
+                viewModel.signInWithGoogle(context, onSignedIn)
             },
             enabled = !uiState.isLoading,
             shape = RoundedCornerShape(12.dp),
@@ -111,6 +111,20 @@ fun AuthScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Browser OAuth fallback
+        TextButton(
+            onClick = { viewModel.signInWithGoogleBrowser(context) },
+            enabled = !uiState.isLoading,
+        ) {
+            Text(
+                text = "Sign in via Web Browser",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Spacer(modifier = Modifier.height(14.dp))
