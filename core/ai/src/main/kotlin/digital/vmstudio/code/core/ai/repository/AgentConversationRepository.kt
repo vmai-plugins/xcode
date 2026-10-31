@@ -3,6 +3,8 @@ package digital.vmstudio.code.core.ai.repository
 import digital.vmstudio.code.core.ai.model.AgentEvent
 import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.log.LogCategory
+import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.vmCatching
 import digital.vmstudio.code.core.database.dao.ConversationDao
@@ -14,6 +16,7 @@ import digital.vmstudio.code.core.database.entity.ToolExecutionEntity
 import digital.vmstudio.code.core.database.entity.MessageRole
 import digital.vmstudio.code.core.database.entity.MessageStatus
 import digital.vmstudio.code.core.database.entity.ToolExecutionStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -237,7 +240,13 @@ class DefaultAgentConversationRepository @Inject constructor(
         vmCatching(::mapError) {
             insertMessage(conversationId, MessageRole.USER, prompt)
             // Auto-sync prompt to cloud backend (fire-and-forget)
-            try { cloudSyncHook?.invoke(conversationId) } catch (_: Exception) {}
+            try {
+                cloudSyncHook?.invoke(conversationId)
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                VmLog.w(LogCategory.AI, "AgentConversationRepository", "Prompt cloud sync failed: ${e.message}")
+            }
             Unit
         }
     }
@@ -305,7 +314,13 @@ class DefaultAgentConversationRepository @Inject constructor(
                         conversationDao.updateProviderSession(conversationId, it, now)
                     }
                     // Auto-sync completed turn to cloud backend (fire-and-forget)
-                    try { cloudSyncHook?.invoke(conversationId) } catch (_: Exception) {}
+                    try {
+                        cloudSyncHook?.invoke(conversationId)
+                    } catch (c: CancellationException) {
+                        throw c
+                    } catch (e: Exception) {
+                        VmLog.w(LogCategory.AI, "AgentConversationRepository", "Turn completed cloud sync failed: ${e.message}")
+                    }
                 }
 
                 is AgentEvent.Failed -> {
@@ -316,7 +331,13 @@ class DefaultAgentConversationRepository @Inject constructor(
                         status = MessageStatus.FAILED,
                         errorText = event.error.summary,
                     )
-                    try { cloudSyncHook?.invoke(conversationId) } catch (_: Exception) {}
+                    try {
+                        cloudSyncHook?.invoke(conversationId)
+                    } catch (c: CancellationException) {
+                        throw c
+                    } catch (e: Exception) {
+                        VmLog.w(LogCategory.AI, "AgentConversationRepository", "Turn failed cloud sync error: ${e.message}")
+                    }
                 }
 
                 // Deltas are display-only. The complete AssistantMessage that follows is

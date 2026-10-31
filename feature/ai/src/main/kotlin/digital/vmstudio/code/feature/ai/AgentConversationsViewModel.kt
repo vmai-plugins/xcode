@@ -100,7 +100,16 @@ class AgentConversationsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 projectHubClient.deleteChatFromServer(id)
-            } catch (_: Exception) {}
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                digital.vmstudio.code.core.common.log.VmLog.w(
+                    digital.vmstudio.code.core.common.log.LogCategory.AI,
+                    "AgentConversationsVM",
+                    "Delete chat from server failed",
+                    e,
+                )
+            }
             when (val result = conversations.delete(id)) {
                 is VmResult.Failure -> error.value = result.error
                 is VmResult.Success -> Unit

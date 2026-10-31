@@ -379,6 +379,13 @@ private fun ColumnScope.DrawerNavigationItems(
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
     )
     NavigationDrawerItem(
+        label = { Text("Activity Timeline") },
+        icon = { Icon(Icons.Default.History, contentDescription = null) },
+        selected = currentRoute == VmDestination.ActivityTimeline.route,
+        onClick = { onNavigate(VmDestination.ActivityTimeline) },
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+    )
+    NavigationDrawerItem(
         label = { Text("Settings") },
         icon = { Icon(Icons.Default.Settings, contentDescription = null) },
         selected = currentRoute == VmDestination.Settings.route,
@@ -392,6 +399,10 @@ private val DRAWER_ROUTES = setOf(
     VmDestination.GeneralChat.route,
     VmDestination.Projects.route,
     VmDestination.Files.route,
+    VmDestination.Servers.route,
+    VmDestination.Tasks.route,
+    VmDestination.Connectors.route,
+    VmDestination.ActivityTimeline.route,
     VmDestination.Settings.route,
     VmDestination.Chats.route,
     VmDestination.ServerAgent.ROUTE_PATTERN,

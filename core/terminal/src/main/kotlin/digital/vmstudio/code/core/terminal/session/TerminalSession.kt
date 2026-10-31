@@ -179,9 +179,10 @@ class TerminalSession internal constructor(
 
     private fun readOrEof(buffer: ByteArray): Int = try {
         channel.input.read(buffer)
-    } catch (_: IOException) {
-        // The channel closing under a blocking read is how a normal exit presents.
-        -1
+    } catch (ioe: IOException) {
+        // A clean shell exit closes the channel before/during read. If the channel was
+        // still open, an IOException indicates an unexpected network/socket transport failure.
+        if (channel.isOpen) throw ioe else -1
     }
 
     /** Sends raw text, as typed. */

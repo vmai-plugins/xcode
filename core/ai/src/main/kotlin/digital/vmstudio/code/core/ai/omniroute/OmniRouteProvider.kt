@@ -326,7 +326,16 @@ class OmniRouteProvider @Inject constructor(
         config: AgentRunConfig,
     ) {
         val turns = plainChatMessages(config)
-        val request = buildChatRequest(baseUrl, key, dialect, model, turns, config.images, stream = true)
+        val request = buildChatRequest(
+            baseUrl = baseUrl,
+            key = key,
+            dialect = dialect,
+            model = model,
+            turns = turns,
+            images = config.images,
+            systemPrompt = config.systemPrompt,
+            stream = true,
+        )
         val text = StringBuilder()
         val reasoning = StringBuilder()
         var inputTokens = 0L
@@ -361,7 +370,16 @@ class OmniRouteProvider @Inject constructor(
             val status = (netError as? VmError.Network)?.statusCode
             if (isRecoverableFailure(status, netError) || status in setOf(401, 403, 404)) throw streamFailure
             if (text.isEmpty()) {
-                val fallbackReq = buildChatRequest(baseUrl, key, dialect, model, turns, config.images, stream = false)
+                val fallbackReq = buildChatRequest(
+                    baseUrl = baseUrl,
+                    key = key,
+                    dialect = dialect,
+                    model = model,
+                    turns = turns,
+                    images = config.images,
+                    systemPrompt = config.systemPrompt,
+                    stream = false,
+                )
                 when (val nonStream = httpClient.execute(fallbackReq, RetryPolicy(maxAttempts = 2))) {
                     is VmResult.Failure -> throw streamFailure
                     is VmResult.Success -> {
@@ -645,54 +663,63 @@ class OmniRouteProvider @Inject constructor(
         model: String,
         turns: List<ConversationTurn>,
         images: List<digital.vmstudio.code.core.ai.model.ImageAttachment> = emptyList(),
+        systemPrompt: String? = null,
         stream: Boolean = true,
     ): Request {
         val lastUserIndex = turns.indexOfLast { it.fromUser }
-        val messages = JsonArray(
-            turns.mapIndexed { index, turn ->
-                val attachImages = if (index == lastUserIndex) images else emptyList()
-                buildJsonObject {
-                    put("role", if (turn.fromUser) "user" else "assistant")
-                    if (attachImages.isEmpty()) {
-                        put("content", turn.text)
-                    } else if (dialect == OmniRouteDialect.ANTHROPIC_MESSAGES) {
-                        putJsonArray("content") {
-                            attachImages.forEach { image ->
-                                add(
-                                    buildJsonObject {
-                                        put("type", "image")
-                                        putJsonObject("source") {
-                                            put("type", "base64")
-                                            put("media_type", image.mediaType)
-                                            put("data", image.base64Data)
-                                        }
-                                    },
-                                )
-                            }
-                            add(buildJsonObject { put("type", "text"); put("text", turn.text) })
+        val effectiveSystemPrompt = systemPrompt?.takeIf { it.isNotBlank() } ?: DEFAULT_ASSISTANT_SYSTEM_PROMPT
+        val turnMessages = turns.mapIndexed { index, turn ->
+            val attachImages = if (index == lastUserIndex) images else emptyList()
+            buildJsonObject {
+                put("role", if (turn.fromUser) "user" else "assistant")
+                if (attachImages.isEmpty()) {
+                    put("content", turn.text)
+                } else if (dialect == OmniRouteDialect.ANTHROPIC_MESSAGES) {
+                    putJsonArray("content") {
+                        attachImages.forEach { image ->
+                            add(
+                                buildJsonObject {
+                                    put("type", "image")
+                                    putJsonObject("source") {
+                                        put("type", "base64")
+                                        put("media_type", image.mediaType)
+                                        put("data", image.base64Data)
+                                    }
+                                },
+                            )
                         }
-                    } else {
-                        putJsonArray("content") {
-                            add(buildJsonObject { put("type", "text"); put("text", turn.text) })
-                            attachImages.forEach { image ->
-                                add(
-                                    buildJsonObject {
-                                        put("type", "image_url")
-                                        putJsonObject("image_url") {
-                                            put("url", "data:${image.mediaType};base64,${image.base64Data}")
-                                        }
-                                    },
-                                )
-                            }
+                        add(buildJsonObject { put("type", "text"); put("text", turn.text) })
+                    }
+                } else {
+                    putJsonArray("content") {
+                        add(buildJsonObject { put("type", "text"); put("text", turn.text) })
+                        attachImages.forEach { image ->
+                            add(
+                                buildJsonObject {
+                                    put("type", "image_url")
+                                    putJsonObject("image_url") {
+                                        put("url", "data:${image.mediaType};base64,${image.base64Data}")
+                                    }
+                                },
+                            )
                         }
                     }
                 }
-            },
-        )
+            }
+        }
+
+        val messages = if (dialect != OmniRouteDialect.ANTHROPIC_MESSAGES && effectiveSystemPrompt.isNotBlank()) {
+            JsonArray(listOf(buildJsonObject { put("role", "system"); put("content", effectiveSystemPrompt) }) + turnMessages)
+        } else {
+            JsonArray(turnMessages)
+        }
 
         val body = buildJsonObject {
             put("model", model)
             put("stream", stream)
+            if (dialect == OmniRouteDialect.ANTHROPIC_MESSAGES && effectiveSystemPrompt.isNotBlank()) {
+                put("system", effectiveSystemPrompt)
+            }
             if (stream && dialect != OmniRouteDialect.ANTHROPIC_MESSAGES) {
                 putJsonObject("stream_options") {
                     put("include_usage", true)
@@ -718,6 +745,12 @@ class OmniRouteProvider @Inject constructor(
         const val DEFAULT_MAX_TOKENS = 8192
         const val MODELS_PAGE_SIZE = 1000
         const val MAX_MODEL_PAGES = 20
+        const val DEFAULT_ASSISTANT_SYSTEM_PROMPT =
+            "You are Antigravity / X-Codes, an expert AI software architect, senior full-stack engineer, and Linux systems administrator. " +
+            "You assist the developer with their VPS servers, Linux configuration, web applications, background services, codebases, and digital businesses. " +
+            "Be direct, technically insightful, practical, and highly capable. " +
+            "Treat all inquiries regarding VPS setups, offline or non-running services, databases, websites, and digital businesses as technical DevOps, systems engineering, and business architecture tasks. " +
+            "Never issue consumer financial crisis disclaimers when discussing developer infrastructure, digital businesses, or server hosting."
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         val VALID_DIALECT_STATUSES = setOf(200, 400, 401, 403, 422, 429)
         const val HTTP_TOO_MANY_REQUESTS = 429

@@ -297,11 +297,12 @@ internal fun HtmlPreviewSheet(
 @Composable
 internal fun rememberHtmlPreview(serverId: String?): ((String) -> Unit)? {
     var path by remember { mutableStateOf<String?>(null) }
+    val effectiveServerId = serverId ?: digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.LOCAL_SERVER_ID
     val current = path
-    if (serverId != null && current != null) {
-        HtmlPreviewSheet(serverId = serverId, path = current, onDismiss = { path = null })
+    if (current != null) {
+        HtmlPreviewSheet(serverId = effectiveServerId, path = current, onDismiss = { path = null })
     }
-    return serverId?.let { { selected: String -> path = selected } }
+    return { selected: String -> path = selected }
 }
 
 @SuppressLint("SetJavaScriptEnabled")

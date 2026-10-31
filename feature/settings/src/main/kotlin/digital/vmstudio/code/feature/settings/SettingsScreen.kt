@@ -73,6 +73,7 @@ fun SettingsScreen(
     onOpenServers: () -> Unit = {},
     onOpenGitHub: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenActivityTimeline: () -> Unit = {},
     onSignOut: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     modifier: Modifier = Modifier,
@@ -393,6 +394,13 @@ fun SettingsScreen(
                     icon = Icons.Default.Security,
                     iconColor = Color(0xFFF59E0B),
                     onClick = onOpenSecurity,
+                )
+                ModernSettingsRow(
+                    title = "Activity & Audit Timeline",
+                    description = "Audit trail of agent runs, server actions, file transfers & tasks",
+                    icon = Icons.Default.History,
+                    iconColor = Color(0xFF38BDF8),
+                    onClick = onOpenActivityTimeline,
                 )
                 ModernSettingsRow(
                     title = "Export Diagnostics",

@@ -317,7 +317,11 @@ class AgentChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 projectHubClient.syncAllChatsFromServer()
-            } catch (_: Exception) {}
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                VmLog.w(LogCategory.AI, TAG, "Background sync all chats failed", e)
+            }
         }
         when {
             // Reopening a stored conversation: its own directory and session id are
@@ -1406,7 +1410,11 @@ class AgentChatViewModel @Inject constructor(
                     viewModelScope.launch {
                         try {
                             projectHubClient.syncChatToServer(convId)
-                        } catch (_: Exception) {}
+                        } catch (c: kotlinx.coroutines.CancellationException) {
+                            throw c
+                        } catch (e: Exception) {
+                            VmLog.w(LogCategory.AI, TAG, "Background chat sync to server failed", e)
+                        }
                     }
                 }
             }

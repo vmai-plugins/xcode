@@ -144,345 +144,333 @@ internal fun ModernComposer(
         } else null
     }
 
-    Surface(
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val spokenText = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spokenText.isNullOrBlank()) {
+                val updated = if (text.isBlank()) spokenText else "$text $spokenText"
+                onTextChange(updated)
+            }
+        }
+    }
+    val context = LocalContext.current
+
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing.md, vertical = spacing.xs),
-        shape = RoundedCornerShape(26.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            .padding(horizontal = spacing.md, vertical = 2.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-            AttachmentChips(attachments = attachments, onRemove = onRemoveAttachment)
+        // Attachments
+        AttachmentChips(attachments = attachments, onRemove = onRemoveAttachment)
 
-            // Quick Slash Actions Bar (/preview, /files, /diff, /terminal, /clear) - only when user types /
-            val showQuickActions = text.startsWith("/") || text.endsWith("/")
-            if (showQuickActions) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (onOpenPreview != null) {
-                        MentionChip(
-                            label = "/preview",
-                            icon = Icons.Default.Code,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onOpenPreview()
-                            },
-                        )
-                    }
-                    if (onOpenFiles != null) {
-                        MentionChip(
-                            label = "/files",
-                            icon = Icons.Default.Folder,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onOpenFiles()
-                            },
-                        )
-                    }
-                    if (onTriggerCloudBuild != null) {
-                        MentionChip(
-                            label = "/build",
-                            icon = Icons.Default.Build,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onTriggerCloudBuild()
-                            },
-                        )
-                    }
+        // Quick Slash Actions Bar (/preview, /files, /diff, /terminal, /clear) - only when user types /
+        val showQuickActions = text.startsWith("/") || text.endsWith("/")
+        if (showQuickActions) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (onOpenPreview != null) {
                     MentionChip(
-                        label = "/test",
-                        icon = Icons.Default.Check,
+                        label = "/preview",
+                        icon = Icons.Default.Code,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
-                            val updated = if (prefix.isBlank()) "Run all unit tests and report any failures with suggested fixes." else "$prefix Run unit tests and report failures."
-                            onTextChange(updated.trimStart())
+                            onOpenPreview()
                         },
                     )
+                }
+                if (onOpenFiles != null) {
                     MentionChip(
-                        label = "/fix",
+                        label = "/files",
+                        icon = Icons.Default.Folder,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onOpenFiles()
+                        },
+                    )
+                }
+                if (onTriggerCloudBuild != null) {
+                    MentionChip(
+                        label = "/build",
                         icon = Icons.Default.Build,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
-                            val updated = if (prefix.isBlank()) "Analyze recent errors or warnings and apply the minimal correct fix." else "$prefix Fix errors and apply minimal fix."
-                            onTextChange(updated.trimStart())
-                        },
-                    )
-                    MentionChip(
-                        label = "/review",
-                        icon = Icons.Default.Source,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
-                            val updated = if (prefix.isBlank()) "Review uncommitted git changes for bugs, security vulnerabilities, and code quality." else "$prefix Review git changes."
-                            onTextChange(updated.trimStart())
-                        },
-                    )
-                    MentionChip(
-                        label = "/explain",
-                        icon = Icons.Default.AutoAwesome,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val prefix = if (text.endsWith("/")) text.dropLast(1) else text
-                            val updated = if (prefix.isBlank()) "Explain how this architecture and data flow works step-by-step." else "$prefix Explain this code."
-                            onTextChange(updated.trimStart())
-                        },
-                    )
-                    MentionChip(
-                        label = "/diff",
-                        icon = Icons.Default.Source,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val updated = if (text.endsWith("/")) text.dropLast(1) + "@git-diff " else "$text @git-diff ".trimStart()
-                            onTextChange(updated)
-                        },
-                    )
-                    MentionChip(
-                        label = "/terminal",
-                        icon = Icons.Default.Terminal,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val updated = if (text.endsWith("/")) text.dropLast(1) + "@terminal " else "$text @terminal ".trimStart()
-                            onTextChange(updated)
-                        },
-                    )
-                    MentionChip(
-                        label = "/clear",
-                        icon = Icons.Default.Close,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onTextChange("")
-                        },
-                    )
-                    if (isRunning && onDetach != null) {
-                        MentionChip(
-                            label = "/detach",
-                            icon = Icons.Default.Schedule,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onDetach()
-                            },
-                        )
-                    }
-                }
-            }
-
-            // Dynamic @ Mention Context Helper Bar (Projects, GitHub Repos, Files, Diff)
-            val showMentions = activeMentionQuery != null
-            if (showMentions) {
-                val query = activeMentionQuery.orEmpty()
-                val matchingProjects = remember(availableProjects, query) {
-                    if (query.isBlank()) availableProjects.take(6)
-                    else availableProjects.filter { it.name.contains(query, ignoreCase = true) }.take(6)
-                }
-                val matchingRepos = remember(githubRepositories, query) {
-                    if (query.isBlank()) githubRepositories.take(6)
-                    else githubRepositories.filter { it.fullName.contains(query, ignoreCase = true) }.take(6)
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Matching projects
-                    matchingProjects.forEach { project ->
-                        val insertText = if (project.name.contains(" ")) "@\"${project.name}\" " else "@${project.name} "
-                        MentionChip(
-                            label = "@${project.name}",
-                            icon = Icons.Default.Folder,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
-                                onTextChange("$beforeAt$insertText")
-                            },
-                        )
-                    }
-
-                    // Matching GitHub Repositories
-                    matchingRepos.forEach { repo ->
-                        val repoShortName = repo.fullName.substringAfterLast('/')
-                        MentionChip(
-                            label = "@$repoShortName",
-                            icon = Icons.Default.Code,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
-                                onTextChange("$beforeAt@${repo.fullName} ")
-                            },
-                        )
-                    }
-
-                    // Swarm & Agents
-                    if (query.isBlank() || "swarm".contains(query, ignoreCase = true)) {
-                        MentionChip(
-                            label = "@swarm",
-                            icon = Icons.Default.AutoAwesome,
-                            onClick = {
-                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
-                                onTextChange("$beforeAt@swarm ")
-                            },
-                        )
-                    }
-
-                    // Context Helpers
-                    if (query.isBlank() || "git-diff".contains(query, ignoreCase = true)) {
-                        MentionChip(
-                            label = "@git-diff",
-                            icon = Icons.Default.Source,
-                            onClick = {
-                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
-                                onTextChange("$beforeAt@git-diff ")
-                            },
-                        )
-                    }
-                    if (query.isBlank() || "file".contains(query, ignoreCase = true)) {
-                        MentionChip(
-                            label = "@file",
-                            icon = Icons.Default.Folder,
-                            onClick = {
-                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
-                                onTextChange("$beforeAt@file: ")
-                            },
-                        )
-                    }
-                    if (query.isBlank() || "terminal".contains(query, ignoreCase = true)) {
-                        MentionChip(
-                            label = "@terminal",
-                            icon = Icons.Default.Terminal,
-                            onClick = {
-                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
-                                onTextChange("$beforeAt@terminal ")
-                            },
-                        )
-                    }
-
-                    // Browse All button chip
-                    MentionChip(
-                        label = "⋯ All",
-                        icon = Icons.Default.Add,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            showMentionSheet = true
+                            onTriggerCloudBuild()
                         },
                     )
                 }
-            }
-
-            if (text.isNotBlank() && !showMentions) {
-                DevAccessoryBar(
-                    onInsert = { onTextChange(text + it) },
-                    modifier = Modifier.padding(bottom = 4.dp),
+                MentionChip(
+                    label = "/test",
+                    icon = Icons.Default.Check,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                        val updated = if (prefix.isBlank()) "Run all unit tests and report any failures with suggested fixes." else "$prefix Run unit tests and report failures."
+                        onTextChange(updated.trimStart())
+                    },
                 )
-            }
-
-            TextField(
-                value = text,
-                onValueChange = {
-                    if (it.isNotBlank()) lastClearedText = null
-                    onTextChange(it)
-                },
-                enabled = enabled,
-                placeholder = {
-                    Text(
-                        text = if (isRunning) "Queue follow-up task…" else "Ask anything…",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    )
-                },
-                trailingIcon = {
-                    if (text.isNotEmpty()) {
-                        IconButton(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                lastClearedText = text
-                                onTextChange("")
-                            },
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear input",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    } else if (lastUserPrompt != null && onRecallLastPrompt != null) {
-                        IconButton(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onRecallLastPrompt()
-                            },
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit last prompt",
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                ),
-                maxLines = 6,
-                textStyle = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
-            )
-
-            // Undo clear / Restore prompt banner
-            if (!lastClearedText.isNullOrBlank() && text.isBlank()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Cleared draft: \"${lastClearedText?.take(22)}…\"",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                    )
-                    TextButton(
+                MentionChip(
+                    label = "/fix",
+                    icon = Icons.Default.Build,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                        val updated = if (prefix.isBlank()) "Analyze recent errors or warnings and apply the minimal correct fix." else "$prefix Fix errors and apply minimal fix."
+                        onTextChange(updated.trimStart())
+                    },
+                )
+                MentionChip(
+                    label = "/review",
+                    icon = Icons.Default.Source,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                        val updated = if (prefix.isBlank()) "Review uncommitted git changes for bugs, security vulnerabilities, and code quality." else "$prefix Review git changes."
+                        onTextChange(updated.trimStart())
+                    },
+                )
+                MentionChip(
+                    label = "/explain",
+                    icon = Icons.Default.AutoAwesome,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val prefix = if (text.endsWith("/")) text.dropLast(1) else text
+                        val updated = if (prefix.isBlank()) "Explain how this architecture and data flow works step-by-step." else "$prefix Explain this code."
+                        onTextChange(updated.trimStart())
+                    },
+                )
+                MentionChip(
+                    label = "/diff",
+                    icon = Icons.Default.Source,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val updated = if (text.endsWith("/")) text.dropLast(1) + "@git-diff " else "$text @git-diff ".trimStart()
+                        onTextChange(updated)
+                    },
+                )
+                MentionChip(
+                    label = "/terminal",
+                    icon = Icons.Default.Terminal,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val updated = if (text.endsWith("/")) text.dropLast(1) + "@terminal " else "$text @terminal ".trimStart()
+                        onTextChange(updated)
+                    },
+                )
+                MentionChip(
+                    label = "/clear",
+                    icon = Icons.Default.Close,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onTextChange("")
+                    },
+                )
+                if (isRunning && onDetach != null) {
+                    MentionChip(
+                        label = "/detach",
+                        icon = Icons.Default.Schedule,
                         onClick = {
-                            lastClearedText?.let { onTextChange(it) }
-                            lastClearedText = null
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onDetach()
                         },
-                        modifier = Modifier.height(28.dp),
-                    ) {
-                        Text("Restore & Edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    }
+                    )
                 }
+            }
+        }
+
+        // Dynamic @ Mention Context Helper Bar
+        val showMentions = activeMentionQuery != null
+        if (showMentions) {
+            val query = activeMentionQuery.orEmpty()
+            val matchingProjects = remember(availableProjects, query) {
+                if (query.isBlank()) availableProjects.take(6)
+                else availableProjects.filter { it.name.contains(query, ignoreCase = true) }.take(6)
+            }
+            val matchingRepos = remember(githubRepositories, query) {
+                if (query.isBlank()) githubRepositories.take(6)
+                else githubRepositories.filter { it.fullName.contains(query, ignoreCase = true) }.take(6)
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Claude-style: one quiet row. Everything used now and then (attach,
-                // folder, mode, background) lives behind +; only the model and Send
-                // stay visible.
+                matchingProjects.forEach { project ->
+                    val insertText = if (project.name.contains(" ")) "@\"${project.name}\" " else "@${project.name} "
+                    MentionChip(
+                        label = "@${project.name}",
+                        icon = Icons.Default.Folder,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                            onTextChange("$beforeAt$insertText")
+                        },
+                    )
+                }
+
+                matchingRepos.forEach { repo ->
+                    val repoShortName = repo.fullName.substringAfterLast('/')
+                    MentionChip(
+                        label = "@$repoShortName",
+                        icon = Icons.Default.Code,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                            onTextChange("$beforeAt@${repo.fullName} ")
+                        },
+                    )
+                }
+
+                if (query.isBlank() || "swarm".contains(query, ignoreCase = true)) {
+                    MentionChip(
+                        label = "@swarm",
+                        icon = Icons.Default.AutoAwesome,
+                        onClick = {
+                            val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                            onTextChange("$beforeAt@swarm ")
+                        },
+                    )
+                }
+
+                if (query.isBlank() || "git-diff".contains(query, ignoreCase = true)) {
+                    MentionChip(
+                        label = "@git-diff",
+                        icon = Icons.Default.Source,
+                        onClick = {
+                            val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                            onTextChange("$beforeAt@git-diff ")
+                        },
+                    )
+                }
+                if (query.isBlank() || "file".contains(query, ignoreCase = true)) {
+                    MentionChip(
+                        label = "@file",
+                        icon = Icons.Default.Folder,
+                        onClick = {
+                            val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                            onTextChange("$beforeAt@file: ")
+                        },
+                    )
+                }
+                if (query.isBlank() || "terminal".contains(query, ignoreCase = true)) {
+                    MentionChip(
+                        label = "@terminal",
+                        icon = Icons.Default.Terminal,
+                        onClick = {
+                            val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                            onTextChange("$beforeAt@terminal ")
+                        },
+                    )
+                }
+
+                MentionChip(
+                    label = "⋯ All",
+                    icon = Icons.Default.Add,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showMentionSheet = true
+                    },
+                )
+            }
+        }
+
+        // Undo clear / Restore prompt banner
+        if (!lastClearedText.isNullOrBlank() && text.isBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Cleared draft: \"${lastClearedText?.take(22)}…\"",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+                TextButton(
+                    onClick = {
+                        lastClearedText?.let { onTextChange(it) }
+                        lastClearedText = null
+                    },
+                    modifier = Modifier.height(28.dp),
+                ) {
+                    Text("Restore & Edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+
+        // Minimal Gemini / Claude-style top selector chips (Model & Mode)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ModelPicker(
+                selectedModel = selectedModel,
+                omniModels = omniModels,
+                isSyncing = isSyncingModels,
+                enabled = !isRunning,
+                onModelChange = onModelChange,
+                onSync = onSyncModels,
+            )
+            if (permissionMode.changesThings()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = VmTheme.colors.warning.copy(alpha = 0.15f),
+                ) {
+                    Text(
+                        text = "⚡ ${permissionMode.chatLabel()}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = VmTheme.colors.warning,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+            }
+            if (squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                ) {
+                    Text(
+                        text = "👥 ${squadPreset.title}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+            }
+        }
+
+        // Sleek Capsule Input Pill (Gemini / Claude style)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // + Menu Button
                 ComposerPlusMenu(
                     enabled = !isRunning,
                     canSend = canSend && !isStartingBackgroundRun,
@@ -495,77 +483,58 @@ internal fun ModernComposer(
                     onEditDirectory = onEditDirectory,
                     onPermissionModeChange = onPermissionModeChange,
                     onSquadPresetChange = onSquadPresetChange,
-                    // The box is cleared only once the run really started, so a refusal
-                    // ("Python 3 is needed", a production server) never eats the message.
                     onSendInBackground = { onSendInBackground(text) { onTextChange("") } },
                 )
-                // Only the modes that change things are worth a permanent reminder.
-                if (permissionMode.changesThings()) {
-                    Text(
-                        text = permissionMode.chatLabel(),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = VmTheme.colors.warning,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                }
-                if (squadPreset != digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK) {
-                    Text(
-                        text = squadPreset.title,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                }
-                ModelPicker(
-                    selectedModel = selectedModel,
-                    omniModels = omniModels,
-                    isSyncing = isSyncingModels,
-                    enabled = !isRunning,
-                    onModelChange = onModelChange,
-                    onSync = onSyncModels,
+
+                // Input Field
+                TextField(
+                    value = text,
+                    onValueChange = {
+                        if (it.isNotBlank()) lastClearedText = null
+                        onTextChange(it)
+                    },
+                    enabled = enabled,
+                    placeholder = {
+                        Text(
+                            text = if (isRunning) "Queue follow-up task…" else "Ask anything…",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                        )
+                    },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+                    maxLines = 6,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
                 )
 
-                Spacer(Modifier.weight(1f))
-
-                // Dedicated @ Mention Context Button
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .clickable(enabled = enabled) {
+                // Trailing Buttons: Clear, Recall, @, Voice Mic, Detach, Stop, Send
+                if (text.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            showMentionSheet = true
+                            lastClearedText = text
+                            onTextChange("")
                         },
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Text(
-                            text = "@",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = if (text.contains("@")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear input",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp),
                         )
                     }
+                    Spacer(Modifier.size(4.dp))
                 }
-
-                Spacer(modifier = Modifier.size(6.dp))
-
-                // Voice-to-Code Microphone Button
-                val speechLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.StartActivityForResult(),
-                ) { result ->
-                    if (result.resultCode == android.app.Activity.RESULT_OK) {
-                        val spokenText = result.data
-                            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                            ?.firstOrNull()
-                        if (!spokenText.isNullOrBlank()) {
-                            val updated = if (text.isBlank()) spokenText else "$text $spokenText"
-                            onTextChange(updated)
-                        }
-                    }
-                }
-
-                val context = LocalContext.current
 
                 if (isRunning && text.isBlank()) {
                     if (onDetach != null) {
@@ -573,7 +542,7 @@ internal fun ModernComposer(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
                                 .clip(CircleShape)
                                 .clickable(onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -585,7 +554,7 @@ internal fun ModernComposer(
                                     imageVector = Icons.Default.Schedule,
                                     contentDescription = "Detach to background",
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(17.dp),
                                 )
                             }
                         }
@@ -595,7 +564,7 @@ internal fun ModernComposer(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(34.dp)
                             .clip(CircleShape)
                             .clickable(onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -607,15 +576,56 @@ internal fun ModernComposer(
                                 imageVector = Icons.Default.Stop,
                                 contentDescription = "Stop",
                                 tint = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(17.dp),
                             )
                         }
                     }
                 } else if (text.isBlank() && attachments.isEmpty()) {
-                    // Gemini / Claude style: when empty, primary action is Voice Mic!
+                    // Recall last prompt edit button if available
+                    if (lastUserPrompt != null && onRecallLastPrompt != null) {
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onRecallLastPrompt()
+                            },
+                            modifier = Modifier.size(30.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit last prompt",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+
+                    // Dedicated @ Mention Context Button
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .clickable(enabled = enabled) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showMentionSheet = true
+                            },
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = "@",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.size(4.dp))
+
+                    // Gemini-style Voice Microphone Button
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -639,13 +649,13 @@ internal fun ModernComposer(
                             Icon(
                                 imageVector = Icons.Default.Mic,
                                 contentDescription = "Voice prompt",
-                                tint = MaterialTheme.colorScheme.onSurface,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp),
                             )
                         }
                     }
                 } else {
-                    // Primary accent Send button when text is entered
+                    // Accent circular Send button
                     Surface(
                         shape = CircleShape,
                         color = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,

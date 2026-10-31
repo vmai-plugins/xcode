@@ -191,7 +191,8 @@ class ServerDetailViewModel @Inject constructor(
         viewModelScope.launch {
             when (val sessionResult = connectionManager.session(serverId)) {
                 is VmResult.Success -> {
-                    val res = sessionResult.value.execute("docker restart '$name'", CommandLimits(timeoutMillis = 20_000))
+                    val safeName = "'" + name.replace("'", "'\\''") + "'"
+                    val res = sessionResult.value.execute("docker restart $safeName", CommandLimits(timeoutMillis = 20_000))
                     if (res is VmResult.Failure) {
                         _uiState.update { it.copy(error = res.error) }
                     } else {
@@ -209,8 +210,9 @@ class ServerDetailViewModel @Inject constructor(
         viewModelScope.launch {
             when (val sessionResult = connectionManager.session(serverId)) {
                 is VmResult.Success -> {
+                    val safeName = "'" + name.replace("'", "'\\''") + "'"
                     val res = sessionResult.value.execute(
-                        "docker logs --tail 100 '$name'",
+                        "docker logs --tail 100 $safeName",
                         CommandLimits(timeoutMillis = 10_000),
                     )
                     when (res) {

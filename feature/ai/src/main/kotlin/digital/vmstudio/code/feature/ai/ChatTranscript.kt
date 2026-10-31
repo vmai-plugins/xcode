@@ -380,30 +380,39 @@ internal fun TranscriptRow(
             )
         }
 
-        is TranscriptItem.RunSummary -> Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = BorderStroke(1.dp, VmTheme.colors.divider),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = spacing.md, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = if (item.isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (item.isError) MaterialTheme.colorScheme.error else VmTheme.colors.success,
-                    modifier = Modifier.size(14.dp),
-                )
-                VmChip(text = "${item.durationMillis / 1000}s", monospace = true)
-                if (item.costUsd > 0) {
-                    VmChip(text = "$%.4f".format(item.costUsd), monospace = true)
+        is TranscriptItem.RunSummary -> {
+            // Clean, non-cluttered footer: Gemini / Claude style (no token noise or heavy boxes)
+            if (item.isError) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                    modifier = Modifier.padding(vertical = 2.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            text = "Turn failed after ${item.durationMillis / 1000}s",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
+            } else if (item.costUsd > 0.0) {
+                Text(
+                    text = "$%.4f".format(item.costUsd),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                )
             }
         }
 

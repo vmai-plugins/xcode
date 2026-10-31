@@ -173,7 +173,7 @@ class AuthViewModel @Inject constructor(
                         idToken = idToken,
                     )
                     preferencesRepository.setHasSignedIn(true)
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
                     onSignedIn()
                 } else {
                     throw IllegalStateException("Unexpected credential format received: ${credential::class.java.simpleName}")
@@ -236,7 +236,7 @@ class AuthViewModel @Inject constructor(
                 is digital.vmstudio.code.core.common.result.VmResult.Success -> {
                     Log.d(TAG, "GitHub Token exchanged successfully.")
                     preferencesRepository.setHasSignedIn(true)
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
                 }
                 is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
                     Log.e(TAG, "GitHub Token exchange failed: ${result.error.summary}")

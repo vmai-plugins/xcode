@@ -398,6 +398,7 @@ fun VmNavHost(
                     onOpenServers = { navController.navigate(VmDestination.Servers.route) },
                     onOpenGitHub = { navController.navigate("settings/github") },
                     onOpenAbout = { navController.navigate(VmDestination.SettingsAbout.route) },
+                    onOpenActivityTimeline = { navController.navigate(VmDestination.ActivityTimeline.route) },
                     onSignOut = {
                         navController.navigate(VmDestination.Auth.route) {
                             popUpTo(0) { inclusive = true }

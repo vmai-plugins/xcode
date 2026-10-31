@@ -1052,6 +1052,27 @@ Following an architectural audit of **Teamily AI** (`ai.teamily.mobile`), X-Code
 6. **Agent Squad Presets**:
    - Pre-configured engineering personas in empty chat hero quick actions: `Full-Stack Pod`, `Security Auditor`, `Test Suite`, `DevOps / Release`, `Data & Sheets`, `Git Status`, and `Fix Errors`.
 
+### 5.12 Version 0.15.19 Overhaul (UX Polish & Critical Bug Fixes)
+- **Gemini & Claude-Style Composer Overhaul**:
+  - Re-architected `ChatComposer.kt` into a single floating capsule pill container (`RoundedCornerShape(28.dp)`).
+  - Placed model picker chip and autonomy badge (`[ ✨ best-free ▾ ]`, `[ ⚡ Full auto ]`) in an unobtrusive top selector row matching Gemini's "Chat | Task" header.
+  - Placed text input, `+` menu, `@` mention button, and voice mic on a unified horizontal line.
+  - Eliminated token clutter (`4.2k tok` chips and `1285 tokens` bubbles) from composer and chat transcript.
+- **AI Persona & VPS Business Support**:
+  - Injected `DEFAULT_ASSISTANT_SYSTEM_PROMPT` into `OmniRouteProvider.kt` and `OmniRouteAgentLoop.kt`.
+  - Configures the assistant as a senior software architect and Linux DevOps administrator.
+  - Eliminates consumer financial disclaimers when discussing developer VPS setups, offline servers, or digital businesses.
+- **Critical Bug & Orphan Resolutions**:
+  - **Bug 140 (O-01 / Navigation Orphan)**: `ActivityTimelineScreen` (`VmDestination.ActivityTimeline.route`) was completely unreachable. Wired navigation into both `SettingsScreen` (under "Security & System") and the navigation drawer.
+  - **Bug 141 (O-03 / Gesture Defect)**: Added `Servers`, `Tasks`, `Connectors`, and `ActivityTimeline` to `DRAWER_ROUTES` in `VmApp.kt` so swipe-to-open drawer gestures work across all top-level destinations.
+  - **Bug 142 (B-01 / Auth Hang)**: Fixed GitHub OAuth callback in `AuthViewModel.kt` omitting `isSignedIn = true`, which caused the screen to remain stuck on Auth after returning via deep link.
+  - **Bug 143 (B-02 / Concurrency Defect)**: Fixed `CancellationException` being silently swallowed by empty `catch (_: Exception) {}` blocks across `AgentConversationRepository.kt`, `AgentChatViewModel.kt`, and `AgentConversationsViewModel.kt`.
+  - **Bug 144 (B-03 / SFTP Data Loss)**: Fixed `SftpRemoteFileSystem.kt:322` where `existing in 1 until total` reset `startOffset` to 0 on already-downloaded files, wiping them to 0 bytes with `file.setLength(0)`.
+  - **Bug 145 (B-05 / Terminal PTY State)**: Fixed `TerminalSession.kt:180` catching all `IOException` during `channel.input.read` and misclassifying unexpected network drops as clean shell exits. Now rethrows when `channel.isOpen == true`.
+  - **Bug 146 (B-08 / Security Vulnerability)**: Fixed shell command injection in `ServerDetailViewModel.kt:194, 213` when executing `docker restart` and `docker logs` by escaping single quotes (`safeName = "'" + name.replace("'", "'\\''") + "'"`).
+  - **Bug 147 (Local Web Preview)**: Fixed `rememberHtmlPreview` in `HtmlPreviewSheet.kt:298` returning `null` when `serverId == null`, enabling live HTML file preview for local projects and general chats.
+  - **Bug 148 (O-07 / Repository Hygiene)**: Pruned obsolete root maintenance scripts (`update_v*.py`, `run_update.sh`).
+
 ---
 
 ## 6. Developer Runbook & Operations

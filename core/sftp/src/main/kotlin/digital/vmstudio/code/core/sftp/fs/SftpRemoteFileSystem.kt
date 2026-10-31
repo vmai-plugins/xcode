@@ -319,6 +319,11 @@ class SftpRemoteFileSystem @Inject constructor(
                 // longer remote file; if the remote shrank, the local partial is
                 // stale and restarting is the correct behaviour.
                 val existing = if (destination.exists()) destination.length() else 0L
+                if (resume && existing >= total && total > 0) {
+                    emit(TransferEvent.Started(totalBytes = total, resumedFromBytes = total))
+                    emit(TransferEvent.Completed(totalBytes = total, transferredBytes = total))
+                    return@flow
+                }
                 val startOffset = if (resume && existing in 1 until total) existing else 0L
                 transferred = startOffset
 
