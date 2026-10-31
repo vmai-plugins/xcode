@@ -63,13 +63,12 @@ class RegexSyntaxHighlighter(
 
             // Word (keyword, type, function call, or plain)
             if (source[i].isLetter() || source[i] == '_') {
-                // Scan forward from i only: indexOfFirst without a start offset
-                // searches the whole source, returning an index *before* the
-                // current position for every word after the first, which would
-                // crash substring(i, wordEnd).
-                val wordEnd = (i until source.length)
-                    .firstOrNull { !source[it].isLetterOrDigit() && source[it] != '_' }
-                    ?: source.length
+                var wordEnd = i
+                while (wordEnd < source.length) {
+                    val ch = source[wordEnd]
+                    if (!ch.isLetterOrDigit() && ch != '_') break
+                    wordEnd++
+                }
                 val word = source.substring(i, wordEnd)
                 val isFunction = run {
                     var next = wordEnd
@@ -78,10 +77,11 @@ class RegexSyntaxHighlighter(
                     }
                     next < source.length && source[next] == '('
                 }
+                val isType = word.isNotEmpty() && word[0] in 'A'..'Z'
                 val style = when {
                     word in keywords -> SpanStyle(color = scheme.keyword, fontWeight = FontWeight.Bold)
-                    isFunction && !typePattern.matches(word) -> SpanStyle(color = scheme.function)
-                    typePattern.matches(word) -> SpanStyle(color = scheme.type)
+                    isFunction && !isType -> SpanStyle(color = scheme.function)
+                    isType -> SpanStyle(color = scheme.type)
                     else -> null
                 }
                 if (style != null) {
