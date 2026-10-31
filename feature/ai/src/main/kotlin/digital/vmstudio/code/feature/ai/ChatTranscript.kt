@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Difference
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -233,7 +234,8 @@ internal fun TranscriptRow(
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
     onPreview: ((String) -> Unit)? = null,
-    onEditPrompt: ((String) -> Unit)? = null,
+    onEditPrompt: ((text: String, promptId: String) -> Unit)? = null,
+    onDeletePrompt: ((promptId: String, text: String) -> Unit)? = null,
     chatBubbleColorHex: String? = null,
 ) {
     val spacing = VmTheme.spacing
@@ -282,7 +284,7 @@ internal fun TranscriptRow(
 
             Row(
                 modifier = Modifier.padding(top = 2.dp, end = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Copy Prompt to clipboard
@@ -292,31 +294,48 @@ internal fun TranscriptRow(
                         clipboardManager.setText(AnnotatedString(item.text))
                         Toast.makeText(context, "Copied prompt", Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(28.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
                         contentDescription = "Copy prompt",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(13.dp),
+                        modifier = Modifier.size(15.dp),
                     )
                 }
 
-                // Edit Prompt (populate ChatComposer)
+                // Edit Prompt (populate ChatComposer & focus keyboard)
                 if (onEditPrompt != null) {
                     IconButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onEditPrompt(item.text)
-                            Toast.makeText(context, "Loaded into composer", Toast.LENGTH_SHORT).show()
+                            onEditPrompt(item.text, item.id)
                         },
-                        modifier = Modifier.size(26.dp),
+                        modifier = Modifier.size(28.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Edit prompt in composer",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+                }
+
+                // Delete & Edit Prompt (rewinds turn and loads text into composer so user can edit)
+                if (onDeletePrompt != null) {
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onDeletePrompt(item.id, item.text)
+                        },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete & Edit prompt",
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                            modifier = Modifier.size(15.dp),
                         )
                     }
                 }
@@ -382,7 +401,6 @@ internal fun TranscriptRow(
                     modifier = Modifier.size(14.dp),
                 )
                 VmChip(text = "${item.durationMillis / 1000}s", monospace = true)
-                VmChip(text = "${item.inputTokens + item.outputTokens} tokens", monospace = true)
                 if (item.costUsd > 0) {
                     VmChip(text = "$%.4f".format(item.costUsd), monospace = true)
                 }

@@ -368,7 +368,22 @@ fun SettingsScreen(
             }
         }
 
-        // --- 5. Security & System Diagnostics ---
+        // --- 5. Remote Servers & Hardware Control ---
+        item { ModernSectionHeader(title = "Remote Infrastructure & PC Control") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModernSettingsRow(
+                    title = "Remote Servers & SSH (PC Control)",
+                    description = "Manage PC, VPS, SSH keys, passwords, and OpenSSH terminal connections",
+                    icon = Icons.Default.Dns,
+                    badgeText = "SSH",
+                    iconColor = Color(0xFF10B981),
+                    onClick = onOpenServers,
+                )
+            }
+        }
+
+        // --- 6. Security & System Diagnostics ---
         item { ModernSectionHeader(title = "Security & System") }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

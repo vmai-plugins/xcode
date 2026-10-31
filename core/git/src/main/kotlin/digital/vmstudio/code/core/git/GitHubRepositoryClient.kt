@@ -466,24 +466,59 @@ class GitHubRepositoryClient @Inject constructor(
             is VmResult.Failure -> return result
         }
         return try {
-            val token = secret.useAsString { it }
-            val url = "https://api.github.com/repos/$repoFullName/actions/workflows/$workflowFileName/dispatches"
-            val bodyJson = org.json.JSONObject().apply {
-                put("ref", ref)
-            }.toString()
-
-            val request = Request.Builder()
-                .url(url)
-                .post(bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
-                .header("Authorization", "Bearer $token")
-                .header("Accept", "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", "2022-11-28")
-                .build()
-
-            when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
-                is VmResult.Failure -> response
-                is VmResult.Success -> VmResult.Success(Unit)
+            val token = secret.useAsString { it.trim() }
+            if (token.isBlank()) {
+                return VmResult.Failure(
+                    VmError.Validation(
+                        summary = "GitHub token is missing or empty",
+                        suggestedAction = "Configure your GitHub Personal Access Token in Settings → GitHub Integration.",
+                    ),
+                )
             }
+            // Candidate targets to try in order: workflowFileName, alternative known names, or numeric ID
+            val workflowCandidates = buildList {
+                add(workflowFileName)
+                if (workflowFileName.endsWith(".yml") || workflowFileName.endsWith(".yaml")) {
+                    if (!workflowFileName.startsWith(".github/workflows/")) {
+                        add(".github/workflows/$workflowFileName")
+                    }
+                }
+                if (workflowFileName.contains("nightly")) {
+                    add("374605859") // GitHub Actions numeric ID for nightly.yml
+                    add("build.yml") // Fallback workflow
+                    add("367239077") // GitHub Actions numeric ID for build.yml
+                } else if (workflowFileName.contains("build")) {
+                    add("367239077")
+                    add("nightly.yml")
+                }
+            }.distinct()
+
+            var lastFailure: VmResult.Failure? = null
+            for (target in workflowCandidates) {
+                val url = "https://api.github.com/repos/$repoFullName/actions/workflows/$target/dispatches"
+                val bodyJson = org.json.JSONObject().apply {
+                    put("ref", ref)
+                }.toString()
+
+                val request = Request.Builder()
+                    .url(url)
+                    .post(bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .header("Authorization", "Bearer $token")
+                    .header("Accept", "application/vnd.github+json")
+                    .header("X-GitHub-Api-Version", "2022-11-28")
+                    .build()
+
+                when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
+                    is VmResult.Success -> return VmResult.Success(Unit)
+                    is VmResult.Failure -> {
+                        lastFailure = response
+                        if (response.error is VmError.Authentication) {
+                            return response
+                        }
+                    }
+                }
+            }
+            lastFailure ?: VmResult.Failure(VmError.Network(summary = "Could not dispatch workflow on GitHub"))
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (exception: Exception) {

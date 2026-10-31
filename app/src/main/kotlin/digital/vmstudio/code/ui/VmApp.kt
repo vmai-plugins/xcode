@@ -372,6 +372,13 @@ private fun ColumnScope.DrawerNavigationItems(
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
     NavigationDrawerItem(
+        label = { Text("Servers (SSH & PC)") },
+        icon = { Icon(Icons.Default.Dns, contentDescription = null) },
+        selected = currentRoute == VmDestination.Servers.route,
+        onClick = { onNavigate(VmDestination.Servers) },
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+    )
+    NavigationDrawerItem(
         label = { Text("Settings") },
         icon = { Icon(Icons.Default.Settings, contentDescription = null) },
         selected = currentRoute == VmDestination.Settings.route,

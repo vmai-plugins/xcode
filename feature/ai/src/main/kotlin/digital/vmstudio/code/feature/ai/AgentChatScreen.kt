@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -93,7 +94,11 @@ fun AgentChatScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
     val listState = rememberLazyListState()
+    val composerFocusRequester = remember { FocusRequester() }
     var composerText by remember { mutableStateOf(state.initialPrompt.orEmpty()) }
+    val lastUserPrompt = remember(state.transcript) {
+        state.transcript.filterIsInstance<TranscriptItem.UserPrompt>().lastOrNull()?.text
+    }
     androidx.compose.runtime.LaunchedEffect(state.initialPrompt) {
         if (!state.initialPrompt.isNullOrBlank() && composerText.isBlank()) {
             composerText = state.initialPrompt.orEmpty()
@@ -263,6 +268,7 @@ fun AgentChatScreen(
 
     var showCloudBuildDialog by remember { mutableStateOf(false) }
     var isCloudBuilding by remember { mutableStateOf(false) }
+    var cloudBuildError by remember { mutableStateOf<String?>(null) }
 
     if (showCloudBuildDialog) {
         AlertDialog(
@@ -301,6 +307,20 @@ fun AgentChatScreen(
                             Text("Dispatching to GitHub Actions...", style = MaterialTheme.typography.bodySmall)
                         }
                     }
+                    if (cloudBuildError != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(top = 8.dp),
+                        ) {
+                            Text(
+                                text = cloudBuildError!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(8.dp),
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -308,10 +328,15 @@ fun AgentChatScreen(
                     enabled = !isCloudBuilding,
                     onClick = {
                         isCloudBuilding = true
+                        cloudBuildError = null
                         viewModel.triggerCloudBuild { success, msg ->
                             isCloudBuilding = false
-                            showCloudBuildDialog = false
-                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
+                                showCloudBuildDialog = false
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            } else {
+                                cloudBuildError = msg
+                            }
                         }
                     },
                 ) {
@@ -321,7 +346,10 @@ fun AgentChatScreen(
             dismissButton = {
                 TextButton(
                     enabled = !isCloudBuilding,
-                    onClick = { showCloudBuildDialog = false },
+                    onClick = {
+                        cloudBuildError = null
+                        showCloudBuildDialog = false
+                    },
                 ) {
                     Text("Cancel")
                 }
@@ -536,11 +564,21 @@ fun AgentChatScreen(
                                     onOpenDiff = openDiff,
                                     onRollback = viewModel::rollbackFile,
                                     onPreview = previewTarget,
-                                    onEditPrompt = { text ->
+                                    onEditPrompt = { text, promptId ->
                                         composerText = text
                                         coroutineScope.launch {
                                             listState.animateScrollToItem(groupedTranscript.size)
+                                            composerFocusRequester.requestFocus()
                                         }
+                                    },
+                                    onDeletePrompt = { promptId, text ->
+                                        viewModel.rewindToPrompt(promptId)
+                                        composerText = text
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(groupedTranscript.size)
+                                            composerFocusRequester.requestFocus()
+                                        }
+                                        Toast.makeText(context, "Turn deleted & prompt loaded for editing", Toast.LENGTH_SHORT).show()
                                     },
                                     chatBubbleColorHex = state.chatBubbleColorHex,
                                 )
@@ -650,6 +688,16 @@ fun AgentChatScreen(
                 onTriggerCloudBuild = { showCloudBuildDialog = true },
                 onDetach = viewModel::detachToBackground,
                 totalTokens = state.totalTokens,
+                focusRequester = composerFocusRequester,
+                lastUserPrompt = lastUserPrompt,
+                onRecallLastPrompt = lastUserPrompt?.let { prompt ->
+                    {
+                        composerText = prompt
+                        coroutineScope.launch {
+                            composerFocusRequester.requestFocus()
+                        }
+                    }
+                },
             )
         }
     }

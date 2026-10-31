@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -34,12 +35,15 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -51,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -117,12 +122,16 @@ internal fun ModernComposer(
     onTriggerCloudBuild: (() -> Unit)? = null,
     onDetach: (() -> Unit)? = null,
     totalTokens: Long = 0L,
+    focusRequester: FocusRequester? = null,
+    lastUserPrompt: String? = null,
+    onRecallLastPrompt: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
     val canSend = enabled && (text.isNotBlank() || attachments.isNotEmpty())
     val haptic = LocalHapticFeedback.current
     var showMentionSheet by remember { mutableStateOf(false) }
+    var lastClearedText by remember { mutableStateOf<String?>(null) }
 
     // Detect if user is actively typing a mention (e.g. "@", "@web", @"My Proj")
     val activeMentionQuery = remember(text) {
@@ -139,15 +148,15 @@ internal fun ModernComposer(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = spacing.md, vertical = spacing.xs),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(26.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
             AttachmentChips(attachments = attachments, onRemove = onRemoveAttachment)
 
-            // Quick Slash Actions Bar (/preview, /files, /diff, /terminal, /clear)
-            val showQuickActions = text.isBlank() || text.endsWith("/")
+            // Quick Slash Actions Bar (/preview, /files, /diff, /terminal, /clear) - only when user types /
+            val showQuickActions = text.startsWith("/") || text.endsWith("/")
             if (showQuickActions) {
                 Row(
                     modifier = Modifier
@@ -379,14 +388,51 @@ internal fun ModernComposer(
 
             TextField(
                 value = text,
-                onValueChange = onTextChange,
+                onValueChange = {
+                    if (it.isNotBlank()) lastClearedText = null
+                    onTextChange(it)
+                },
                 enabled = enabled,
                 placeholder = {
                     Text(
-                        text = if (isRunning) "Queue follow-up task…" else "Ask anything, @ to mention, / for actions",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = if (isRunning) "Queue follow-up task…" else "Ask anything…",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
+                },
+                trailingIcon = {
+                    if (text.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                lastClearedText = text
+                                onTextChange("")
+                            },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear input",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else if (lastUserPrompt != null && onRecallLastPrompt != null) {
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onRecallLastPrompt()
+                            },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit last prompt",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
                 },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -398,8 +444,37 @@ internal fun ModernComposer(
                 ),
                 maxLines = 6,
                 textStyle = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
             )
+
+            // Undo clear / Restore prompt banner
+            if (!lastClearedText.isNullOrBlank() && text.isBlank()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Cleared draft: \"${lastClearedText?.take(22)}…\"",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                    )
+                    TextButton(
+                        onClick = {
+                            lastClearedText?.let { onTextChange(it) }
+                            lastClearedText = null
+                        },
+                        modifier = Modifier.height(28.dp),
+                    ) {
+                        Text("Restore & Edit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -450,30 +525,6 @@ internal fun ModernComposer(
                     onSync = onSyncModels,
                 )
 
-                if (totalTokens > 0) {
-                    Spacer(Modifier.size(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    ) {
-                        val tokenText = if (totalTokens >= 1_000_000) {
-                            String.format(java.util.Locale.US, "%.1fM", totalTokens / 1_000_000.0)
-                        } else if (totalTokens >= 1_000) {
-                            String.format(java.util.Locale.US, "%.1fk", totalTokens / 1_000.0)
-                        } else {
-                            "$totalTokens"
-                        }
-                        Text(
-                            text = "$tokenText tok",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                }
-
                 Spacer(Modifier.weight(1f))
 
                 // Dedicated @ Mention Context Button
@@ -497,7 +548,7 @@ internal fun ModernComposer(
                     }
                 }
 
-                Spacer(modifier = Modifier.size(4.dp))
+                Spacer(modifier = Modifier.size(6.dp))
 
                 // Voice-to-Code Microphone Button
                 val speechLauncher = rememberLauncherForActivityResult(
@@ -515,33 +566,6 @@ internal fun ModernComposer(
                 }
 
                 val context = LocalContext.current
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        try {
-                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(
-                                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                                )
-                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak instructions for AI…")
-                            }
-                            speechLauncher.launch(intent)
-                        } catch (_: Exception) {
-                            Toast.makeText(context, "Speech recognition is not available", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Voice prompt",
-                        tint = if (text.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-
-                Spacer(modifier = Modifier.size(4.dp))
 
                 if (isRunning && text.isBlank()) {
                     if (onDetach != null) {
@@ -587,14 +611,44 @@ internal fun ModernComposer(
                             )
                         }
                     }
-                } else {
+                } else if (text.isBlank() && attachments.isEmpty()) {
+                    // Gemini / Claude style: when empty, primary action is Voice Mic!
                     Surface(
                         shape = CircleShape,
-                        color = if (canSend) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHighest
-                        },
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                try {
+                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                        putExtra(
+                                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                        )
+                                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak instructions for AI…")
+                                    }
+                                    speechLauncher.launch(intent)
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, "Speech recognition is not available", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Voice prompt",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                } else {
+                    // Primary accent Send button when text is entered
+                    Surface(
+                        shape = CircleShape,
+                        color = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -618,12 +672,8 @@ internal fun ModernComposer(
                             Icon(
                                 imageVector = Icons.Default.ArrowUpward,
                                 contentDescription = if (isRunning) "Queue task" else "Send",
-                                tint = if (canSend) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier.size(18.dp),
+                                tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                                modifier = Modifier.size(20.dp),
                             )
                         }
                     }

@@ -713,7 +713,15 @@ class AgentChatViewModel @Inject constructor(
                         onTriggered(true, "Cloud APK build '$workflowFileName' dispatched to GitHub Actions! Finished APK will deploy to App Hub.")
                     }
                     is VmResult.Failure -> {
-                        onTriggered(false, result.error.summary)
+                        val reason = (result.error as? VmError.Network)?.reason
+                        val action = result.error.suggestedAction
+                        val details = listOfNotNull(reason, action).filter { it.isNotBlank() }.joinToString(" ")
+                        val fullMsg = if (details.isNotBlank()) {
+                            "${result.error.summary}: $details"
+                        } else {
+                            result.error.summary
+                        }
+                        onTriggered(false, fullMsg)
                     }
                 }
             } catch (cancellation: CancellationException) {
