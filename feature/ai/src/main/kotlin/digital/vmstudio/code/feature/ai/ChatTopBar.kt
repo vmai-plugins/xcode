@@ -192,6 +192,16 @@ internal fun ChatTopBar(
                     )
                 }
             }
+            if (onOpenChatHistory != null) {
+                IconButton(onClick = onOpenChatHistory) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = "Chat History",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
             if (onTriggerCloudBuild != null) {
                 IconButton(onClick = onTriggerCloudBuild) {
                     Icon(

@@ -162,6 +162,17 @@ fun SettingsScreen(
                             ) {
                                 Text("Sign Out", color = Color(0xFFEF4444))
                             }
+                        } else {
+                            androidx.compose.material3.Button(
+                                onClick = onSignOut,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                ),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            ) {
+                                Text("Sign in with Google", style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     }
 

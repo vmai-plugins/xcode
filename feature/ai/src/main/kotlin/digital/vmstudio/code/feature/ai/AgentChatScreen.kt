@@ -542,6 +542,7 @@ fun AgentChatScreen(
                             viewModel.loadGithubRepositories()
                             requestOpenProjects = true
                         },
+                        onOpenChatHistory = onOpenChatHistory,
                     )
                 }
             } else {
