@@ -68,11 +68,7 @@ fun VmNavHost(
     val startWatchingRuns = rememberAgentRunWatchStarter()
 
     val startDestination = androidx.compose.runtime.remember {
-        when {
-            !hasSignedIn -> VmDestination.Auth.route
-            hasCompletedOnboarding -> VmDestination.NewChat.route
-            else -> VmDestination.Onboarding.route
-        }
+        VmDestination.NewChat.route
     }
 
     NavHost(
