@@ -79,6 +79,20 @@ class MainActivity : ComponentActivity() {
                             hasCompletedOnboarding = ready.preferences.hasCompletedOnboarding,
                         )
                     }
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        androidx.compose.foundation.layout.Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
                 }
             }
         }
