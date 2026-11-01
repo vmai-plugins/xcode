@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Storage
@@ -53,8 +52,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -89,9 +86,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
-import digital.vmstudio.code.core.ui.component.VmCard
 import digital.vmstudio.code.core.ui.component.VmStatus
-import digital.vmstudio.code.core.ui.component.VmStatusBadge
 import digital.vmstudio.code.core.ui.theme.VmTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -459,6 +454,13 @@ fun ConnectorsScreen(
                             }
 
                             if (state.hasGithubToken) {
+                                OutlinedButton(
+                                    onClick = onOpenGitHubSettings,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Text("Advanced GitHub Settings")
+                                }
                                 OutlinedButton(
                                     onClick = { viewModel.clearGitHubToken() },
                                     modifier = Modifier.fillMaxWidth(),
@@ -1499,7 +1501,7 @@ private fun ModernConnectorCard(
                         modifier = Modifier
                             .size(42.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(iconTint.copy(alpha = 0.15f)),
+                            .background(badgeBackground),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(

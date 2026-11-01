@@ -9,10 +9,11 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -90,18 +91,15 @@ fun TerminalView(
         val columns = floor(widthPx / metrics.width).toInt().coerceAtLeast(1)
         val rows = floor(heightPx / metrics.height).toInt().coerceAtLeast(1)
 
-        LaunchedEffect(Unit) {
-            var isFirst = true
-            snapshotFlow { columns to rows }
-                .collectLatest { (c, r) ->
-                    if (isFirst) {
-                        isFirst = false
-                        onSizeChanged(c, r)
-                    } else {
-                        delay(150L)
-                        onSizeChanged(c, r)
-                    }
-                }
+        var isFirstLayout by remember { mutableStateOf(true) }
+        LaunchedEffect(columns, rows) {
+            if (isFirstLayout) {
+                isFirstLayout = false
+                onSizeChanged(columns, rows)
+            } else {
+                delay(150L)
+                onSizeChanged(columns, rows)
+            }
         }
 
         val terminalContentDescription = remember(screen.lines) {

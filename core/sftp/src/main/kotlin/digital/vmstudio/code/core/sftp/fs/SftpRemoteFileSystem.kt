@@ -511,6 +511,15 @@ class SftpRemoteFileSystem @Inject constructor(
     private val clientLocks = ConcurrentHashMap<String, Mutex>()
     private val cachedClients = ConcurrentHashMap<String, SFTPClient>()
 
+    override fun invalidateCache(serverId: String?) {
+        if (serverId != null) {
+            cachedClients.remove(serverId)?.let { runCatching { it.close() } }
+        } else {
+            cachedClients.values.forEach { runCatching { it.close() } }
+            cachedClients.clear()
+        }
+    }
+
     private fun clientLockFor(serverId: String): Mutex =
         clientLocks.computeIfAbsent(serverId) { Mutex() }
 

@@ -295,6 +295,16 @@ internal fun ChatTopBar(
                             },
                         )
                     }
+                    if (onToggleFullScreen != null) {
+                        DropdownMenuItem(
+                            text = { Text(if (isFullScreen) "Exit Full Screen" else "Full Screen Chat") },
+                            leadingIcon = { Icon(Icons.Default.Menu, contentDescription = null) },
+                            onClick = {
+                                showMore = false
+                                onToggleFullScreen()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Files") },
                         leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
@@ -648,6 +658,16 @@ private fun ProjectMenu(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (onOpenGithubPicker != null) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        onDismiss()
+                                        onOpenGithubPicker()
+                                    },
+                                ) {
+                                    Text("Configure GitHub Token")
+                                }
+                            }
                         }
                     }
                     items(filteredGithub, key = { "github-${it.id}" }) { repo ->

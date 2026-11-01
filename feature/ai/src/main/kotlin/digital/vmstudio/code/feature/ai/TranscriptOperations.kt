@@ -1,10 +1,5 @@
 package digital.vmstudio.code.feature.ai
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-
 /**
  * Transcript list operations.
  *

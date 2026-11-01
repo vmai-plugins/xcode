@@ -70,6 +70,7 @@ class AgentExecutionCoordinator @Inject constructor(
         runner: suspend (emitEvent: suspend (AgentEvent) -> Unit) -> Unit,
     ): SharedFlow<AgentEvent> {
         activeRuns[conversationId]?.job?.cancel()
+        VmLog.d(LogCategory.AI, TAG, "Starting execution in conversation $conversationId: ${prompt.take(60)}")
 
         val eventFlow = MutableSharedFlow<AgentEvent>(
             replay = 50,

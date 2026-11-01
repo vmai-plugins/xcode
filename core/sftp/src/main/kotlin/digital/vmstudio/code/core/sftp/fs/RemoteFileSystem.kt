@@ -99,6 +99,8 @@ interface RemoteFileSystem {
         resume: Boolean = true,
     ): Flow<TransferEvent>
 
+    fun invalidateCache(serverId: String? = null) {}
+
     fun upload(
         serverId: String,
         source: File,

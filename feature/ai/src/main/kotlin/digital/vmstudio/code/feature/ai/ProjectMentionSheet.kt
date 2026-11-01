@@ -54,7 +54,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import digital.vmstudio.code.core.git.GitHubRepository
 import digital.vmstudio.code.core.project.Project
-import digital.vmstudio.code.core.ui.theme.VmTheme
 
 private enum class MentionCategory(val title: String) {
     ALL("All"),

@@ -272,13 +272,16 @@ fun ProjectsScreen(
                     onAction = onCreateProject,
                 )
 
-                filteredProjects.isEmpty() -> VmEmptyState(
-                    icon = Icons.Default.Workspaces,
-                    title = "No matching workspaces",
-                    description = "No workspaces found in this category. Tap '+' to create or clone one.",
-                    actionLabel = "Create Workspace",
-                    onAction = onCreateProject,
-                )
+                filteredProjects.isEmpty() -> {
+                    val isVpsTab = activeTab == WorkspaceFilterTab.VPS
+                    VmEmptyState(
+                        icon = Icons.Default.Workspaces,
+                        title = if (isVpsTab) "No VPS Workspaces" else "No matching workspaces",
+                        description = if (isVpsTab) "Add an SSH server to create remote workspaces." else "No workspaces found in this category. Tap '+' to create or clone one.",
+                        actionLabel = if (isVpsTab && state.servers.isEmpty()) "Add Linux Server" else "Create Workspace",
+                        onAction = if (isVpsTab && state.servers.isEmpty()) onAddServer else onCreateProject,
+                    )
+                }
 
                 else -> LazyColumn(
                     contentPadding = PaddingValues(

@@ -72,7 +72,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import digital.vmstudio.code.core.git.GitHubRepository

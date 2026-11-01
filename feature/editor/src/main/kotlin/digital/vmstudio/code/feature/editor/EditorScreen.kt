@@ -85,10 +85,13 @@ fun EditorScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
 
-    // Unsaved edits live only in this screen; leaving must not drop them silently.
+    // Unsaved edits across all tabs; leaving must not drop them silently.
+    val hasUnsavedChanges = state.openTabs.any { it.isDirty } || state.snapshot?.isDirty == true
     var confirmDiscard by remember { mutableStateOf(false) }
-    val leave = { if (state.snapshot?.isDirty == true) confirmDiscard = true else onNavigateBack() }
-    BackHandler(enabled = state.snapshot?.isDirty == true) { confirmDiscard = true }
+    var tabToClosePendingConfirm by remember { mutableStateOf<EditorTab?>(null) }
+
+    val leave = { if (hasUnsavedChanges) confirmDiscard = true else onNavigateBack() }
+    BackHandler(enabled = hasUnsavedChanges) { confirmDiscard = true }
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
@@ -111,6 +114,25 @@ fun EditorScreen(
                         onNavigateBack()
                     }) { Text("Discard", color = MaterialTheme.colorScheme.error) }
                 }
+            },
+        )
+    }
+
+    tabToClosePendingConfirm?.let { tab ->
+        AlertDialog(
+            onDismissRequest = { tabToClosePendingConfirm = null },
+            title = { Text("Unsaved changes") },
+            text = { Text("Discard unsaved changes to \"${tab.fileName}\"?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        tabToClosePendingConfirm = null
+                        viewModel.closeTab("${tab.serverId}:${tab.filePath}")
+                    },
+                ) { Text("Discard", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { tabToClosePendingConfirm = null }) { Text("Cancel") }
             },
         )
     }
@@ -246,7 +268,13 @@ fun EditorScreen(
                         tabs = state.openTabs,
                         activeTabKey = state.activeTabKey,
                         onSelectTab = { tab -> viewModel.switchTab("${tab.serverId}:${tab.filePath}") },
-                        onCloseTab = { tab -> viewModel.closeTab("${tab.serverId}:${tab.filePath}") },
+                        onCloseTab = { tab ->
+                            if (tab.isDirty) {
+                                tabToClosePendingConfirm = tab
+                            } else {
+                                viewModel.closeTab("${tab.serverId}:${tab.filePath}")
+                            }
+                        },
                     )
                 }
 
@@ -330,7 +358,14 @@ fun EditorScreen(
                     val errorArgs = state.loadError ?: return@Box
                     VmErrorPanel(
                         error = errorArgs,
-                        onRetry = { viewModel.loadFile() },
+                        onRetry = {
+                            val activeTab = state.openTabs.firstOrNull { "${it.serverId}:${it.filePath}" == state.activeTabKey }
+                            if (activeTab != null) {
+                                viewModel.loadFile(activeTab.serverId, activeTab.filePath)
+                            } else {
+                                viewModel.loadFile()
+                            }
+                        },
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
@@ -347,6 +382,11 @@ fun EditorScreen(
                         onUndo = viewModel::undo,
                         onRedo = viewModel::redo,
                     )
+                }
+                state.openTabs.isEmpty() && !state.isLoading -> {
+                    LaunchedEffect(Unit) {
+                        onNavigateBack()
+                    }
                 }
             }
         }
@@ -686,17 +726,15 @@ private fun EditorTabBar(
                                     .background(MaterialTheme.colorScheme.primary, shape = CircleShape),
                             )
                         }
-                        if (tabs.size > 1) {
-                            IconButton(
-                                onClick = { onCloseTab(tab) },
-                                modifier = Modifier.size(18.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Close tab",
-                                    modifier = Modifier.size(12.dp),
-                                )
-                            }
+                        IconButton(
+                            onClick = { onCloseTab(tab) },
+                            modifier = Modifier.size(18.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Close tab",
+                                modifier = Modifier.size(12.dp),
+                            )
                         }
                     }
                 }
