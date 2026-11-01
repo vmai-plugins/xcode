@@ -263,10 +263,6 @@ fun AgentChatScreen(
         )
     }
 
-    val currentChatColorHex = remember(state.conversationId, chats.chatColors) {
-        state.conversationId?.let { chats.chatColors[it] } ?: state.chatBubbleColorHex
-    }
-
     var showCloudBuildDialog by remember { mutableStateOf(false) }
     var isCloudBuilding by remember { mutableStateOf(false) }
     var cloudBuildError by remember { mutableStateOf<String?>(null) }

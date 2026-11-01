@@ -125,7 +125,6 @@ fun ConnectorsScreen(
     var driveTokenVisible by remember { mutableStateOf(false) }
 
     var hubExpanded by remember { mutableStateOf(false) }
-    var hubBaseUrlDraft by remember(state.hubBaseUrl) { mutableStateOf(state.hubBaseUrl) }
     var hubKeyDraft by remember { mutableStateOf("") }
     var hubKeyVisible by remember { mutableStateOf(false) }
 

@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
-import android.net.Uri
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest

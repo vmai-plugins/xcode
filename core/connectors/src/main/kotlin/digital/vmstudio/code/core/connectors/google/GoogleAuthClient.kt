@@ -8,7 +8,6 @@ import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.result.flatMap
-import digital.vmstudio.code.core.common.result.vmCatching
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext

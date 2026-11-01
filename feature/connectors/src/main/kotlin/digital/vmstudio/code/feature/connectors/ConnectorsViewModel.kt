@@ -13,7 +13,6 @@ import digital.vmstudio.code.core.connectors.sheets.GoogleSheetsClient
 import digital.vmstudio.code.core.git.GitHubRepositoryClient
 import digital.vmstudio.code.core.connectors.whatsapp.EvolutionApiClient
 import digital.vmstudio.code.core.connectors.whatsapp.EvolutionConfig
-import digital.vmstudio.code.core.security.model.CredentialRef
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.model.SecretType
 import digital.vmstudio.code.core.security.store.SecureCredentialStore

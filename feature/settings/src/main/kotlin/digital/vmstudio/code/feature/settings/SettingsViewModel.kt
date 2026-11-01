@@ -14,7 +14,6 @@ import digital.vmstudio.code.core.common.version.AppVersionProvider
 import digital.vmstudio.code.core.security.crypto.KeystoreCrypto
 import digital.vmstudio.code.core.security.crypto.VaultCrypto
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
-import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.model.ServerDraft
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import digital.vmstudio.code.core.update.UpdateManager

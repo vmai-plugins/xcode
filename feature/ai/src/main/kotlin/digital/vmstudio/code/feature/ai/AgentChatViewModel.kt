@@ -44,7 +44,6 @@ import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,7 +52,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
@@ -1456,31 +1454,6 @@ class AgentChatViewModel @Inject constructor(
                     }
                 }
             }
-        }
-    }
-
-    /**
-     * Mirrors run events into the Tasks record. A bookkeeping failure must never
-     * surface as a chat error, so results are ignored here by design.
-     */
-    private suspend fun applyTaskEvent(taskId: String?, event: AgentEvent) {
-        if (taskId == null) return
-        when (event) {
-            is AgentEvent.ToolStarted -> {
-                tasks.recordToolCall(taskId)
-                event.affectedPath?.let { tasks.recordChangedFile(taskId, it) }
-            }
-
-            is AgentEvent.Completed ->
-                if (event.isError) {
-                    tasks.fail(taskId, event.resultText ?: "The run ended with an error")
-                } else {
-                    tasks.complete(taskId, event.inputTokens, event.outputTokens)
-                }
-
-            is AgentEvent.Failed -> tasks.fail(taskId, event.error.summary)
-
-            else -> Unit
         }
     }
 

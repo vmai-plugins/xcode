@@ -196,9 +196,6 @@ class OmniRouteProvider @Inject constructor(
         }
         val dialect = dialectCache[baseUrl] ?: dialectFor(baseUrl, key, model)
 
-        val isGitHubWorkspace = config.workingDirectory.startsWith("/github/")
-        val isVmHubWorkspace = config.workingDirectory.startsWith("/vmhub/")
-        val isLocalWorkspace = digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(config.serverId)
         val effectiveWorkDir = config.workingDirectory.ifBlank { "/" }
         val effectiveConfig = if (config.workingDirectory.isBlank()) config.copy(workingDirectory = effectiveWorkDir) else config
         val canUseTools = settings.aiToolsEnabled
