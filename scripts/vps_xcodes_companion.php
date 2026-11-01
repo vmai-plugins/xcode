@@ -378,6 +378,31 @@ class XCodesCompanionPlugin {
             'callback' => [$this, 'handle_drive_files'],
             'permission_callback' => [$this, 'check_auth'],
         ]);
+
+        // Remote file system bridge (code without VPS / SSH access)
+        register_rest_route(self::ROUTE_NAMESPACE, '/fs/list', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_fs_list'],
+            'permission_callback' => [$this, 'check_auth'],
+        ]);
+
+        register_rest_route(self::ROUTE_NAMESPACE, '/fs/read', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_fs_read'],
+            'permission_callback' => [$this, 'check_auth'],
+        ]);
+
+        register_rest_route(self::ROUTE_NAMESPACE, '/fs/write', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_fs_write'],
+            'permission_callback' => [$this, 'check_auth'],
+        ]);
+
+        register_rest_route(self::ROUTE_NAMESPACE, '/fs/delete', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_fs_delete'],
+            'permission_callback' => [$this, 'check_auth'],
+        ]);
     }
 
     public function check_auth($request) {
@@ -858,6 +883,164 @@ class XCodesCompanionPlugin {
         }
 
         return rest_ensure_response(json_decode(wp_remote_retrieve_body($res), true));
+    }
+
+    /**
+     * Resolves and validates a relative path inside WordPress root (ABSPATH).
+     * Prevents directory traversal attacks.
+     */
+    private function resolve_safe_path($rel_path) {
+        $rel_path = str_replace('\\', '/', trim((string)$rel_path, " \t\n\r\0\x0B/"));
+        if (empty($rel_path)) {
+            $rel_path = 'wp-content';
+        }
+        $base = realpath(ABSPATH);
+        if (!$base) {
+            $base = rtrim(ABSPATH, '/\\');
+        }
+        
+        $target = $base . '/' . $rel_path;
+        $parts = array_filter(explode('/', $target), 'strlen');
+        $absolutes = [];
+        foreach ($parts as $part) {
+            if ('.' == $part) continue;
+            if ('..' == $part) {
+                array_pop($absolutes);
+            } else {
+                $absolutes[] = $part;
+            }
+        }
+        $resolved = (DIRECTORY_SEPARATOR === '\\' ? '' : '/') . implode('/', $absolutes);
+        
+        if (strpos($resolved, $base) !== 0) {
+            return false;
+        }
+        return $resolved;
+    }
+
+    public function handle_fs_list($request) {
+        $rel_path = $request->get_param('path') ?: 'wp-content';
+        $full_path = $this->resolve_safe_path($rel_path);
+        if (!$full_path || !file_exists($full_path)) {
+            return new WP_Error('not_found', 'Path not found or access denied: ' . esc_html($rel_path), ['status' => 404]);
+        }
+
+        if (!is_dir($full_path)) {
+            return new WP_Error('not_a_dir', 'Specified path is a file, not a directory', ['status' => 400]);
+        }
+
+        $items = scandir($full_path);
+        $entries = [];
+        $base = realpath(ABSPATH);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $item_path = $full_path . '/' . $item;
+            $is_dir = is_dir($item_path);
+            $rel = str_replace('\\', '/', substr($item_path, strlen($base) + 1));
+            $entries[] = [
+                'name' => $item,
+                'path' => $rel,
+                'is_dir' => $is_dir,
+                'size' => $is_dir ? 0 : (filesize($item_path) ?: 0),
+                'modified' => filemtime($item_path) ?: 0,
+            ];
+        }
+
+        usort($entries, function($a, $b) {
+            if ($a['is_dir'] !== $b['is_dir']) {
+                return $a['is_dir'] ? -1 : 1;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        return rest_ensure_response([
+            'path' => $rel_path,
+            'entries' => $entries,
+        ]);
+    }
+
+    public function handle_fs_read($request) {
+        $rel_path = $request->get_param('path');
+        if (empty($rel_path)) {
+            return new WP_Error('bad_request', 'Missing path parameter', ['status' => 400]);
+        }
+
+        $full_path = $this->resolve_safe_path($rel_path);
+        if (!$full_path || !file_exists($full_path) || is_dir($full_path)) {
+            return new WP_Error('not_found', 'File not found: ' . esc_html($rel_path), ['status' => 404]);
+        }
+
+        $content = file_get_contents($full_path);
+        if ($content === false) {
+            return new WP_Error('read_error', 'Failed to read file', ['status' => 500]);
+        }
+
+        return rest_ensure_response([
+            'path' => $rel_path,
+            'size' => strlen($content),
+            'modified' => filemtime($full_path),
+            'content' => $content,
+        ]);
+    }
+
+    public function handle_fs_write($request) {
+        $body = $request->get_json_params();
+        $rel_path = $body['path'] ?? $request->get_param('path');
+        $content = $body['content'] ?? null;
+
+        if (empty($rel_path) || $content === null) {
+            return new WP_Error('bad_request', 'Missing path or content parameter', ['status' => 400]);
+        }
+
+        $full_path = $this->resolve_safe_path($rel_path);
+        if (!$full_path) {
+            return new WP_Error('forbidden', 'Access denied to target path', ['status' => 403]);
+        }
+
+        $dir = dirname($full_path);
+        if (!is_dir($dir)) {
+            wp_mkdir_p($dir);
+        }
+
+        $bytes = file_put_contents($full_path, $content);
+        if ($bytes === false) {
+            return new WP_Error('write_failed', 'Failed to write file. Check file system permissions.', ['status' => 500]);
+        }
+
+        return rest_ensure_response([
+            'success' => true,
+            'path' => $rel_path,
+            'bytes_written' => $bytes,
+            'modified' => filemtime($full_path),
+        ]);
+    }
+
+    public function handle_fs_delete($request) {
+        $body = $request->get_json_params();
+        $rel_path = $body['path'] ?? $request->get_param('path');
+
+        if (empty($rel_path)) {
+            return new WP_Error('bad_request', 'Missing path parameter', ['status' => 400]);
+        }
+
+        $full_path = $this->resolve_safe_path($rel_path);
+        if (!$full_path || !file_exists($full_path)) {
+            return new WP_Error('not_found', 'File not found', ['status' => 404]);
+        }
+
+        if (is_dir($full_path)) {
+            return new WP_Error('bad_request', 'Cannot delete directories via this endpoint', ['status' => 400]);
+        }
+
+        $deleted = unlink($full_path);
+        if (!$deleted) {
+            return new WP_Error('delete_failed', 'Failed to delete file', ['status' => 500]);
+        }
+
+        return rest_ensure_response([
+            'success' => true,
+            'path' => $rel_path,
+        ]);
     }
 }
 
