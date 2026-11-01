@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
@@ -39,6 +41,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,11 +87,12 @@ fun SettingsScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val preferences = uiState.preferences
+    var showAdvancedTools by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0E0F12)),
+            .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(
             horizontal = 16.dp,
             vertical = 16.dp,
@@ -97,8 +103,8 @@ fun SettingsScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = Color(0xFF151619),
-                border = BorderStroke(1.dp, Color(0xFF26282E)),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -138,22 +144,22 @@ fun SettingsScreen(
                                 text = preferences.userName ?: preferences.userEmail ?: "X-Codes Developer",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFE2E2E6),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = if (preferences.hasSignedIn) {
-                                    preferences.userEmail ?: "Signed in via Google"
+                                text = if (preferences.hasSignedIn && !preferences.userEmail.isNullOrBlank()) {
+                                    preferences.userEmail!!
                                 } else {
-                                    "Pro Developer Workspace"
+                                    "Connected to OmniRoute AI"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF8E919B),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
 
-                        if (preferences.hasSignedIn) {
+                        if (preferences.hasSignedIn && !preferences.userEmail.isNullOrBlank()) {
                             TextButton(
                                 onClick = {
                                     viewModel.signOut()
@@ -171,7 +177,7 @@ fun SettingsScreen(
                                 ),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             ) {
-                                Text("Sign in with Google", style = MaterialTheme.typography.labelMedium)
+                                Text("Account", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
@@ -179,8 +185,8 @@ fun SettingsScreen(
                     // Live OmniRoute Gateway Status Chip
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF1B1C20),
-                        border = BorderStroke(1.dp, Color(0xFF282A31)),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
@@ -206,7 +212,7 @@ fun SettingsScreen(
                                         text = "OmniRoute Gateway",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFE2E2E6),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     Text(
                                         text = "• Active",
@@ -218,7 +224,7 @@ fun SettingsScreen(
                                 Text(
                                     text = "${preferences.aiBaseUrl.removePrefix("https://").removePrefix("http://")} • ${preferences.aiSelectedModelId ?: "auto/best-coding"}",
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = Color(0xFF8E919B),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -226,53 +232,7 @@ fun SettingsScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                 contentDescription = "Configure AI",
-                                tint = Color(0xFF6B7280),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-
-                    // App Hub Master Connection Bar
-                    val hasHubKey = !preferences.hubApiKey.isNullOrBlank()
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF1B1C20),
-                        border = BorderStroke(1.dp, if (hasHubKey) Color(0xFF10B981).copy(alpha = 0.35f) else Color(0xFF282A31)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable(onClick = onOpenConnectors),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (hasHubKey) Color(0xFF10B981) else Color(0xFFF59E0B)),
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (hasHubKey) "App Hub Master Provisioning Active" else "App Hub 1-Key Master Connect",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFE2E2E6),
-                                )
-                                Text(
-                                    text = if (hasHubKey) "Single API key linked • GitHub, AI, VPS & Drive synchronized" else "Enter single API key to configure all connections",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = Color(0xFF8E919B),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "Manage App Hub",
-                                tint = Color(0xFF6B7280),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -281,61 +241,8 @@ fun SettingsScreen(
             }
         }
 
-        // --- 2. Workspaces & Storage Hub (2x2 Quick Tiles) ---
-        item { ModernSectionHeader(title = "Workspaces & Tools") }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                QuickNavTile(
-                    title = "Projects",
-                    subtitle = "Workspaces & Git",
-                    icon = Icons.Default.Folder,
-                    accentColor = Color(0xFF6366F1),
-                    badgeText = "Local / Git",
-                    onClick = onOpenProjects,
-                    modifier = Modifier.weight(1f),
-                )
-                QuickNavTile(
-                    title = "Files",
-                    subtitle = "Workspace browser",
-                    icon = Icons.Default.FolderOpen,
-                    accentColor = Color(0xFF00B4D8),
-                    badgeText = "Explorer",
-                    onClick = onOpenFiles,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                QuickNavTile(
-                    title = "Connectors",
-                    subtitle = "SSH & Cloud Hub",
-                    icon = Icons.Default.Dns,
-                    accentColor = Color(0xFFF59E0B),
-                    badgeText = "Integrations",
-                    onClick = onOpenConnectors,
-                    modifier = Modifier.weight(1f),
-                )
-                QuickNavTile(
-                    title = "Cloud Build",
-                    subtitle = "GitHub APK builder",
-                    icon = Icons.Default.Build,
-                    accentColor = Color(0xFF10B981),
-                    badgeText = "1-Tap",
-                    onClick = onOpenGitHub,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        // --- 3. AI Intelligence & Autonomy ---
-        item { ModernSectionHeader(title = "AI & Autonomous Agent") }
+        // --- 2. Core Preferences ---
+        item { ModernSectionHeader(title = "Core Preferences") }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModernSettingsRow(
@@ -347,21 +254,6 @@ fun SettingsScreen(
                     onClick = onOpenAi,
                 )
                 ModernSettingsRow(
-                    title = "Agent Autonomy & Policy",
-                    description = "Safe Auto execution, confirmations, tool permissions",
-                    icon = Icons.Default.Code,
-                    badgeText = preferences.agentAutonomyLevel.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
-                    iconColor = Color(0xFF8B5CF6),
-                    onClick = onOpenAgent,
-                )
-            }
-        }
-
-        // --- 4. IDE Customization & Terminal ---
-        item { ModernSectionHeader(title = "IDE Environment & UI") }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModernSettingsRow(
                     title = "Appearance & Themes",
                     description = "AMOLED Pitch Black, Dark, Light theme options",
                     icon = Icons.Default.Palette,
@@ -370,72 +262,177 @@ fun SettingsScreen(
                     onClick = onOpenAppearance,
                 )
                 ModernSettingsRow(
-                    title = "Editor & Terminal",
-                    description = "Font scale (${preferences.terminalFontSizeSp}sp), scrollback (${preferences.terminalScrollbackLines} lines)",
-                    icon = Icons.Default.Terminal,
-                    badgeText = "${preferences.terminalFontSizeSp.toInt()}sp",
-                    iconColor = Color(0xFF00B4D8),
-                    onClick = onOpenEditor,
-                )
-            }
-        }
-
-        // --- 5. Remote Servers & Hardware Control ---
-        item { ModernSectionHeader(title = "Remote Infrastructure & PC Control") }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModernSettingsRow(
-                    title = "Remote Servers & SSH (PC Control)",
-                    description = "Manage PC, VPS, SSH keys, passwords, and OpenSSH terminal connections",
-                    icon = Icons.Default.Dns,
-                    badgeText = "SSH",
-                    iconColor = Color(0xFF10B981),
-                    onClick = onOpenServers,
-                )
-            }
-        }
-
-        // --- 6. Security & System Diagnostics ---
-        item { ModernSectionHeader(title = "Security & System") }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModernSettingsRow(
-                    title = "Hardware Keystore & Security",
-                    description = "Biometric lock, encrypted credentials, erase secrets",
-                    icon = Icons.Default.Security,
-                    iconColor = Color(0xFFF59E0B),
-                    onClick = onOpenSecurity,
-                )
-                ModernSettingsRow(
-                    title = "Activity & Audit Timeline",
-                    description = "Audit trail of agent runs, server actions, file transfers & tasks",
-                    icon = Icons.Default.History,
-                    iconColor = Color(0xFF38BDF8),
-                    onClick = onOpenActivityTimeline,
-                )
-                ModernSettingsRow(
-                    title = "Export Diagnostics",
-                    description = "Export sanitized logs, system health & gateway connectivity telemetry",
-                    icon = Icons.Default.BugReport,
-                    iconColor = Color(0xFFEF4444),
-                    onClick = {
-                        val report = viewModel.exportDiagnostics()
-                        val sendIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, report)
-                            type = "text/plain"
-                        }
-                        context.startActivity(Intent.createChooser(sendIntent, "Export X-codes Diagnostics"))
-                    },
-                )
-                ModernSettingsRow(
                     title = "About X-Codes",
                     description = "Build updates, release channel, App Hub sync",
                     icon = Icons.Default.Info,
-                    badgeText = uiState.installedVersionName.ifBlank { "v0.14.0" },
-                    iconColor = Color(0xFF6366F1),
+                    badgeText = uiState.installedVersionName.ifBlank { "v0.15.30" },
+                    iconColor = Color(0xFF10B981),
                     onClick = onOpenAbout,
                 )
+            }
+        }
+
+        // --- 3. Advanced Developer & Infrastructure Tools (Collapsible) ---
+        item {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { showAdvancedTools = !showAdvancedTools },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            tint = Color(0xFF8B5CF6),
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Column {
+                            Text(
+                                text = "Developer & Cloud Tools",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = if (showAdvancedTools) "Tap to collapse" else "SSH, SFTP, Agent Policy, Diagnostics & Tools",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = if (showAdvancedTools) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = "Toggle Developer Tools",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        if (showAdvancedTools) {
+            // Workspaces & Storage Hub (2x2 Quick Tiles)
+            item { ModernSectionHeader(title = "Workspaces & Tools") }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    QuickNavTile(
+                        title = "Projects",
+                        subtitle = "Workspaces & Git",
+                        icon = Icons.Default.Folder,
+                        accentColor = Color(0xFF6366F1),
+                        badgeText = "Local / Git",
+                        onClick = onOpenProjects,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickNavTile(
+                        title = "Files",
+                        subtitle = "Workspace browser",
+                        icon = Icons.Default.FolderOpen,
+                        accentColor = Color(0xFF00B4D8),
+                        badgeText = "Explorer",
+                        onClick = onOpenFiles,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    QuickNavTile(
+                        title = "Connectors",
+                        subtitle = "SSH & Cloud Hub",
+                        icon = Icons.Default.Dns,
+                        accentColor = Color(0xFFF59E0B),
+                        badgeText = "Integrations",
+                        onClick = onOpenConnectors,
+                        modifier = Modifier.weight(1f),
+                    )
+                    QuickNavTile(
+                        title = "Cloud Build",
+                        subtitle = "GitHub APK builder",
+                        icon = Icons.Default.Build,
+                        accentColor = Color(0xFF10B981),
+                        badgeText = "1-Tap",
+                        onClick = onOpenGitHub,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            // Agent & IDE Customization
+            item { ModernSectionHeader(title = "Agent & Terminal Policy") }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ModernSettingsRow(
+                        title = "Agent Autonomy & Policy",
+                        description = "Safe Auto execution, confirmations, tool permissions",
+                        icon = Icons.Default.Code,
+                        badgeText = preferences.agentAutonomyLevel.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
+                        iconColor = Color(0xFF8B5CF6),
+                        onClick = onOpenAgent,
+                    )
+                    ModernSettingsRow(
+                        title = "Editor & Terminal",
+                        description = "Font scale (${preferences.terminalFontSizeSp}sp), scrollback (${preferences.terminalScrollbackLines} lines)",
+                        icon = Icons.Default.Terminal,
+                        badgeText = "${preferences.terminalFontSizeSp.toInt()}sp",
+                        iconColor = Color(0xFF00B4D8),
+                        onClick = onOpenEditor,
+                    )
+                    ModernSettingsRow(
+                        title = "Remote Servers & SSH",
+                        description = "Manage PC, VPS, SSH keys, passwords, and OpenSSH terminal connections",
+                        icon = Icons.Default.Dns,
+                        badgeText = "SSH",
+                        iconColor = Color(0xFF10B981),
+                        onClick = onOpenServers,
+                    )
+                    ModernSettingsRow(
+                        title = "Hardware Keystore & Security",
+                        description = "Biometric lock, encrypted credentials, erase secrets",
+                        icon = Icons.Default.Security,
+                        iconColor = Color(0xFFF59E0B),
+                        onClick = onOpenSecurity,
+                    )
+                    ModernSettingsRow(
+                        title = "Activity & Audit Timeline",
+                        description = "Audit trail of agent runs, server actions, file transfers & tasks",
+                        icon = Icons.Default.History,
+                        iconColor = Color(0xFF38BDF8),
+                        onClick = onOpenActivityTimeline,
+                    )
+                    ModernSettingsRow(
+                        title = "Export Diagnostics",
+                        description = "Export sanitized logs, system health & gateway connectivity telemetry",
+                        icon = Icons.Default.BugReport,
+                        iconColor = Color(0xFFEF4444),
+                        onClick = {
+                            val report = viewModel.exportDiagnostics()
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, report)
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Export X-codes Diagnostics"))
+                        },
+                    )
+                }
             }
         }
     }

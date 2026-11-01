@@ -48,7 +48,7 @@ data class UserPreferences(
     val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.DEVELOPER,
     val hasCompletedOnboarding: Boolean = true,
     val hasSignedIn: Boolean = true,
-    val hubApiKey: String? = DEFAULT_HUB_API_KEY,
+    val hubApiKey: String? = null,
     val hubBaseUrl: String = DEFAULT_HUB_BASE_URL,
     val biometricLockEnabled: Boolean = false,
     /**

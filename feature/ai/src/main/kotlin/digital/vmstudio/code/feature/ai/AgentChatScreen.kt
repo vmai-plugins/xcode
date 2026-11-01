@@ -467,33 +467,40 @@ fun AgentChatScreen(
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut(),
             ) {
+                val hasActiveContext = (!state.serverId.isNullOrBlank() && !RemoteFileSystem.isLocalServer(state.serverId)) ||
+                    state.workingDirectory.startsWith("/github/") ||
+                    state.workingDirectory.startsWith("/vmhub/") ||
+                    (state.workingDirectory.isNotBlank() && state.workingDirectory != "/" && state.workingDirectory != "/workspace")
+
                 Column {
-                    EnvironmentContextBar(
-                        workingDirectory = state.workingDirectory,
-                        serverName = state.availableServers.firstOrNull { it.id == state.serverId }?.name,
-                        githubRepoName = when {
-                            state.workingDirectory.startsWith("/github/") -> state.workingDirectory.removePrefix("/github/")
-                            else -> state.githubRepositories.firstOrNull { repo ->
-                                repo.fullName.equals(state.workingDirectory.trimEnd('/').substringAfterLast('/'), ignoreCase = true)
-                            }?.fullName
-                        },
-                        onOpenProjectPicker = {
-                            viewModel.loadGithubRepositories()
-                            requestOpenProjects = true
-                        },
-                        onOpenServerPicker = {
-                            val firstRemoteServer = state.availableServers
-                                .firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }
-                                ?.id
-                            if (firstRemoteServer != null) {
-                                directoryServerId = firstRemoteServer
-                                showDirectoryDialog = true
-                            } else {
-                                onOpenSettings()
-                            }
-                        },
-                        onOpenConnectors = onOpenConnectors,
-                    )
+                    if (hasActiveContext) {
+                        EnvironmentContextBar(
+                            workingDirectory = state.workingDirectory,
+                            serverName = state.availableServers.firstOrNull { it.id == state.serverId }?.name,
+                            githubRepoName = when {
+                                state.workingDirectory.startsWith("/github/") -> state.workingDirectory.removePrefix("/github/")
+                                else -> state.githubRepositories.firstOrNull { repo ->
+                                    repo.fullName.equals(state.workingDirectory.trimEnd('/').substringAfterLast('/'), ignoreCase = true)
+                                }?.fullName
+                            },
+                            onOpenProjectPicker = {
+                                viewModel.loadGithubRepositories()
+                                requestOpenProjects = true
+                            },
+                            onOpenServerPicker = {
+                                val firstRemoteServer = state.availableServers
+                                    .firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }
+                                    ?.id
+                                if (firstRemoteServer != null) {
+                                    directoryServerId = firstRemoteServer
+                                    showDirectoryDialog = true
+                                } else {
+                                    onOpenSettings()
+                                }
+                            },
+                            onOpenConnectors = onOpenConnectors,
+                        )
+                    }
 
                     HealthBanner(
                         state = state,

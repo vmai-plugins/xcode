@@ -183,35 +183,6 @@ internal fun ChatTopBar(
             }
         },
         actions = {
-            if (onOpenPreview != null) {
-                IconButton(onClick = onOpenPreview) {
-                    Icon(
-                        imageVector = Icons.Default.Code,
-                        contentDescription = "Web Preview",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-            if (onOpenChatHistory != null) {
-                IconButton(onClick = onOpenChatHistory) {
-                    Icon(
-                        imageVector = Icons.Default.History,
-                        contentDescription = "Chat History",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-            if (onTriggerCloudBuild != null) {
-                IconButton(onClick = onTriggerCloudBuild) {
-                    Icon(
-                        imageVector = Icons.Default.Build,
-                        contentDescription = "Build Cloud APK",
-                        tint = Color(0xFF26A69A),
-                        modifier = Modifier.size(19.dp),
-                    )
-                }
-            }
             if (artifactsCount > 0 && onOpenArtifacts != null) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -251,6 +222,23 @@ internal fun ChatTopBar(
                     Icon(Icons.Default.MoreVert, contentDescription = "More")
                 }
                 DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                    if (onOpenPreview != null) {
+                        DropdownMenuItem(
+                            text = { Text("Web Preview") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Code,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            onClick = {
+                                showMore = false
+                                onOpenPreview()
+                            },
+                        )
+                    }
                     if (artifactsCount > 0 && onOpenArtifacts != null) {
                         DropdownMenuItem(
                             text = { Text("Deliverables ($artifactsCount)") },
