@@ -22,6 +22,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class EditorTab(
+    val serverId: String,
+    val filePath: String,
+    val fileName: String,
+    val isDirty: Boolean = false,
+)
+
 data class EditorUiState(
     val snapshot: EditorSnapshot? = null,
     val isLoading: Boolean = true,
@@ -30,6 +37,8 @@ data class EditorUiState(
     val saveError: VmError? = null,
     val serverName: String = "",
     val filePath: String = "",
+    val openTabs: List<EditorTab> = emptyList(),
+    val activeTabKey: String = "",
 ) {
     val canSave: Boolean get() = snapshot?.isDirty == true && !isSaving
 
@@ -51,31 +60,32 @@ class EditorViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val serverId: String = savedStateHandle.get<String>(ARG_SERVER_ID).orEmpty()
-    private val filePath: String = savedStateHandle.get<String>(ARG_FILE_PATH).orEmpty()
+    private val initialFilePath: String = savedStateHandle.get<String>(ARG_FILE_PATH).orEmpty()
 
     private val isLoading = MutableStateFlow(true)
     private val isSaving = MutableStateFlow(false)
     private val loadError = MutableStateFlow<VmError?>(null)
     private val saveError = MutableStateFlow<VmError?>(null)
 
-    /** The mutable editor; never observed directly. */
-    private var editor: EditorState? = null
+    private data class TabSession(
+        val serverId: String,
+        val filePath: String,
+        val editor: EditorState,
+        var loadedModifiedAtSeconds: Long?,
+    )
+
+    private val tabs = MutableStateFlow<Map<String, TabSession>>(emptyMap())
+    private val activeTabKey = MutableStateFlow<String>("")
+
+    /** The active editor; never observed directly. */
+    private val currentEditor: EditorState?
+        get() = tabs.value[activeTabKey.value]?.editor
+
+    private val currentTabSession: TabSession?
+        get() = tabs.value[activeTabKey.value]
 
     /**
-     * The remote file's modification time as of the last successful load or save.
-     *
-     * save() otherwise writes unconditionally: if the AI agent, another device, or
-     * a second editor tab changes this file between this screen's load and its
-     * save, the user's save would silently clobber those changes with no warning.
-     * Null when unknown (stat failed, or SFTP reported 0 - "unknown" per
-     * RemoteFileEntry's own doc) skips the check rather than blocking a save on an
-     * unrelated stat failure.
-     */
-    private var loadedModifiedAtSeconds: Long? = null
-
-    /**
-     * A value-typed view of [editor]. [EditorState] is identity-compared, so it
-     * cannot drive a StateFlow; every mutation re-publishes a fresh snapshot here.
+     * A value-typed view of the active editor.
      */
     private val snapshot = MutableStateFlow<EditorSnapshot?>(null)
 
@@ -83,8 +93,20 @@ class EditorViewModel @Inject constructor(
         combine(isLoading, isSaving) { loading, saving -> loading to saving },
         combine(loadError, saveError) { load, save -> load to save },
         snapshot,
+        combine(tabs, activeTabKey) { allTabs, activeKey -> allTabs to activeKey },
         serverRepository.observe(serverId),
-    ) { (loading, saving), (loadErr, saveErr), snap, server ->
+    ) { (loading, saving), (loadErr, saveErr), snap, (allTabs, activeKey), server ->
+        val currentSession = allTabs[activeKey]
+        val activePath = currentSession?.filePath ?: initialFilePath
+        val activeServerId = currentSession?.serverId ?: serverId
+        val tabList = allTabs.values.map { session ->
+            EditorTab(
+                serverId = session.serverId,
+                filePath = session.filePath,
+                fileName = session.filePath.substringAfterLast('/'),
+                isDirty = session.editor.isDirty,
+            )
+        }
         EditorUiState(
             snapshot = snap,
             isLoading = loading,
@@ -93,13 +115,15 @@ class EditorViewModel @Inject constructor(
             saveError = saveErr,
             serverName = server?.name.orEmpty().ifBlank {
                 when {
-                    filePath.startsWith("/github/") -> "GitHub (Zero-Clone)"
-                    filePath.startsWith("/vmhub/") -> "VM Project Hub"
-                    serverId == RemoteFileSystem.LOCAL_SERVER_ID -> "This Device"
+                    activePath.startsWith("/github/") -> "GitHub (Zero-Clone)"
+                    activePath.startsWith("/vmhub/") -> "VM Project Hub"
+                    activeServerId == RemoteFileSystem.LOCAL_SERVER_ID -> "This Device"
                     else -> ""
                 }
             },
-            filePath = filePath,
+            filePath = activePath,
+            openTabs = tabList,
+            activeTabKey = activeKey,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -108,38 +132,74 @@ class EditorViewModel @Inject constructor(
     )
 
     private fun publishSnapshot() {
-        snapshot.value = editor?.snapshot()
+        snapshot.value = currentEditor?.snapshot()
     }
 
     init {
-        if (serverId.isBlank() || filePath.isBlank()) {
+        if (serverId.isBlank() || initialFilePath.isBlank()) {
             loadError.value = VmError.Validation(
                 summary = "Missing file coordinates",
                 reason = "Editor requires both a valid serverId and filePath.",
             )
             isLoading.value = false
         } else {
-            loadFile()
+            loadFile(serverId, initialFilePath)
         }
     }
 
-    fun loadFile() {
+    fun openFile(targetServerId: String, targetFilePath: String) {
+        val key = "$targetServerId:$targetFilePath"
+        if (tabs.value.containsKey(key)) {
+            switchTab(key)
+        } else {
+            loadFile(targetServerId, targetFilePath)
+        }
+    }
+
+    fun switchTab(key: String) {
+        if (tabs.value.containsKey(key)) {
+            activeTabKey.value = key
+            publishSnapshot()
+        }
+    }
+
+    fun closeTab(key: String) {
+        val currentTabs = tabs.value
+        if (!currentTabs.containsKey(key)) return
+        val newTabs = currentTabs.toMutableMap().apply { remove(key) }
+        tabs.value = newTabs
+        if (activeTabKey.value == key) {
+            val nextKey = newTabs.keys.firstOrNull().orEmpty()
+            activeTabKey.value = nextKey
+            publishSnapshot()
+        }
+    }
+
+    fun loadFile(targetServerId: String = serverId, targetFilePath: String = initialFilePath) {
+        val tabKey = "$targetServerId:$targetFilePath"
         viewModelScope.launch {
             isLoading.value = true
             loadError.value = null
             try {
-                if (filePath.startsWith("/github/")) {
-                    val parts = filePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
+                if (targetFilePath.startsWith("/github/")) {
+                    val parts = targetFilePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
                     if (parts.size >= 3) {
                         val repoFullName = "${parts[0]}/${parts[1]}"
                         val relativePath = parts.drop(2).joinToString("/")
                         when (val result = gitHubRepositoryClient.getFileContent(repoFullName, relativePath)) {
                             is VmResult.Success -> {
-                                editor = EditorState(
+                                val newEditor = EditorState(
                                     initialContent = result.value,
-                                    fileName = filePath.substringAfterLast('/'),
+                                    fileName = targetFilePath.substringAfterLast('/'),
                                 )
-                                loadedModifiedAtSeconds = null
+                                val session = TabSession(
+                                    serverId = targetServerId,
+                                    filePath = targetFilePath,
+                                    editor = newEditor,
+                                    loadedModifiedAtSeconds = null,
+                                )
+                                tabs.value = tabs.value + (tabKey to session)
+                                activeTabKey.value = tabKey
                                 publishSnapshot()
                                 return@launch
                             }
@@ -151,20 +211,25 @@ class EditorViewModel @Inject constructor(
                     } else {
                         loadError.value = VmError.FileSystem(
                             summary = "Invalid GitHub file path",
-                            reason = "A GitHub file path must include owner, repository, and file path: $filePath",
+                            reason = "A GitHub file path must include owner, repository, and file path: $targetFilePath",
                         )
                         return@launch
                     }
                 }
-                // The editor keeps whole copies of the text for undo and redraws every
-                // line, so it opens files up to 1 MiB rather than the 8 MiB read limit.
-                when (val result = remoteFileSystem.readText(serverId, filePath, maxBytes = MAX_EDIT_BYTES)) {
+                when (val result = remoteFileSystem.readText(targetServerId, targetFilePath, maxBytes = MAX_EDIT_BYTES)) {
                     is VmResult.Success -> {
-                        editor = EditorState(
+                        val newEditor = EditorState(
                             initialContent = result.value,
-                            fileName = filePath.substringAfterLast('/'),
+                            fileName = targetFilePath.substringAfterLast('/'),
                         )
-                        loadedModifiedAtSeconds = currentModifiedAtSeconds()
+                        val session = TabSession(
+                            serverId = targetServerId,
+                            filePath = targetFilePath,
+                            editor = newEditor,
+                            loadedModifiedAtSeconds = currentModifiedAtSeconds(targetServerId, targetFilePath),
+                        )
+                        tabs.value = tabs.value + (tabKey to session)
+                        activeTabKey.value = tabKey
                         publishSnapshot()
                     }
                     is VmResult.Failure -> {
@@ -181,7 +246,7 @@ class EditorViewModel @Inject constructor(
 
     fun onTextFieldValueChange(newValue: TextFieldValue) {
         isUndoRedoActive = false
-        editor?.updateTextFieldValue(newValue)
+        currentEditor?.updateTextFieldValue(newValue)
         publishSnapshot()
     }
 
@@ -190,24 +255,24 @@ class EditorViewModel @Inject constructor(
             isUndoRedoActive = false
             return
         }
-        editor?.commitChange()
+        currentEditor?.commitChange()
         publishSnapshot()
     }
 
     fun undo() {
         isUndoRedoActive = true
-        editor?.undo()
+        currentEditor?.undo()
         publishSnapshot()
     }
 
     fun redo() {
         isUndoRedoActive = true
-        editor?.redo()
+        currentEditor?.redo()
         publishSnapshot()
     }
 
     fun findNext(query: String, forward: Boolean = true) {
-        val current = editor?.textFieldValue ?: return
+        val current = currentEditor?.textFieldValue ?: return
         if (query.isEmpty()) return
         val text = current.text
         val currentOffset = (if (forward) current.selection.max else current.selection.min).coerceIn(0, text.length)
@@ -227,7 +292,7 @@ class EditorViewModel @Inject constructor(
     }
 
     fun replace(target: String, replacement: String, all: Boolean = false) {
-        val current = editor?.textFieldValue ?: return
+        val current = currentEditor?.textFieldValue ?: return
         if (target.isEmpty()) return
         val text = current.text
         var newSelection = current.selection
@@ -265,7 +330,7 @@ class EditorViewModel @Inject constructor(
     }
 
     fun goToLine(lineNumber: Int) {
-        val current = editor?.textFieldValue ?: return
+        val current = currentEditor?.textFieldValue ?: return
         val lines = current.text.split("\n")
         val targetLine = (lineNumber - 1).coerceIn(0, (lines.size - 1).coerceAtLeast(0))
         var offset = 0
@@ -283,14 +348,17 @@ class EditorViewModel @Inject constructor(
 
     /** [overwrite] saves even though the file changed on the server since it was loaded. */
     fun save(overwrite: Boolean = false, onSuccess: (() -> Unit)? = null) {
-        val state = editor ?: return
+        val session = currentTabSession ?: return
+        val state = session.editor
+        val targetFilePath = session.filePath
+        val targetServerId = session.serverId
         viewModelScope.launch {
             isSaving.value = true
             saveError.value = null
             try {
-                val isGitHub = filePath.startsWith("/github/")
-                val loadedAt = loadedModifiedAtSeconds
-                val remoteAt = if (overwrite || isGitHub) null else currentModifiedAtSeconds()
+                val isGitHub = targetFilePath.startsWith("/github/")
+                val loadedAt = session.loadedModifiedAtSeconds
+                val remoteAt = if (overwrite || isGitHub) null else currentModifiedAtSeconds(targetServerId, targetFilePath)
                 if (loadedAt != null && remoteAt != null && remoteAt != loadedAt) {
                     saveError.value = VmError.FileSystem(
                         summary = CONFLICT_SUMMARY,
@@ -298,14 +366,14 @@ class EditorViewModel @Inject constructor(
                             "saving now would overwrite those changes.",
                         suggestedAction = "Overwrite to keep your version, or go back and reopen the file " +
                             "to see theirs.",
-                        path = filePath,
+                        path = targetFilePath,
                     )
                     return@launch
                 }
 
                 val text = state.snapshot().textFieldValue.text
-                if (filePath.startsWith("/github/")) {
-                    val parts = filePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
+                if (targetFilePath.startsWith("/github/")) {
+                    val parts = targetFilePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
                     if (parts.size >= 3) {
                         val repoFullName = "${parts[0]}/${parts[1]}"
                         val relativePath = parts.drop(2).joinToString("/")
@@ -313,7 +381,7 @@ class EditorViewModel @Inject constructor(
                             repoFullName = repoFullName,
                             path = relativePath,
                             content = text,
-                            commitMessage = "Update ${filePath.substringAfterLast('/')} via X-Codes Editor",
+                            commitMessage = "Update ${targetFilePath.substringAfterLast('/')} via X-Codes Editor",
                         )) {
                             is VmResult.Success -> {
                                 state.markSaved(text)
@@ -321,9 +389,9 @@ class EditorViewModel @Inject constructor(
                                 runCatching {
                                     activityRepository.record(
                                         category = ActivityCategory.FILE,
-                                        title = "Saved ${filePath.substringAfterLast('/')}",
-                                        detail = filePath,
-                                        serverId = serverId,
+                                        title = "Saved ${targetFilePath.substringAfterLast('/')}",
+                                        detail = targetFilePath,
+                                        serverId = targetServerId,
                                     )
                                 }
                                 onSuccess?.invoke()
@@ -337,22 +405,22 @@ class EditorViewModel @Inject constructor(
                     } else {
                         saveError.value = VmError.FileSystem(
                             summary = "Invalid GitHub file path",
-                            reason = "A GitHub file path must include owner, repository, and file path: $filePath",
+                            reason = "A GitHub file path must include owner, repository, and file path: $targetFilePath",
                         )
                         return@launch
                     }
                 }
-                when (val result = remoteFileSystem.writeText(serverId, filePath, text)) {
+                when (val result = remoteFileSystem.writeText(targetServerId, targetFilePath, text)) {
                     is VmResult.Success -> {
                         state.markSaved(text)
-                        loadedModifiedAtSeconds = currentModifiedAtSeconds()
+                        session.loadedModifiedAtSeconds = currentModifiedAtSeconds(targetServerId, targetFilePath)
                         publishSnapshot()
                         runCatching {
                             activityRepository.record(
                                 category = ActivityCategory.FILE,
-                                title = "Saved ${filePath.substringAfterLast('/')}",
-                                detail = filePath,
-                                serverId = serverId,
+                                title = "Saved ${targetFilePath.substringAfterLast('/')}",
+                                detail = targetFilePath,
+                                serverId = targetServerId,
                             )
                         }
                         onSuccess?.invoke()
@@ -368,8 +436,8 @@ class EditorViewModel @Inject constructor(
     }
 
     /** Best-effort; null (not stat's own "unknown" 0) when the stat call itself fails. */
-    private suspend fun currentModifiedAtSeconds(): Long? =
-        when (val result = remoteFileSystem.stat(serverId, filePath)) {
+    private suspend fun currentModifiedAtSeconds(targetServerId: String = serverId, targetFilePath: String = initialFilePath): Long? =
+        when (val result = remoteFileSystem.stat(targetServerId, targetFilePath)) {
             is VmResult.Success -> result.value.modifiedAtSeconds.takeIf { it != 0L }
             is VmResult.Failure -> null
         }

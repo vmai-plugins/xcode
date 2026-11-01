@@ -1,7 +1,9 @@
 package digital.vmstudio.code.core.connectors.google
 
+import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import dagger.hilt.android.qualifiers.ApplicationContext
 import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
@@ -51,6 +53,7 @@ private data class GoogleUserInfoResponse(
 
 @Singleton
 class GoogleAuthClient @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val httpClient: VmHttpClient,
     private val json: Json,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
@@ -61,17 +64,24 @@ class GoogleAuthClient @Inject constructor(
         private const val AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
         private const val TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
         private const val USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo"
+        private const val PREFS_NAME = "google_oauth_pkce"
+        private const val KEY_VERIFIER = "pkce_code_verifier"
+    }
+
+    private val prefs by lazy {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
     private var activeCodeVerifier: String? = null
 
     /**
      * Generates a cryptographically random PKCE code verifier and challenge,
-     * and returns the authorization URI to launch in CustomTabs or external browser.
+     * persists it so it survives process recreation, and returns the authorization URI.
      */
     fun buildAuthorizationUri(clientId: String = DEFAULT_CLIENT_ID): Uri {
         val verifier = generateCodeVerifier()
         activeCodeVerifier = verifier
+        prefs.edit().putString(KEY_VERIFIER, verifier).apply()
         val challenge = generateCodeChallenge(verifier)
 
         return Uri.parse(AUTH_ENDPOINT).buildUpon()
@@ -93,7 +103,17 @@ class GoogleAuthClient @Inject constructor(
         code: String,
         clientId: String = DEFAULT_CLIENT_ID,
     ): VmResult<GoogleUserProfile> = withContext(ioDispatcher) {
-        val verifier = activeCodeVerifier ?: generateCodeVerifier()
+        val verifier = activeCodeVerifier
+            ?: prefs.getString(KEY_VERIFIER, null)
+            ?: return@withContext VmResult.Failure(
+                VmError.Authentication(
+                    summary = "OAuth authorization expired or invalid",
+                    reason = "PKCE code verifier not found. Please tap 'Sign in via Web Browser' to restart login.",
+                )
+            )
+        activeCodeVerifier = null
+        prefs.edit().remove(KEY_VERIFIER).apply()
+
         val formBody = FormBody.Builder()
             .add("client_id", clientId)
             .add("code", code)

@@ -2,6 +2,7 @@ package digital.vmstudio.code.feature.editor
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,8 +13,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -49,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
@@ -235,6 +240,15 @@ fun EditorScreen(
                         }
                     },
                 )
+
+                if (state.openTabs.isNotEmpty()) {
+                    EditorTabBar(
+                        tabs = state.openTabs,
+                        activeTabKey = state.activeTabKey,
+                        onSelectTab = { tab -> viewModel.switchTab("${tab.serverId}:${tab.filePath}") },
+                        onCloseTab = { tab -> viewModel.closeTab("${tab.serverId}:${tab.filePath}") },
+                    )
+                }
 
                 if (isSearchOpen) {
                     Surface(
@@ -620,6 +634,70 @@ private fun DeveloperSymbolBar(
                                 color = MaterialTheme.colorScheme.onSurface,
                             ),
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditorTabBar(
+    tabs: List<EditorTab>,
+    activeTabKey: String,
+    onSelectTab: (EditorTab) -> Unit,
+    onCloseTab: (EditorTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer ?: MaterialTheme.colorScheme.surface,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEach { tab ->
+                val isActive = "${tab.serverId}:${tab.filePath}" == activeTabKey
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    contentColor = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable { onSelectTab(tab) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = tab.fileName,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                        if (tab.isDirty) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(MaterialTheme.colorScheme.primary, shape = CircleShape),
+                            )
+                        }
+                        if (tabs.size > 1) {
+                            IconButton(
+                                onClick = { onCloseTab(tab) },
+                                modifier = Modifier.size(18.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Close tab",
+                                    modifier = Modifier.size(12.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
