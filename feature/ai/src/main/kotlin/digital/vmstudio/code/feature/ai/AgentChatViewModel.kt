@@ -25,6 +25,8 @@ import digital.vmstudio.code.core.ai.repository.AgentConversationRepository
 import digital.vmstudio.code.core.ai.repository.AgentTaskRepository
 import digital.vmstudio.code.core.ai.repository.StoredEntry
 import digital.vmstudio.code.core.common.error.VmError
+import digital.vmstudio.code.core.common.log.LogCategory
+import digital.vmstudio.code.core.common.log.VmLog
 import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
@@ -1726,6 +1728,7 @@ class AgentChatViewModel @Inject constructor(
     private fun nextId(): String = "item-${itemCounter.getAndIncrement()}"
 
     companion object {
+        private const val TAG = "AgentChatViewModel"
         const val ARG_SERVER_ID = "serverId"
         const val ARG_PATH = "path"
         const val ARG_CONVERSATION_ID = "conversationId"

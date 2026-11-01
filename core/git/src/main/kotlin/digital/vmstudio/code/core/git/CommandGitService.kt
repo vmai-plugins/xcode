@@ -134,12 +134,7 @@ class CommandGitService @Inject constructor(
         repoPath: String,
         command: String,
     ): GitResult<SshCommandResult> {
-        if (serverId.isBlank()) {
-            return GitResult.Failure(
-                GitError.CommandFailed(command, -1, "No remote server configured for Git operations."),
-            )
-        }
-        if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId)) {
+        if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub") {
             return GitResult.Failure(
                 GitError.CommandFailed(command, -1, "On-device phone storage uses direct file access. Connect a VPS or GitHub account to sync Git repository history."),
             )

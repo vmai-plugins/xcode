@@ -321,7 +321,7 @@ class SftpRemoteFileSystem @Inject constructor(
                 val existing = if (destination.exists()) destination.length() else 0L
                 if (resume && existing >= total && total > 0) {
                     emit(TransferEvent.Started(totalBytes = total, resumedFromBytes = total))
-                    emit(TransferEvent.Completed(totalBytes = total, transferredBytes = total))
+                    emit(TransferEvent.Completed(totalBytes = total, durationMillis = System.currentTimeMillis() - startedAt))
                     return@flow
                 }
                 val startOffset = if (resume && existing in 1 until total) existing else 0L

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security

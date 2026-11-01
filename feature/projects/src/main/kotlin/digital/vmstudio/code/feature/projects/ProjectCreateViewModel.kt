@@ -451,9 +451,11 @@ class ProjectCreateViewModel @Inject constructor(
             val repo = coordinates.second
             val effectiveBranch = branch.ifBlank { "main" }
 
-            val token = runCatching {
-                githubClient.readToken().getOrNull()?.useAsString { it.trim() }
-            }.getOrNull()
+            val token = try {
+                (githubClient.readToken() as? VmResult.Success)?.value?.useAsString { it.trim() }
+            } catch (_: Exception) {
+                null
+            }
 
             val zipUrlString = if (!token.isNullOrBlank()) {
                 "https://api.github.com/repos/$owner/$repo/zipball/$effectiveBranch"

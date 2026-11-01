@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
