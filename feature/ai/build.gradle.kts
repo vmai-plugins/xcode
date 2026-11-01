@@ -15,6 +15,7 @@ dependencies {
     implementation(projects.core.ssh)
     implementation(projects.core.sftp)
     implementation(projects.core.project)
+    implementation(projects.core.update)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.documentfile)
 }

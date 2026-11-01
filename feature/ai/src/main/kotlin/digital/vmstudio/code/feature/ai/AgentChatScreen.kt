@@ -601,6 +601,8 @@ fun AgentChatScreen(
                                             }
                                             Toast.makeText(context, "Turn deleted & prompt loaded for editing", Toast.LENGTH_SHORT).show()
                                         },
+                                        onFixError = viewModel::fixErrorWithAi,
+                                        onInstallApk = viewModel::installApk,
                                         chatBubbleColorHex = state.chatBubbleColorHex,
                                     )
                                     is TranscriptRowItem.ToolBatch -> ToolBatchRow(
@@ -608,6 +610,8 @@ fun AgentChatScreen(
                                         onOpenDiff = openDiff,
                                         onRollback = viewModel::rollbackFile,
                                         onPreview = previewTarget,
+                                        onFixError = viewModel::fixErrorWithAi,
+                                        onInstallApk = viewModel::installApk,
                                     )
                                 }
                             }

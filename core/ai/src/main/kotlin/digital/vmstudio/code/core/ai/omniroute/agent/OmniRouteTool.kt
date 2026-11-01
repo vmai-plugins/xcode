@@ -81,6 +81,18 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "invoke_subagent",
         "Launch an autonomous specialized subagent in the background or parallel loop (e.g. role='research', 'architect', 'coder', 'auditor', 'tester'). The subagent performs the given prompt and returns its findings and execution report.",
     ),
+    WORDPRESS_FILE_LIST(
+        "wordpress_file_list",
+        "List files and folders inside a remote WordPress site (themes, plugins, wp-content) via HTTPS REST API without VPS or SSH root access.",
+    ),
+    WORDPRESS_FILE_READ(
+        "wordpress_file_read",
+        "Read contents of a PHP, CSS, JS, HTML, or JSON file on a remote WordPress site via HTTPS REST API.",
+    ),
+    WORDPRESS_FILE_WRITE(
+        "wordpress_file_write",
+        "Create or overwrite a file on a remote WordPress site (themes, plugins, templates) via HTTPS REST API.",
+    ),
     ;
 
     companion object {
@@ -298,6 +310,44 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
         putJsonArray("required") {
             add("role")
             add("prompt")
+        }
+    }
+    OmniRouteTool.WORDPRESS_FILE_LIST -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("path") {
+                put("type", "string")
+                put("description", "Relative directory path inside WordPress (e.g. 'wp-content/themes', 'wp-content/plugins'). Defaults to 'wp-content'.")
+            }
+        }
+    }
+    OmniRouteTool.WORDPRESS_FILE_READ -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("path") {
+                put("type", "string")
+                put("description", "Relative file path inside WordPress (e.g. 'wp-content/themes/my-theme/style.css').")
+            }
+        }
+        putJsonArray("required") {
+            add("path")
+        }
+    }
+    OmniRouteTool.WORDPRESS_FILE_WRITE -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("path") {
+                put("type", "string")
+                put("description", "Relative file path inside WordPress (e.g. 'wp-content/themes/my-theme/functions.php').")
+            }
+            putJsonObject("content") {
+                put("type", "string")
+                put("description", "The complete new contents of the file.")
+            }
+        }
+        putJsonArray("required") {
+            add("path")
+            add("content")
         }
     }
 }

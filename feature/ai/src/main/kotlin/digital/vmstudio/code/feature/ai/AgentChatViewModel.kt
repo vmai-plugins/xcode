@@ -221,6 +221,7 @@ class AgentChatViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     private val executionCoordinator: AgentExecutionCoordinator,
+    private val apkInstaller: digital.vmstudio.code.core.update.ApkInstaller,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -1096,6 +1097,41 @@ class AgentChatViewModel @Inject constructor(
         val next = _uiState.value.queuedMessages.firstOrNull() ?: return
         _uiState.update { it.copy(queuedMessages = it.queuedMessages.drop(1)) }
         send(next.prompt, next.attachments)
+    }
+
+    fun installApk(rawPath: String) {
+        viewModelScope.launch {
+            try {
+                val path = rawPath.trim().removeSurrounding("\"", "\"").removeSurrounding("'", "'")
+                val localFile = java.io.File(path)
+                val targetFile = if (localFile.exists() && localFile.isFile) {
+                    localFile
+                } else {
+                    val downloadsDir = java.io.File(context.cacheDir, "downloads").apply { mkdirs() }
+                    val safeName = path.substringAfterLast('/').ifBlank { "app-debug.apk" }
+                    val dest = java.io.File(downloadsDir, safeName)
+                    val srvId = _uiState.value.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+                    if (RemoteFileSystem.isLocalServer(srvId)) {
+                        if (localFile.exists()) localFile else dest
+                    } else {
+                        remoteFileSystem.download(srvId, path, dest, resume = false).collect {}
+                        dest
+                    }
+                }
+                if (targetFile.exists()) {
+                    apkInstaller.install(targetFile)
+                } else {
+                    android.widget.Toast.makeText(context, "APK not found: $path", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, "Install failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun fixErrorWithAi(errorMessage: String) {
+        val snippet = errorMessage.trim().lines().take(25).joinToString("\n")
+        send("Please analyze and fix this error:\n```\n$snippet\n```\nFind the root cause in the codebase and apply the fix.")
     }
 
     fun send(prompt: String, attachments: List<Uri> = emptyList()) {

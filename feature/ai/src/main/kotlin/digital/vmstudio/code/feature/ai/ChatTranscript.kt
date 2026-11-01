@@ -24,6 +24,9 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.PlayArrow
+import digital.vmstudio.code.core.common.error.displayText
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Difference
@@ -127,6 +130,8 @@ internal fun ToolBatchRow(
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
     onPreview: ((String) -> Unit)? = null,
+    onFixError: ((errorMessage: String) -> Unit)? = null,
+    onInstallApk: ((apkPath: String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val isRunning = batch.tools.any { it.isRunning }
@@ -218,6 +223,8 @@ internal fun ToolBatchRow(
                         onOpenDiff = onOpenDiff,
                         onRollback = onRollback,
                         onPreview = onPreview,
+                        onFixError = onFixError,
+                        onInstallApk = onInstallApk,
                     )
                 }
             }
@@ -236,6 +243,8 @@ internal fun TranscriptRow(
     onPreview: ((String) -> Unit)? = null,
     onEditPrompt: ((text: String, promptId: String) -> Unit)? = null,
     onDeletePrompt: ((promptId: String, text: String) -> Unit)? = null,
+    onFixError: ((errorMessage: String) -> Unit)? = null,
+    onInstallApk: ((apkPath: String) -> Unit)? = null,
     chatBubbleColorHex: String? = null,
 ) {
     val spacing = VmTheme.spacing
@@ -360,7 +369,14 @@ internal fun TranscriptRow(
         is TranscriptItem.SubagentRun -> SubagentRow(item)
 
         is TranscriptItem.ToolCall ->
-            ToolRow(item, onOpenDiff = onOpenDiff, onRollback = onRollback, onPreview = onPreview)
+            ToolRow(
+                item = item,
+                onOpenDiff = onOpenDiff,
+                onRollback = onRollback,
+                onPreview = onPreview,
+                onFixError = onFixError,
+                onInstallApk = onInstallApk,
+            )
 
         is TranscriptItem.Diagnostic -> Surface(
             shape = RoundedCornerShape(8.dp),
@@ -416,7 +432,38 @@ internal fun TranscriptRow(
             }
         }
 
-        is TranscriptItem.Failure -> VmErrorPanel(error = item.error)
+        is TranscriptItem.Failure -> Column(modifier = Modifier.fillMaxWidth()) {
+            VmErrorPanel(error = item.error)
+            if (onFixError != null) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFA855F7).copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, Color(0xFFA855F7).copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onFixError(item.error.displayText()) }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = "Auto-Fix with AI",
+                            tint = Color(0xFFA855F7),
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            text = "Auto-Fix with AI",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                            color = Color(0xFFA855F7),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -606,6 +653,8 @@ private fun ToolRow(
     onOpenDiff: (String) -> Unit,
     onRollback: ((toolCallId: String, filePath: String) -> Unit)? = null,
     onPreview: ((String) -> Unit)? = null,
+    onFixError: ((errorMessage: String) -> Unit)? = null,
+    onInstallApk: ((apkPath: String) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val hasOutput = !item.output.isNullOrBlank()
@@ -719,6 +768,73 @@ private fun ToolRow(
 
             item.affectedPath?.let { path ->
                 FileActions(item, path, onOpenDiff, onRollback, onPreview)
+            }
+
+            val apkCandidate = remember(item.output, item.affectedPath) {
+                if (item.affectedPath?.endsWith(".apk", ignoreCase = true) == true) {
+                    item.affectedPath
+                } else if (!item.output.isNullOrBlank() && item.output.contains(".apk", ignoreCase = true)) {
+                    val match = Regex("""([a-zA-Z0-9_\-\./\\]+\.apk)""").find(item.output)
+                    match?.value
+                } else null
+            }
+
+            if (apkCandidate != null && onInstallApk != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onInstallApk(apkCandidate) }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Install APK",
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Text(
+                            text = "Install APK",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            color = Color(0xFF10B981),
+                        )
+                    }
+                }
+            }
+
+            if (item.isError && onFixError != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFA855F7).copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, Color(0xFFA855F7).copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onFixError(item.output ?: item.summary) }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = "Fix with AI",
+                            tint = Color(0xFFA855F7),
+                            modifier = Modifier.size(11.dp),
+                        )
+                        Text(
+                            text = "Fix with AI",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            color = Color(0xFFA855F7),
+                        )
+                    }
+                }
             }
 
             if (hasOutput) {

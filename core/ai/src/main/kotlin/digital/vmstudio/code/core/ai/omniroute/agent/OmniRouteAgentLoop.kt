@@ -26,6 +26,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -64,6 +65,7 @@ class OmniRouteAgentLoop @Inject constructor(
     private val serverRepository: ServerRepository,
     private val webFetcher: WebFetcher,
     private val gitHubRepositoryClient: GitHubRepositoryClient,
+    private val userPreferencesRepository: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
 ) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -375,9 +377,12 @@ class OmniRouteAgentLoop @Inject constructor(
             add(OmniRouteTool.GOOGLE_SHEET_READ)
             add(OmniRouteTool.GOOGLE_SHEET_APPEND)
         }
+        add(OmniRouteTool.WORDPRESS_FILE_LIST)
+        add(OmniRouteTool.WORDPRESS_FILE_READ)
         if (config.permissionMode != AgentPermissionMode.PLAN) {
             add(OmniRouteTool.WRITE_FILE)
             add(OmniRouteTool.EDIT_FILE)
+            add(OmniRouteTool.WORDPRESS_FILE_WRITE)
             if (!config.restricted && !isLocalWorkspace && !isGitHubWorkspace) {
                 add(OmniRouteTool.RUN_COMMAND)
                 add(OmniRouteTool.RUN_BUILD)
@@ -804,6 +809,9 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.GOOGLE_DRIVE_READ -> googleDriveRead(call, driveToken)
             OmniRouteTool.GOOGLE_SHEET_READ -> googleSheetRead(call, sheetsToken ?: driveToken)
             OmniRouteTool.GOOGLE_SHEET_APPEND -> googleSheetAppend(call, sheetsToken ?: driveToken)
+            OmniRouteTool.WORDPRESS_FILE_LIST -> wordpressFileList(call)
+            OmniRouteTool.WORDPRESS_FILE_READ -> wordpressFileRead(call)
+            OmniRouteTool.WORDPRESS_FILE_WRITE -> wordpressFileWrite(call)
             OmniRouteTool.INVOKE_SUBAGENT -> ToolOutcome("invoke_subagent is executed directly by the agent loop.", isError = false)
         }
     }
@@ -942,6 +950,89 @@ class OmniRouteAgentLoop @Inject constructor(
         return when (val result = httpClient.execute(request)) {
             is VmResult.Success -> ToolOutcome("Appended row(s) to Google Sheet $spreadsheetId: ${result.value}", isError = false)
             is VmResult.Failure -> ToolOutcome("Failed to append to Google Sheet: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun wordpressFileList(call: OmniRouteToolCall): ToolOutcome {
+        val relPath = argument(call.argumentsJson, "path")?.ifBlank { "wp-content" } ?: "wp-content"
+        val prefs = userPreferencesRepository.preferences.first()
+        val hubKey = prefs.hubApiKey?.trim().orEmpty()
+        if (hubKey.isBlank()) {
+            return ToolOutcome("WordPress REST bridge requires Hub Pairing Key. Please configure it in Settings > Connectors > VM Project Hub.", isError = true)
+        }
+        val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
+        val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
+        val encodedPath = java.net.URLEncoder.encode(relPath.removePrefix("wp://"), "UTF-8")
+        val request = Request.Builder()
+            .url("$apiBase/fs/list?path=$encodedPath")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("WordPress list failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun wordpressFileRead(call: OmniRouteToolCall): ToolOutcome {
+        val relPath = argument(call.argumentsJson, "path")
+            ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
+        val prefs = userPreferencesRepository.preferences.first()
+        val hubKey = prefs.hubApiKey?.trim().orEmpty()
+        if (hubKey.isBlank()) {
+            return ToolOutcome("WordPress REST bridge requires Hub Pairing Key. Please configure it in Settings > Connectors > VM Project Hub.", isError = true)
+        }
+        val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
+        val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
+        val encodedPath = java.net.URLEncoder.encode(relPath.removePrefix("wp://"), "UTF-8")
+        val request = Request.Builder()
+            .url("$apiBase/fs/read?path=$encodedPath")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> {
+                val body = result.value
+                val content = try {
+                    val root = json.parseToJsonElement(body) as? JsonObject
+                    (root?.get("content") as? JsonPrimitive)?.content ?: body
+                } catch (_: Exception) {
+                    body
+                }
+                ToolOutcome(content, isError = false)
+            }
+            is VmResult.Failure -> ToolOutcome("WordPress file read failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun wordpressFileWrite(call: OmniRouteToolCall): ToolOutcome {
+        val relPath = argument(call.argumentsJson, "path")
+            ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
+        val content = argument(call.argumentsJson, "content")
+            ?: return ToolOutcome("Missing required argument \"content\".", isError = true)
+        val prefs = userPreferencesRepository.preferences.first()
+        val hubKey = prefs.hubApiKey?.trim().orEmpty()
+        if (hubKey.isBlank()) {
+            return ToolOutcome("WordPress REST bridge requires Hub Pairing Key. Please configure it in Settings > Connectors > VM Project Hub.", isError = true)
+        }
+        val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
+        val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
+        val payload = buildJsonObject {
+            put("path", relPath.removePrefix("wp://"))
+            put("content", content)
+        }.toString()
+        val request = Request.Builder()
+            .url("$apiBase/fs/write")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome("Successfully wrote to WordPress file \"$relPath\": ${result.value}", isError = false)
+            is VmResult.Failure -> ToolOutcome("WordPress file write failed: ${result.error.summaryWithReason()}", isError = true)
         }
     }
 
@@ -1530,6 +1621,9 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.GOOGLE_DRIVE_READ -> "Read Google Drive file ${path ?: ""}"
         OmniRouteTool.GOOGLE_SHEET_READ -> "Read spreadsheet ${path ?: "?"}"
         OmniRouteTool.GOOGLE_SHEET_APPEND -> "Append spreadsheet rows"
+        OmniRouteTool.WORDPRESS_FILE_LIST -> "List WordPress files ${path ?: "wp-content"}"
+        OmniRouteTool.WORDPRESS_FILE_READ -> "Read WordPress file ${path ?: "?"}"
+        OmniRouteTool.WORDPRESS_FILE_WRITE -> "Write WordPress file ${path ?: "?"}"
         null -> toolName
     }
     private suspend fun runBuild(
@@ -1734,6 +1828,9 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         if (OmniRouteTool.GOOGLE_SHEET_READ in allowedTools) {
             append("Use google_sheet_read and google_sheet_append to inspect and write to connected Google Spreadsheets. ")
+        }
+        if (OmniRouteTool.WORDPRESS_FILE_LIST in allowedTools) {
+            append("Use wordpress_file_list, wordpress_file_read, and wordpress_file_write to inspect, code, and edit WordPress sites, themes, and plugins via HTTPS REST API without needing VPS or SSH root access. ")
         }
         if (OmniRouteTool.EDIT_FILE in allowedTools) {
             append(
