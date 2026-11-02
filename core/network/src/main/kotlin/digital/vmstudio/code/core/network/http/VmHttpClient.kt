@@ -270,7 +270,7 @@ class VmHttpClient @Inject constructor(
         val endpoint = request.url.redactedForDisplay()
         val excerpt = body.take(400).takeIf { it.isNotBlank() }
         val isGithub = request.url.host.contains("github.com", ignoreCase = true)
-        val isAiGateway = !isGithub && (request.url.host.contains("vmstudio.digital", ignoreCase = true) ||
+        val isAiGateway = !isGithub && (request.url.host.equals("ai.vmstudio.digital", ignoreCase = true) ||
             request.url.encodedPath.contains("/v1/chat") ||
             request.url.encodedPath.contains("/v1/messages") ||
             request.url.encodedPath.contains("/v1/models"))

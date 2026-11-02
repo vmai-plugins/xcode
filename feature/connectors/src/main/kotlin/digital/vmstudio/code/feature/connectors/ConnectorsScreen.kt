@@ -239,10 +239,15 @@ fun ConnectorsScreen(
             // --- HERO: APP HUB MASTER SINGLE-KEY PROVISIONING ---
             if (state.selectedFilter == ConnectorFilter.ALL) {
                 item(key = "card-hub-master-hero") {
+                    val hubAccent = if (state.hasHubKey) {
+                        VmTheme.colors.success
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    }
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFF14161A),
-                        border = BorderStroke(1.dp, if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.5f) else Color(0xFF38BDF8).copy(alpha = 0.4f)),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        border = BorderStroke(1.dp, hubAccent.copy(alpha = 0.4f)),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(
@@ -257,13 +262,13 @@ fun ConnectorsScreen(
                                     modifier = Modifier
                                         .size(40.dp)
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                                        .background(hubAccent.copy(alpha = 0.15f)),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Cloud,
                                         contentDescription = null,
-                                        tint = if (state.hasHubKey) Color(0xFF10B981) else Color(0xFF38BDF8),
+                                        tint = hubAccent,
                                         modifier = Modifier.size(22.dp),
                                     )
                                 }
@@ -272,24 +277,24 @@ fun ConnectorsScreen(
                                         text = "App Hub Master Connect",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFE2E2E6),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     Text(
                                         text = "1 API Key automatically configures GitHub, AI Gateway, VPS & Drive",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF8E919B),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(20.dp),
-                                    color = if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFF38BDF8).copy(alpha = 0.15f),
-                                    border = BorderStroke(1.dp, if (state.hasHubKey) Color(0xFF10B981).copy(alpha = 0.3f) else Color(0xFF38BDF8).copy(alpha = 0.3f)),
+                                    color = hubAccent.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, hubAccent.copy(alpha = 0.3f)),
                                 ) {
                                     Text(
                                         text = if (state.hasHubKey) "PROVISIONED" else "READY TO PAIR",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (state.hasHubKey) Color(0xFF10B981) else Color(0xFF38BDF8),
+                                        color = hubAccent,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     )
                                 }
@@ -345,14 +350,14 @@ fun ConnectorsScreen(
                             state.hubStatusMessage?.let { msg ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFF1A1C20),
-                                    border = BorderStroke(1.dp, Color(0xFF282A31)),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text(
                                         text = msg,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF10B981),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(10.dp),
                                     )
                                 }
@@ -809,14 +814,30 @@ fun ConnectorsScreen(
                             verticalArrangement = Arrangement.spacedBy(spacing.sm),
                         ) {
                             Text(
-                                "Google Drive Credentials & Vault",
+                                "Google Drive account access",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Connect with Google to browse and read all Drive files and create backups. This grants full Drive access; you can revoke it in your Google Account settings.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            VmButton(
+                                text = if (state.hasDriveToken) "Reconnect Google Drive" else "Connect Google Drive",
+                                onClick = { openUrl(viewModel.googleDriveAuthorizationUrl()) },
+                                style = VmButtonStyle.Primary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                "Or use an existing short-lived access token:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             OutlinedTextField(
                                 value = driveTokenDraft,
                                 onValueChange = { driveTokenDraft = it },
-                                label = { Text("Google Drive OAuth Token") },
+                                label = { Text("Temporary Google Drive access token") },
                                 singleLine = true,
                                 visualTransformation = if (driveTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {
@@ -1431,10 +1452,10 @@ private fun ConnectorFilterChip(
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color(0xFF1E1F23),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(
             1.dp,
-            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else Color(0xFF2A2C32),
+            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant,
         ),
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
@@ -1444,7 +1465,7 @@ private fun ConnectorFilterChip(
             text = label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF9CA3AF),
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
         )
     }
@@ -1472,13 +1493,19 @@ private fun ModernConnectorCard(
 ) {
     val spacing = VmTheme.spacing
     val isConnected = status == VmStatus.CONNECTED
+    val statusColor = when (status) {
+        VmStatus.CONNECTED -> VmTheme.colors.connected
+        VmStatus.CONNECTING -> VmTheme.colors.connecting
+        VmStatus.ERROR -> MaterialTheme.colorScheme.error
+        else -> VmTheme.colors.disconnected
+    }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF151619),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(
             width = 1.dp,
-            color = if (isConnected) iconTint.copy(alpha = 0.45f) else Color(0xFF24262C),
+            color = if (isConnected) iconTint.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant,
         ),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -1516,12 +1543,12 @@ private fun ModernConnectorCard(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFE2E2E6),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
                             text = category,
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF8E9199),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -1529,21 +1556,8 @@ private fun ModernConnectorCard(
                 // Sleek glowing status indicator pill
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = when (status) {
-                        VmStatus.CONNECTED -> Color(0xFF10B981).copy(alpha = 0.12f)
-                        VmStatus.CONNECTING -> Color(0xFFF59E0B).copy(alpha = 0.12f)
-                        VmStatus.ERROR -> Color(0xFFEF4444).copy(alpha = 0.12f)
-                        else -> Color(0xFF26282E)
-                    },
-                    border = BorderStroke(
-                        1.dp,
-                        when (status) {
-                            VmStatus.CONNECTED -> Color(0xFF10B981).copy(alpha = 0.4f)
-                            VmStatus.CONNECTING -> Color(0xFFF59E0B).copy(alpha = 0.4f)
-                            VmStatus.ERROR -> Color(0xFFEF4444).copy(alpha = 0.4f)
-                            else -> Color(0xFF32353D)
-                        },
-                    ),
+                    color = statusColor.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.4f)),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
@@ -1555,24 +1569,14 @@ private fun ModernConnectorCard(
                                 .size(7.dp)
                                 .clip(androidx.compose.foundation.shape.CircleShape)
                                 .background(
-                                    when (status) {
-                                        VmStatus.CONNECTED -> Color(0xFF10B981)
-                                        VmStatus.CONNECTING -> Color(0xFFF59E0B)
-                                        VmStatus.ERROR -> Color(0xFFEF4444)
-                                        else -> Color(0xFF6B7280)
-                                    },
+                                    statusColor,
                                 ),
                         )
                         Text(
                             text = statusText,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = when (status) {
-                                VmStatus.CONNECTED -> Color(0xFF34D399)
-                                VmStatus.CONNECTING -> Color(0xFFFBBF24)
-                                VmStatus.ERROR -> Color(0xFFF87171)
-                                else -> Color(0xFF9CA3AF)
-                            },
+                            color = statusColor,
                         )
                     }
                 }
@@ -1582,7 +1586,7 @@ private fun ModernConnectorCard(
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFA0A3AD),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 18.sp,
             )
 
@@ -1596,13 +1600,13 @@ private fun ModernConnectorCard(
                 tags.forEach { tag ->
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF1C1D21),
-                        border = BorderStroke(1.dp, Color(0xFF292B32)),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
                         Text(
                             text = tag,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = Color(0xFF8E919B),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                         )
                     }
@@ -1613,8 +1617,8 @@ private fun ModernConnectorCard(
             statusMessage?.let { msg ->
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF1E2026),
-                    border = BorderStroke(1.dp, Color(0xFF2E313A)),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
@@ -1625,13 +1629,13 @@ private fun ModernConnectorCard(
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = Color(0xFF10B981),
+                            tint = VmTheme.colors.success,
                             modifier = Modifier.size(15.dp),
                         )
                         Text(
                             text = msg,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFD1D5DB),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -1646,7 +1650,7 @@ private fun ModernConnectorCard(
                 if (primaryActionText != null && onPrimaryAction != null) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = iconTint,
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
@@ -1660,7 +1664,7 @@ private fun ModernConnectorCard(
                                 text = primaryActionText,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onPrimary,
                             )
                         }
                     }
@@ -1668,8 +1672,8 @@ private fun ModernConnectorCard(
                 if (secondaryActionText != null && onSecondaryAction != null) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFF22242B),
-                        border = BorderStroke(1.dp, Color(0xFF32353E)),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .clickable(onClick = onSecondaryAction),
@@ -1678,7 +1682,7 @@ private fun ModernConnectorCard(
                             text = secondaryActionText,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFFE2E2E6),
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                         )
                     }
@@ -1687,7 +1691,7 @@ private fun ModernConnectorCard(
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = if (isExpanded) "Collapse" else "Expand configuration",
-                        tint = Color(0xFF8E919B),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -1701,7 +1705,7 @@ private fun ModernConnectorCard(
                 Column {
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = spacing.xs),
-                        color = Color(0xFF26282E),
+                        color = MaterialTheme.colorScheme.outlineVariant,
                     )
                     expandedContent()
                 }

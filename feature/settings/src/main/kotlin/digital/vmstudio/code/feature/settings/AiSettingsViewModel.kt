@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.provider.AiProviderHealth
 import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
+import digital.vmstudio.code.core.ai.omniroute.normalizeBaseUrl
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -151,16 +153,33 @@ class AiSettingsViewModel @Inject constructor(
     /**
      * Runs the connection test.
      *
-     * Tests the fixed OmniRoute gateway using the saved API key.
+     * Tests the configured gateway using the saved API key.
      */
     fun runConnectionTest(
         pendingKey: String? = null,
+        pendingBaseUrl: String? = null,
         onKeySaved: () -> Unit = {},
     ) {
         testing.value = true
         error.value = null
         viewModelScope.launch {
             try {
+                val preferences = preferencesRepository.preferences.first()
+                val baseUrl = normalizeBaseUrl(pendingBaseUrl ?: preferences.aiBaseUrl)
+                if (baseUrl.isBlank()) {
+                    error.value = VmError.Ai(
+                        summary = "Invalid AI API base URL",
+                        suggestedAction = "Enter a valid URL such as https://api.openai.com/v1.",
+                        retryable = false,
+                        provider = "OpenAI-compatible API",
+                    )
+                    return@launch
+                }
+                if (baseUrl != normalizeBaseUrl(preferences.aiBaseUrl)) {
+                    preferencesRepository.clearAiModels()
+                }
+                preferencesRepository.setAiBaseUrl(baseUrl)
+
                 val keyWasSaved = pendingKey?.takeIf { it.isNotBlank() }?.let {
                     commitApiKey(it)
                 } ?: true

@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,7 +133,7 @@ fun AppearanceSettingsScreen(
                                 .background(preset.previewColor)
                                 .border(
                                     width = if (isSelected) 3.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color(0xFF3F424A),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                                     shape = CircleShape,
                                 )
                                 .clickable { viewModel.setChatBubbleColor(preset.hex) },
@@ -157,6 +158,11 @@ fun AppearanceSettingsScreen(
                         Color(0xFF1E1F23)
                     }
                 } ?: Color(0xFF1E1F23)
+                val bubbleContentColor = if (activeBubbleColor.luminance() > 0.179f) {
+                    Color(0xFF111827)
+                } else {
+                    Color(0xFFF3F4F6)
+                }
 
                 Box(
                     modifier = Modifier.fillMaxWidth(),
@@ -171,7 +177,7 @@ fun AppearanceSettingsScreen(
                         Text(
                             text = "Sample user prompt bubble preview",
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                            color = Color(0xFFF3F4F6),
+                            color = bubbleContentColor,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         )
                     }
@@ -213,7 +219,7 @@ fun AppearanceSettingsScreen(
                                 .background(preset.previewColor)
                                 .border(
                                     width = if (isSelected) 3.dp else 1.dp,
-                                    color = if (isSelected) Color.White else Color(0xFF3F424A),
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.outlineVariant,
                                     shape = CircleShape,
                                 )
                                 .clickable { viewModel.setDefaultProjectColor(preset.hex) },
@@ -313,4 +319,3 @@ private fun ThemePreference.label(): String = when (this) {
     ThemePreference.LIGHT -> "Light"
     ThemePreference.DARK -> "Dark"
 }
-

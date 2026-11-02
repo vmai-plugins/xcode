@@ -62,7 +62,7 @@ import digital.vmstudio.code.core.ui.theme.VmTheme
 /**
  * Ultra-Modern Settings & IDE Control Hub.
  *
- * Designed with a high-end dark obsidian aesthetic, quick workspace launch tiles,
+ * Designed with a high-end adaptive aesthetic, quick workspace launch tiles,
  * live gateway status monitoring, and organized control sections.
  */
 @Composable
@@ -166,7 +166,7 @@ fun SettingsScreen(
                                     onSignOut()
                                 },
                             ) {
-                                Text("Sign Out", color = Color(0xFFEF4444))
+                                Text("Sign Out", color = MaterialTheme.colorScheme.error)
                             }
                         } else {
                             androidx.compose.material3.Button(
@@ -201,7 +201,7 @@ fun SettingsScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF10B981)),
+                                    .background(VmTheme.colors.connected),
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(
@@ -218,7 +218,7 @@ fun SettingsScreen(
                                         text = "• Active",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF10B981),
+                                        color = VmTheme.colors.connected,
                                     )
                                 }
                                 Text(
@@ -255,7 +255,7 @@ fun SettingsScreen(
                 )
                 ModernSettingsRow(
                     title = "Appearance & Themes",
-                    description = "AMOLED Pitch Black, Dark, Light theme options",
+                    description = "System, light, and dark theme options",
                     icon = Icons.Default.Palette,
                     badgeText = preferences.themePreference.name.lowercase().replaceFirstChar { it.uppercase() },
                     iconColor = Color(0xFFEC4899),
@@ -450,8 +450,8 @@ private fun QuickNavTile(
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF151619),
-        border = BorderStroke(1.dp, Color(0xFF24262C)),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
@@ -482,13 +482,13 @@ private fun QuickNavTile(
                 if (!badgeText.isNullOrBlank()) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF1F2024),
-                        border = BorderStroke(1.dp, Color(0xFF2A2C33)),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
                         Text(
                             text = badgeText,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = Color(0xFF9CA3AF),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                     }
@@ -499,12 +499,12 @@ private fun QuickNavTile(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFE2E2E6),
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = Color(0xFF8E919B),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -524,8 +524,8 @@ private fun ModernSettingsRow(
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF151619),
-        border = BorderStroke(1.dp, Color(0xFF24262C)),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
@@ -556,12 +556,12 @@ private fun ModernSettingsRow(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFE2E2E6),
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF8E919B),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -570,14 +570,14 @@ private fun ModernSettingsRow(
             if (!badgeText.isNullOrBlank()) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF1F2024),
-                    border = BorderStroke(1.dp, Color(0xFF2A2C33)),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
                     Text(
                         text = badgeText,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFF9CA3AF),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         maxLines = 1,
                     )
@@ -587,7 +587,7 @@ private fun ModernSettingsRow(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
-                tint = Color(0xFF6B7280),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(17.dp),
             )
         }
@@ -617,7 +617,7 @@ private fun ModernSectionHeader(title: String) {
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.2.sp,
             ),
-            color = Color(0xFF8E919B),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

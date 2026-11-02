@@ -401,6 +401,8 @@ class OmniRouteProvider @Inject constructor(
                         }
                     }
                 }
+            } else {
+                throw streamFailure
             }
         }
 
@@ -851,7 +853,7 @@ internal fun List<ConversationTurn>.alternating(): List<ConversationTurn> {
  * trailing `/v1` are dropped, because every path this provider builds already
  * starts with `v1/`. Without this, `https://host/v1` produced `/v1/v1/models`.
  */
-internal fun normalizeBaseUrl(raw: String): String {
+fun normalizeBaseUrl(raw: String): String {
     val trimmed = raw.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
     if (trimmed.isEmpty()) return ""
     // "192.168.1.5:20128" or "ai.example.com" typed without a scheme made OkHttp

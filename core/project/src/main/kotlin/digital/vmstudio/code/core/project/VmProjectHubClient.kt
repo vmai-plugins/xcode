@@ -16,6 +16,7 @@ import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.model.SecretType
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
+import digital.vmstudio.code.core.security.store.HubCredentialManager
 import digital.vmstudio.code.core.ssh.model.ServerDraft
 import digital.vmstudio.code.core.ssh.repository.ServerRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -116,6 +117,16 @@ data class HubCredentials(
     val googleDriveEmail: String? = null,
 )
 
+data class HubGoogleSession(
+    val accessToken: String,
+    val expiresAt: String,
+    val userId: Long,
+    val email: String,
+    val name: String,
+    val avatarUrl: String?,
+    val workspaceId: Long,
+)
+
 @Singleton
 class VmProjectHubClient @Inject constructor(
     private val httpClient: VmHttpClient,
@@ -125,13 +136,35 @@ class VmProjectHubClient @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val credentialStore: SecureCredentialStore,
+    private val hubCredentialManager: HubCredentialManager,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     suspend fun getEffectiveHubKey(): String? {
-        val configured = preferencesRepository.preferences.first().hubApiKey
-        return configured?.trim()?.takeIf { it.isNotBlank() }
+        val preferences = preferencesRepository.preferences.first()
+        val configuredKey = when (val configured = hubCredentialManager.read()) {
+            is VmResult.Success -> configured.value?.let { secret ->
+                try {
+                    secret.useAsString { it.trim().takeIf { value -> value.isNotBlank() } }
+                } finally {
+                    secret.wipe()
+                }
+            }
+            is VmResult.Failure -> null
+        }
+        val sessionCredentialId = preferences.hubUserTokenCredentialId
+        if (sessionCredentialId != null) {
+            when (val credential = credentialStore.read(sessionCredentialId)) {
+                is VmResult.Success -> {
+                    val token = credential.value.useAsString { it }
+                    credential.value.wipe()
+                    if (token.isNotBlank()) return token
+                }
+                is VmResult.Failure -> return null
+            }
+        }
+        return configuredKey
     }
 
     suspend fun getEffectiveHubBaseUrl(): String {
@@ -169,6 +202,108 @@ class VmProjectHubClient @Inject constructor(
                 val projects = parseProjects(result.value)
                 VmResult.Success(projects.size)
             }
+        }
+    }
+
+    suspend fun exchangeGoogleAuthorizationCode(
+        code: String,
+        codeVerifier: String,
+    ): VmResult<HubGoogleSession> = withContext(ioDispatcher) {
+        val body = json.encodeToString(
+            kotlinx.serialization.json.JsonObject.serializer(),
+            buildJsonObject {
+                put("code", code)
+                put("code_verifier", codeVerifier)
+            },
+        )
+        val request = Request.Builder()
+            .url("${getEffectiveHubBaseUrl()}/auth/google")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .header("Accept", "application/json")
+            .build()
+
+        when (val response = httpClient.execute(request, RetryPolicy(maxAttempts = 1))) {
+            is VmResult.Failure -> {
+                val error = response.error
+                val serverError = (error as? VmError.Network)
+                    ?.takeIf { it.statusCode == 503 }
+                    ?.reason
+                    ?.let { body ->
+                        runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull()
+                    }
+                if (serverError?.str("code") == "google_auth_not_configured") {
+                    VmResult.Failure(
+                        VmError.Authentication(
+                            summary = "Google sign-in is not configured on VM Project Hub",
+                            reason = serverError.str("message")
+                                ?: "The Hub server is missing its Google OAuth client secret.",
+                            suggestedAction = "Ask the Hub administrator to configure VMPJ_GOOGLE_CLIENT_SECRET in wp-config.php.",
+                            realm = "${request.url.host}${request.url.encodedPath}",
+                        )
+                    )
+                } else {
+                    response
+                }
+            }
+            is VmResult.Success -> {
+                val root = runCatching { json.parseToJsonElement(response.value) as? JsonObject }.getOrNull()
+                val user = root?.get("user") as? JsonObject
+                val accessToken = root?.str("access_token")
+                val email = user?.str("email")
+                if (
+                    root == null ||
+                    root.str("ok") != "true" ||
+                    accessToken.isNullOrBlank() ||
+                    email.isNullOrBlank() ||
+                    user == null
+                ) {
+                    VmResult.Failure(
+                        VmError.Authentication(
+                            summary = root?.str("message")
+                                ?: root?.str("error")
+                                ?: "Google sign-in could not create a VM Studio account.",
+                            suggestedAction = "Check that Google sign-in is enabled on the VM Project Hub server.",
+                        )
+                    )
+                } else {
+                    VmResult.Success(
+                        HubGoogleSession(
+                            accessToken = accessToken,
+                            expiresAt = root.str("expires_at").orEmpty(),
+                            userId = user.long("id") ?: 0L,
+                            email = email,
+                            name = user.str("name").orEmpty(),
+                            avatarUrl = user.str("avatar_url"),
+                            workspaceId = user.long("workspace_id") ?: 0L,
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun revokeGoogleSession(): VmResult<Unit> = withContext(ioDispatcher) {
+        val credentialId = preferencesRepository.preferences.first().hubUserTokenCredentialId
+            ?: return@withContext VmResult.Success(Unit)
+        val secret = when (val result = credentialStore.read(credentialId)) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return@withContext result
+        }
+        try {
+            val token = secret.useAsString { it }
+            val request = Request.Builder()
+                .url("${getEffectiveHubBaseUrl()}/auth/logout")
+                .post("{}".toRequestBody(JSON_MEDIA_TYPE))
+                .header("X-VMPJ-Key", token)
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .build()
+            when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 1))) {
+                is VmResult.Success -> VmResult.Success(Unit)
+                is VmResult.Failure -> result
+            }
+        } finally {
+            secret.wipe()
         }
     }
 

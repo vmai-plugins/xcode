@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import digital.vmstudio.code.core.ui.theme.VmTheme
 import digital.vmstudio.code.core.git.codespacesUrl
 
 /**
@@ -78,7 +79,7 @@ fun GitHubSettingsScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0E0F12)),
+            .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -86,10 +87,10 @@ fun GitHubSettingsScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = Color(0xFF151619),
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 border = BorderStroke(
                     1.dp,
-                    if (state.hasToken) Color(0xFF10B981).copy(alpha = 0.45f) else Color(0xFF26282E),
+                    if (state.hasToken) VmTheme.colors.success.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -125,12 +126,12 @@ fun GitHubSettingsScreen(
                                     "GitHub Cloud APK Builder",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFE2E2E6),
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
                                     "Autonomous CI/CD & App Hub deployment",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF8E919B),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -138,10 +139,10 @@ fun GitHubSettingsScreen(
                         // Status pill
                         Surface(
                             shape = RoundedCornerShape(20.dp),
-                            color = if (state.hasToken) Color(0xFF10B981).copy(alpha = 0.12f) else Color(0xFFF59E0B).copy(alpha = 0.12f),
+                            color = if (state.hasToken) VmTheme.colors.successContainer else VmTheme.colors.warningContainer,
                             border = BorderStroke(
                                 1.dp,
-                                if (state.hasToken) Color(0xFF10B981).copy(alpha = 0.4f) else Color(0xFFF59E0B).copy(alpha = 0.4f),
+                                if (state.hasToken) VmTheme.colors.success.copy(alpha = 0.4f) else VmTheme.colors.warning.copy(alpha = 0.4f),
                             ),
                         ) {
                             Row(
@@ -153,13 +154,13 @@ fun GitHubSettingsScreen(
                                     modifier = Modifier
                                         .size(7.dp)
                                         .clip(CircleShape)
-                                        .background(if (state.hasToken) Color(0xFF10B981) else Color(0xFFF59E0B)),
+                                        .background(if (state.hasToken) VmTheme.colors.success else VmTheme.colors.warning),
                                 )
                                 Text(
                                     text = if (state.hasToken) "Cloud Ready" else "PAT Needed",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (state.hasToken) Color(0xFF34D399) else Color(0xFFFBBF24),
+                                    color = if (state.hasToken) VmTheme.colors.onSuccessContainer else VmTheme.colors.onWarningContainer,
                                 )
                             }
                         }
@@ -168,14 +169,14 @@ fun GitHubSettingsScreen(
                     Text(
                         text = "Dispatches a clean cloud compilation on GitHub Actions runners. Automatically compiles the release APK and deploys it live to the VMStudio App Hub (apps.vmstudio.digital) for direct phone installation.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA0A3AD),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp,
                     )
 
                     // 1-Tap Build Button
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (state.hasToken && !state.isLoading) Color(0xFF10B981) else Color(0xFF26282E),
+                        color = if (state.hasToken && !state.isLoading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
@@ -194,20 +195,20 @@ fun GitHubSettingsScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp,
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onPrimary,
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     "Dispatching workflow...",
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
                                     contentDescription = null,
-                                    tint = if (state.hasToken) Color.White else Color(0xFF6B7280),
+                                    tint = if (state.hasToken) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(Modifier.width(6.dp))
@@ -215,7 +216,7 @@ fun GitHubSettingsScreen(
                                     "Dispatch Cloud APK Build",
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (state.hasToken) Color.White else Color(0xFF6B7280),
+                                    color = if (state.hasToken) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -228,8 +229,8 @@ fun GitHubSettingsScreen(
         item {
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = Color(0xFF151619),
-                border = BorderStroke(1.dp, Color(0xFF26282E)),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
@@ -259,12 +260,12 @@ fun GitHubSettingsScreen(
                                 "GitHub Authentication",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFE2E2E6),
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
                                 "Personal Access Token (repo + workflow scopes)",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFF8E919B),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -272,7 +273,7 @@ fun GitHubSettingsScreen(
                     OutlinedTextField(
                         value = tokenDraft,
                         onValueChange = { tokenDraft = it },
-                        placeholder = { Text("ghp_xxxxxxxxxxxxxxxxxxxx", color = Color(0xFF6B7280)) },
+                        placeholder = { Text("ghp_xxxxxxxxxxxxxxxxxxxx", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         singleLine = true,
                         visualTransformation = if (tokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
@@ -281,7 +282,7 @@ fun GitHubSettingsScreen(
                                     Icon(
                                         imageVector = if (tokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                         contentDescription = null,
-                                        tint = Color(0xFF8E919B),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp),
                                     )
                                 }
@@ -291,19 +292,19 @@ fun GitHubSettingsScreen(
                                     Icon(
                                         imageVector = Icons.Default.ContentPaste,
                                         contentDescription = null,
-                                        tint = Color(0xFF8E919B),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp),
                                     )
                                 }
                             }
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF6366F1),
-                            unfocusedBorderColor = Color(0xFF26282E),
-                            focusedContainerColor = Color(0xFF1B1C20),
-                            unfocusedContainerColor = Color(0xFF1B1C20),
-                            focusedTextColor = Color(0xFFE2E2E6),
-                            unfocusedTextColor = Color(0xFFE2E2E6),
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                         ),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -315,7 +316,7 @@ fun GitHubSettingsScreen(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF6366F1),
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(10.dp))
@@ -331,15 +332,15 @@ fun GitHubSettingsScreen(
                                     text = if (state.hasToken) "Update Token" else "Save & Connect",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onPrimary,
                                 )
                             }
                         }
 
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF1E2026),
-                            border = BorderStroke(1.dp, Color(0xFF2E313A)),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
@@ -359,16 +360,16 @@ fun GitHubSettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF8E919B), modifier = Modifier.size(15.dp))
-                                Text("Get Token", style = MaterialTheme.typography.labelMedium, color = Color(0xFFE2E2E6))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                                Text("Get Token", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
 
                         if (state.hasToken) {
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFEF4444).copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
                                     .clickable { viewModel.clearToken() },
@@ -377,7 +378,7 @@ fun GitHubSettingsScreen(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                 ) {
-                                    Text("Clear", color = Color(0xFFEF4444), style = MaterialTheme.typography.labelMedium)
+                                    Text("Clear", color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.labelMedium)
                                 }
                             }
                         }
@@ -398,7 +399,7 @@ fun GitHubSettingsScreen(
                         "Your Repositories (${state.repositories.size})",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF8E919B),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -406,8 +407,8 @@ fun GitHubSettingsScreen(
             items(state.repositories, key = { it.fullName }) { repo ->
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF151619),
-                    border = BorderStroke(1.dp, Color(0xFF24262C)),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(
@@ -430,12 +431,12 @@ fun GitHubSettingsScreen(
                                     text = repo.fullName,
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFE2E2E6),
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
                                     text = repo.description ?: "Default branch: ${repo.defaultBranch}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF8E919B),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -448,8 +449,8 @@ fun GitHubSettingsScreen(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF1E2026),
-                                border = BorderStroke(1.dp, Color(0xFF2C2F38)),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
@@ -465,15 +466,15 @@ fun GitHubSettingsScreen(
                                         "Clone to Project",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFE2E2E6),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             }
 
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF1E2026),
-                                border = BorderStroke(1.dp, Color(0xFF2C2F38)),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
@@ -494,7 +495,7 @@ fun GitHubSettingsScreen(
                                         "Launch Codespaces",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF818CF8),
+                                        color = MaterialTheme.colorScheme.primary,
                                     )
                                 }
                             }

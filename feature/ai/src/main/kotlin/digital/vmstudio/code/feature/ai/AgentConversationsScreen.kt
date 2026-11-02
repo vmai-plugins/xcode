@@ -228,7 +228,7 @@ private fun ConversationRow(
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Rename or delete chat",
+                        contentDescription = "Change chat color, rename, or delete",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
                     )

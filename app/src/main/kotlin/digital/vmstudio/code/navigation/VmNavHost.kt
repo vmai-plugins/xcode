@@ -58,8 +58,6 @@ fun VmNavHost(
     isOnline: Boolean,
     onOpenMenu: () -> Unit,
     hasCompletedOnboarding: Boolean = true,
-    hasSignedIn: Boolean = false,
-    onFinishSignIn: () -> Unit = {},
     onFinishOnboarding: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -79,7 +77,6 @@ fun VmNavHost(
         composable(VmDestination.Auth.route) {
             digital.vmstudio.code.ui.auth.AuthScreen(
                 onSignedIn = {
-                    onFinishSignIn()
                     val next = if (hasCompletedOnboarding) VmDestination.NewChat.route else VmDestination.Onboarding.route
                     navController.navigate(next) { popUpTo(VmDestination.Auth.route) { inclusive = true } }
                 }
@@ -565,4 +562,3 @@ private fun MenuScaffold(
         Box(modifier = Modifier.padding(padding)) { content() }
     }
 }
-

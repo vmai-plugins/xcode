@@ -25,15 +25,18 @@ fun AiSettingsSection(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val spacing = VmTheme.spacing
     var keyDraft by remember { mutableStateOf("") }
+    var baseUrlDraft by remember(state.preferences.aiBaseUrl) {
+        mutableStateOf(state.preferences.aiBaseUrl)
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
         VmCard {
-            Text("OmniRoute", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text("AI Provider", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(
-                text = "AI requests use the VM Studio OmniRoute gateway.",
+                text = "Connect VM Studio OmniRoute or another OpenAI-compatible API endpoint.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -41,6 +44,8 @@ fun AiSettingsSection(
         AiGatewaySection(
             state = state,
             viewModel = viewModel,
+            baseUrlDraft = baseUrlDraft,
+            onBaseUrlDraft = { baseUrlDraft = it },
             keyDraft = keyDraft,
             onKeyDraft = { keyDraft = it },
             onKeyConsumed = { keyDraft = "" },

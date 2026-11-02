@@ -606,7 +606,8 @@ fun AgentChatScreen(
                                         },
                                         onFixError = viewModel::fixErrorWithAi,
                                         onInstallApk = viewModel::installApk,
-                                        chatBubbleColorHex = state.chatBubbleColorHex,
+                                        chatBubbleColorHex = currentChat?.id?.let { chats.chatColors[it] }
+                                            ?: state.chatBubbleColorHex,
                                     )
                                     is TranscriptRowItem.ToolBatch -> ToolBatchRow(
                                         batch = rowItem,
@@ -677,7 +678,6 @@ fun AgentChatScreen(
                 onTextChange = { composerText = it },
                 enabled = state.canAcceptInput,
                 isRunning = state.isRunning,
-                isResuming = state.isResuming,
                 isStartingBackgroundRun = state.isStartingBackgroundRun,
                 permissionMode = state.permissionMode,
                 onPermissionModeChange = viewModel::setPermissionMode,
@@ -716,7 +716,6 @@ fun AgentChatScreen(
                 },
                 onTriggerCloudBuild = { showCloudBuildDialog = true },
                 onDetach = viewModel::detachToBackground,
-                totalTokens = state.totalTokens,
                 focusRequester = composerFocusRequester,
                 lastUserPrompt = lastUserPrompt,
                 onRecallLastPrompt = lastUserPrompt?.let { prompt ->

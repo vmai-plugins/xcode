@@ -424,7 +424,7 @@ internal class LocalFileSystemDelegate(
                 TransferEvent.Failed(
                     VmError.Storage(
                         summary = "Local file transfer failed",
-                        reason = exception.message,
+                        reason = "Path: $path\n${exception.message ?: exception::class.simpleName}",
                         suggestedAction = "Check folder permissions and available storage, then retry.",
                         retryable = true,
                     ),

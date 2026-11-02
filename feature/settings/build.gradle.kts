@@ -13,4 +13,5 @@ dependencies {
     implementation(projects.core.ssh)
     implementation(projects.core.database)
     implementation(projects.core.update)
+    implementation(projects.core.project)
 }

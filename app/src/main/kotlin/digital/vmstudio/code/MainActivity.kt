@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,10 +39,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
+import digital.vmstudio.code.core.ui.theme.ThemeMode
 import digital.vmstudio.code.core.ui.theme.VmTheme
 import digital.vmstudio.code.ui.VmApp
 
@@ -62,6 +66,17 @@ class MainActivity : ComponentActivity() {
             // Preferences drive the theme, so rendering before they load would show
             // the wrong theme for a frame and then flip.
             val ready = state as? MainUiState.Ready
+            val isDarkTheme = when (ready?.themeMode ?: ThemeMode.SYSTEM) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            SideEffect {
+                WindowInsetsControllerCompat(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !isDarkTheme
+                    isAppearanceLightNavigationBars = !isDarkTheme
+                }
+            }
             var isBiometricUnlocked by rememberSaveable { mutableStateOf(false) }
 
             VmTheme(
@@ -75,7 +90,6 @@ class MainActivity : ComponentActivity() {
                     } else {
                         VmApp(
                             isOnline = ready.isOnline,
-                            hasSignedIn = ready.preferences.hasSignedIn,
                             hasCompletedOnboarding = ready.preferences.hasCompletedOnboarding,
                         )
                     }
@@ -108,16 +122,14 @@ class MainActivity : ComponentActivity() {
         val uri = intent?.data ?: return
         if (uri.scheme == "vmstudio" && uri.host == "auth") {
             when (uri.path) {
-                "/github" -> {
-                    val code = uri.getQueryParameter("code")
-                    if (!code.isNullOrBlank()) {
-                        authViewModel.handleGitHubAuthCode(code)
-                    }
-                }
                 "/google" -> {
                     val code = uri.getQueryParameter("code")
                     if (!code.isNullOrBlank()) {
-                        authViewModel.handleGoogleAuthCode(code)
+                        authViewModel.handleGoogleAuthCode(code, uri.getQueryParameter("state"))
+                    } else {
+                        uri.getQueryParameter("error")?.let { error ->
+                            authViewModel.handleGoogleAuthError(error, uri.getQueryParameter("state"))
+                        }
                     }
                 }
             }
@@ -207,4 +219,3 @@ private fun BiometricLockGate(
         }
     }
 }
-

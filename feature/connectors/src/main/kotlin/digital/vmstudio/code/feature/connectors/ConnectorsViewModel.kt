@@ -4,17 +4,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
+import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveClient
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveFile
 import digital.vmstudio.code.core.connectors.drive.GoogleDriveManager
+import digital.vmstudio.code.core.connectors.google.GoogleAuthClient
+import digital.vmstudio.code.core.connectors.google.GoogleDriveOAuthState
 import digital.vmstudio.code.core.connectors.sheets.GoogleSheetsClient
 import digital.vmstudio.code.core.git.GitHubRepositoryClient
 import digital.vmstudio.code.core.connectors.whatsapp.EvolutionApiClient
 import digital.vmstudio.code.core.connectors.whatsapp.EvolutionConfig
 import digital.vmstudio.code.core.security.model.Secret
 import digital.vmstudio.code.core.security.model.SecretType
+import digital.vmstudio.code.core.security.store.HubCredentialManager
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
 import digital.vmstudio.code.core.database.entity.ServerEnvironment
 import digital.vmstudio.code.core.database.entity.SshAuthMethod
@@ -27,6 +31,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -150,11 +155,14 @@ private data class MutableExtraState(
 class ConnectorsViewModel @Inject constructor(
     private val googleDriveManager: GoogleDriveManager,
     private val googleDriveClient: GoogleDriveClient,
+    private val googleAuthClient: GoogleAuthClient,
+    private val driveOAuthState: GoogleDriveOAuthState,
     private val googleSheetsClient: GoogleSheetsClient,
     private val githubClient: GitHubRepositoryClient,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     private val preferencesRepository: UserPreferencesRepository,
     private val credentialStore: SecureCredentialStore,
+    private val hubCredentialManager: HubCredentialManager,
     private val aiProviders: AiProviderRegistry,
     private val serverRepository: ServerRepository,
     private val connectionManager: digital.vmstudio.code.core.ssh.connection.SshConnectionManager,
@@ -180,7 +188,8 @@ class ConnectorsViewModel @Inject constructor(
             driveBackups = extra.driveBackups,
             isBackingUpDrive = extra.isBackingUpDrive,
             driveStatusMessage = extra.driveStatusMessage,
-            hasDriveToken = prefs.googleDriveTokenCredentialId != null,
+            hasDriveToken = prefs.googleDriveTokenCredentialId != null ||
+                prefs.googleDriveRefreshTokenCredentialId != null,
             savedDriveToken = extra.savedDriveToken,
             isBrowsingDrive = extra.isBrowsingDrive,
             driveBrowserFolderId = extra.driveBrowserFolderId,
@@ -204,7 +213,9 @@ class ConnectorsViewModel @Inject constructor(
             githubStatusMessage = extra.githubStatusMessage,
             hubProjectCount = extra.hubProjectCount,
             hubTaskCount = extra.hubTaskCount,
-            hasHubKey = !prefs.hubApiKey.isNullOrBlank(),
+            hasHubKey = prefs.hubApiKeyCredentialId != null ||
+                prefs.hubUserTokenCredentialId != null ||
+                !prefs.legacyHubApiKey.isNullOrBlank(),
             hubBaseUrl = prefs.hubBaseUrl,
             isSyncingHub = extra.isSyncingHub,
             hubStatusMessage = extra.hubStatusMessage,
@@ -239,10 +250,20 @@ class ConnectorsViewModel @Inject constructor(
         loadSavedGoogleTokens()
         loadSavedEvolutionApiKey()
         viewModelScope.launch {
-            val key = preferencesRepository.preferences.first().hubApiKey
+            driveOAuthState.status.collect { message ->
+                if (message != null) {
+                    extraState.update { it.copy(driveStatusMessage = message) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            val preferences = preferencesRepository.preferences.first()
+            val key = projectHubClient.getEffectiveHubKey()
             if (!key.isNullOrBlank()) {
                 refreshProjectHubStatus()
-                syncCredentialsIfMissing()
+                if (preferences.hubApiKeyCredentialId != null || !preferences.legacyHubApiKey.isNullOrBlank()) {
+                    syncCredentialsIfMissing()
+                }
             } else {
                 extraState.update {
                     it.copy(
@@ -270,7 +291,11 @@ class ConnectorsViewModel @Inject constructor(
                         }
                         syncVpsServer(creds)
                     }
-                    is VmResult.Failure -> {}
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(hubStatusMessage = "Projects are connected, but Hub credentials could not be synced: ${credsRes.error.summary}")
+                        }
+                    }
                 }
             }
         }
@@ -595,8 +620,19 @@ class ConnectorsViewModel @Inject constructor(
             extraState.update { it.copy(isSyncingHub = true, hubStatusMessage = "Connecting & provisioning from $targetUrl…") }
             preferencesRepository.setHubBaseUrl(targetUrl)
             try {
-                // 1. Save Hub API Key immediately
-                preferencesRepository.setHubApiKey(trimmed)
+                // 1. Save Hub API Key immediately in secure storage
+                when (val stored = hubCredentialManager.store(trimmed)) {
+                    is VmResult.Success -> Unit
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                isSyncingHub = false,
+                                hubStatusMessage = "Could not securely save the Hub key: ${stored.error.summary}",
+                            )
+                        }
+                        return@launch
+                    }
+                }
 
                 // 2. Provision credentials (GitHub, OmniRoute, VPS, Drive)
                 var ghSynced = false
@@ -638,15 +674,41 @@ class ConnectorsViewModel @Inject constructor(
                 }
 
                 // 3. Fast single-pass project and task synchronization
-                val projectsRes = projectHubClient.fetchProjects()
-                val projects = (projectsRes as? VmResult.Success)?.value.orEmpty()
-                projectHubClient.syncUniversalProjects(cachedProjects = projects)
-
+                val projects = when (val projectsRes = projectHubClient.fetchProjects()) {
+                    is VmResult.Success -> projectsRes.value
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(hubStatusMessage = "Hub key saved, but workspace sync failed: ${projectsRes.error.summary}")
+                        }
+                        return@launch
+                    }
+                }
+                when (val localSync = projectHubClient.syncUniversalProjects(cachedProjects = projects)) {
+                    is VmResult.Success -> Unit
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(hubProjectCount = projects.size, hubStatusMessage = "Workspaces loaded, but local sync failed: ${localSync.error.summary}")
+                        }
+                        return@launch
+                    }
+                }
                 val tasksRes = projectHubClient.fetchTasks(cachedProjects = projects)
-                val tCount = (tasksRes as? VmResult.Success)?.value?.size ?: 0
+                val tCount = when (tasksRes) {
+                    is VmResult.Success -> tasksRes.value.size
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                hubProjectCount = projects.size,
+                                hubTaskCount = null,
+                                hubStatusMessage = "Workspaces synced, but task sync failed: ${tasksRes.error.summary}",
+                            )
+                        }
+                        return@launch
+                    }
+                }
 
                 val summaryText = buildString {
-                    append("✓ App Hub Provisioned! ")
+                    append("✓ Hub pairing succeeded! ")
                     append("${projects.size} Workspaces · $tCount Tasks")
                     if (ghSynced) append(" · GitHub Linked")
                     if (aiSynced) append(" · AI Active")
@@ -670,30 +732,46 @@ class ConnectorsViewModel @Inject constructor(
 
     fun unpairHub() {
         viewModelScope.launch {
-            preferencesRepository.setHubApiKey(null)
-            extraState.update {
-                it.copy(
-                    hubProjectCount = null,
-                    hubTaskCount = null,
-                    hubStatusMessage = "Device unpaired from VM Project Hub.",
-                )
+            when (val result = hubCredentialManager.clear()) {
+                is VmResult.Success -> extraState.update {
+                    it.copy(
+                        hubProjectCount = null,
+                        hubTaskCount = null,
+                        hubStatusMessage = "Device unpaired from VM Project Hub.",
+                    )
+                }
+                is VmResult.Failure -> extraState.update {
+                    it.copy(hubStatusMessage = "Could not remove the saved Hub key: ${result.error.summary}")
+                }
             }
         }
     }
 
     fun refreshProjectHubStatus() {
         viewModelScope.launch {
-            val projectsRes = projectHubClient.fetchProjects()
-            val projects = (projectsRes as? VmResult.Success)?.value.orEmpty()
-            val tasksRes = projectHubClient.fetchTasks(cachedProjects = projects)
-            val pCount = projects.size
-            val tCount = (tasksRes as? VmResult.Success)?.value?.size
-            extraState.update {
-                it.copy(
-                    hubProjectCount = pCount,
-                    hubTaskCount = tCount,
-                    hubStatusMessage = "Connected to vmstudio.digital ($pCount universal projects · ${tCount ?: 0} Kanban tasks)",
-                )
+            when (val projectsRes = projectHubClient.fetchProjects()) {
+                is VmResult.Failure -> extraState.update {
+                    it.copy(hubStatusMessage = "Hub status check failed: ${projectsRes.error.summary}")
+                }
+                is VmResult.Success -> {
+                    val projects = projectsRes.value
+                    when (val tasksRes = projectHubClient.fetchTasks(cachedProjects = projects)) {
+                        is VmResult.Failure -> extraState.update {
+                            it.copy(
+                                hubProjectCount = projects.size,
+                                hubTaskCount = null,
+                                hubStatusMessage = "Hub responded with ${projects.size} workspaces, but task status failed: ${tasksRes.error.summary}",
+                            )
+                        }
+                        is VmResult.Success -> extraState.update {
+                            it.copy(
+                                hubProjectCount = projects.size,
+                                hubTaskCount = tasksRes.value.size,
+                                hubStatusMessage = "Connected to ${projectHubClient.getEffectiveHubBaseUrl()} (${projects.size} workspaces · ${tasksRes.value.size} tasks)",
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -707,6 +785,7 @@ class ConnectorsViewModel @Inject constructor(
                 var syncedGithubCount = 0
                 var syncedAiActive = false
                 var syncedDriveReady = false
+                var credentialSyncFailure: VmError? = null
 
                 when (val credsRes = projectHubClient.syncHubCredentialsAndVps()) {
                     is VmResult.Success -> {
@@ -732,29 +811,51 @@ class ConnectorsViewModel @Inject constructor(
                             launch { connectionManager.session(sId) }
                         }
                     }
-                    is VmResult.Failure -> {}
+                    is VmResult.Failure -> credentialSyncFailure = credsRes.error
                 }
 
                 // Fast single-pass project and task sync
-                val projectsRes = projectHubClient.fetchProjects()
-                val projects = (projectsRes as? VmResult.Success)?.value.orEmpty()
-                projectHubClient.syncUniversalProjects(cachedProjects = projects)
+                val projects = when (val projectsRes = projectHubClient.fetchProjects()) {
+                    is VmResult.Success -> projectsRes.value
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(hubStatusMessage = "Workspace sync failed: ${projectsRes.error.summary}")
+                        }
+                        return@launch
+                    }
+                }
+                when (val localSync = projectHubClient.syncUniversalProjects(cachedProjects = projects)) {
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                hubProjectCount = projects.size,
+                                hubStatusMessage = "Workspaces loaded, but local sync failed: ${localSync.error.summary}",
+                            )
+                        }
+                        return@launch
+                    }
+                    is VmResult.Success -> Unit
+                }
 
                 val tasksRes = projectHubClient.fetchTasks(cachedProjects = projects)
-                val tCount = (tasksRes as? VmResult.Success)?.value?.size ?: 0
-                val pCount = projects.size
-
-                val summaryText = buildString {
-                    append("✓ App Hub Provisioned! ")
-                    append("$pCount Workspaces · $tCount Tasks")
-                    if (syncedGithubCount > 0) append(" · GitHub Linked")
-                    if (syncedAiActive) append(" · OmniRoute AI Active")
-                    if (syncedDriveReady) append(" · Drive Ready")
+                val taskCount = (tasksRes as? VmResult.Success)?.value?.size
+                val summaryText = when {
+                    credentialSyncFailure != null ->
+                        "Workspaces synced (${projects.size}), but Hub credentials were not synced: ${credentialSyncFailure.summary}"
+                    tasksRes is VmResult.Failure ->
+                        "Workspaces synced (${projects.size}), but task sync failed: ${tasksRes.error.summary}"
+                    else -> buildString {
+                        append("Hub sync complete: ${projects.size} workspaces · ${taskCount ?: 0} tasks")
+                        if (syncedGithubCount > 0) append(" · GitHub linked")
+                        if (syncedAiActive) append(" · OmniRoute AI active")
+                        if (syncedDriveReady) append(" · Drive ready")
+                    }
                 }
+
                 extraState.update {
                     it.copy(
-                        hubProjectCount = pCount,
-                        hubTaskCount = tCount,
+                        hubProjectCount = projects.size,
+                        hubTaskCount = taskCount,
                         hubStatusMessage = summaryText,
                     )
                 }
@@ -924,10 +1025,21 @@ class ConnectorsViewModel @Inject constructor(
 
     // --- Google Drive -------------------------------------------------------
 
-    fun refreshDriveBackups(token: String) {
-        if (token.isBlank()) return
+    fun googleDriveAuthorizationUrl(): String {
+        driveOAuthState.updateStatus("Opening Google Drive authorization…")
+        return googleAuthClient.buildDriveAuthorizationUri().toString()
+    }
+
+    fun refreshDriveBackups(token: String? = null) {
         viewModelScope.launch {
-            when (val result = googleDriveManager.listBackups(token)) {
+            val accessToken = token?.takeIf { it.isNotBlank() } ?: when (val active = getActiveDriveToken()) {
+                is VmResult.Success -> active.value
+                is VmResult.Failure -> {
+                    extraState.update { it.copy(driveStatusMessage = "Drive sync failed: ${active.error.summary}") }
+                    return@launch
+                }
+            }
+            when (val result = googleDriveManager.listBackups(accessToken)) {
                 is VmResult.Success -> {
                     extraState.update {
                         it.copy(
@@ -953,8 +1065,15 @@ class ConnectorsViewModel @Inject constructor(
         projectName: String,
         token: String,
     ) {
-        if (token.isBlank() || extraState.value.isBackingUpDrive) return
+        if (extraState.value.isBackingUpDrive) return
         viewModelScope.launch {
+            val accessToken = token.takeIf { it.isNotBlank() } ?: when (val active = getActiveDriveToken()) {
+                is VmResult.Success -> active.value
+                is VmResult.Failure -> {
+                    extraState.update { it.copy(driveStatusMessage = "Backup failed: ${active.error.summary}") }
+                    return@launch
+                }
+            }
             extraState.update {
                 it.copy(
                     isBackingUpDrive = true,
@@ -962,7 +1081,7 @@ class ConnectorsViewModel @Inject constructor(
                 )
             }
             try {
-                when (val result = googleDriveManager.backupProject(serverId, remotePath, projectName, token)) {
+                when (val result = googleDriveManager.backupProject(serverId, remotePath, projectName, accessToken)) {
                     is VmResult.Success -> {
                         extraState.update {
                             it.copy(
@@ -970,7 +1089,7 @@ class ConnectorsViewModel @Inject constructor(
                                     "(${result.value.sizeBytes / 1024} KB)",
                             )
                         }
-                        refreshDriveBackups(token)
+                        refreshDriveBackups(accessToken)
                     }
                     is VmResult.Failure -> {
                         extraState.update {
@@ -992,15 +1111,23 @@ class ConnectorsViewModel @Inject constructor(
     private fun loadSavedGoogleTokens() {
         viewModelScope.launch {
             val prefs = preferencesRepository.preferences.first()
-            prefs.googleDriveTokenCredentialId?.let { id ->
-                when (val secRes = credentialStore.read(id)) {
-                    is VmResult.Success -> {
-                        val tokenStr = secRes.value.useAsString { it }
-                        secRes.value.wipe()
-                        extraState.update { it.copy(savedDriveToken = tokenStr) }
-                        refreshDriveBackups(tokenStr)
+            if (prefs.googleDriveRefreshTokenCredentialId != null) {
+                refreshDriveBackups()
+            } else {
+                prefs.googleDriveTokenCredentialId?.let { id ->
+                    when (val secRes = credentialStore.read(id)) {
+                        is VmResult.Success -> {
+                            val tokenStr = secRes.value.useAsString { it }
+                            secRes.value.wipe()
+                            extraState.update { it.copy(savedDriveToken = tokenStr) }
+                            refreshDriveBackups(tokenStr)
+                        }
+                        is VmResult.Failure -> {
+                            extraState.update {
+                                it.copy(driveStatusMessage = "Could not read the saved Google Drive token: ${secRes.error.summary}")
+                            }
+                        }
                     }
-                    is VmResult.Failure -> {}
                 }
             }
             prefs.googleSheetsTokenCredentialId?.let { id ->
@@ -1029,10 +1156,23 @@ class ConnectorsViewModel @Inject constructor(
             try {
                 when (val putRes = credentialStore.put(SecretType.OAUTH_ACCESS_TOKEN, "Google Drive Token", secret)) {
                     is VmResult.Success -> {
-                        val previousId = preferencesRepository.preferences.first().googleDriveTokenCredentialId
+                        val previous = preferencesRepository.preferences.first()
                         preferencesRepository.setGoogleDriveTokenCredential(putRes.value.id)
-                        extraState.update { it.copy(savedDriveToken = trimmed, driveStatusMessage = "Google Drive token saved securely.") }
-                        previousId?.let { oldId -> credentialStore.delete(oldId) }
+                        preferencesRepository.setGoogleDriveRefreshTokenCredential(null)
+                        var cleanupError: String? = null
+                        listOfNotNull(
+                            previous.googleDriveTokenCredentialId,
+                            previous.googleDriveRefreshTokenCredentialId,
+                        ).distinct().forEach { oldId ->
+                            when (val deleted = credentialStore.delete(oldId)) {
+                                is VmResult.Success -> Unit
+                                is VmResult.Failure -> cleanupError = deleted.error.summary
+                            }
+                        }
+                        val status = cleanupError?.let {
+                            "Token saved securely, but an older credential could not be removed: $it"
+                        } ?: "Google Drive token saved securely."
+                        extraState.update { it.copy(savedDriveToken = trimmed, driveStatusMessage = status) }
                         refreshDriveBackups(trimmed)
                     }
                     is VmResult.Failure -> {
@@ -1047,10 +1187,31 @@ class ConnectorsViewModel @Inject constructor(
 
     fun clearDriveToken() {
         viewModelScope.launch {
-            val currentId = preferencesRepository.preferences.first().googleDriveTokenCredentialId
+            val prefs = preferencesRepository.preferences.first()
             preferencesRepository.setGoogleDriveTokenCredential(null)
-            currentId?.let { credentialStore.delete(it) }
-            extraState.update { it.copy(savedDriveToken = null, driveBackups = emptyList(), driveFiles = emptyList(), isBrowsingDrive = false, driveStatusMessage = "Drive token removed.") }
+            preferencesRepository.setGoogleDriveRefreshTokenCredential(null)
+            var cleanupError: String? = null
+            listOfNotNull(
+                prefs.googleDriveTokenCredentialId,
+                prefs.googleDriveRefreshTokenCredentialId,
+            ).distinct().forEach { id ->
+                when (val deleted = credentialStore.delete(id)) {
+                    is VmResult.Success -> Unit
+                    is VmResult.Failure -> cleanupError = deleted.error.summary
+                }
+            }
+            val status = cleanupError?.let {
+                "Drive disconnected, but a stored credential could not be deleted: $it"
+            } ?: "Drive token removed."
+            extraState.update {
+                it.copy(
+                    savedDriveToken = null,
+                    driveBackups = emptyList(),
+                    driveFiles = emptyList(),
+                    isBrowsingDrive = false,
+                    driveStatusMessage = status,
+                )
+            }
         }
     }
 
@@ -1064,10 +1225,12 @@ class ConnectorsViewModel @Inject constructor(
 
     fun browseDriveFolder(folderId: String = "root", folderName: String = "My Drive") {
         viewModelScope.launch {
-            val token = getActiveDriveToken()
-            if (token.isNullOrBlank()) {
-                extraState.update { it.copy(driveStatusMessage = "Google Drive token required to browse.") }
-                return@launch
+            val token = when (val active = getActiveDriveToken()) {
+                is VmResult.Success -> active.value
+                is VmResult.Failure -> {
+                    extraState.update { it.copy(driveStatusMessage = "Google Drive access required: ${active.error.summary}") }
+                    return@launch
+                }
             }
             extraState.update { current ->
                 val updatedCrumbs = if (folderId == "root") {
@@ -1130,10 +1293,12 @@ class ConnectorsViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val token = getActiveDriveToken()
-            if (token.isNullOrBlank()) {
-                extraState.update { it.copy(driveStatusMessage = "Drive token required to read file.") }
-                return@launch
+            val token = when (val active = getActiveDriveToken()) {
+                is VmResult.Success -> active.value
+                is VmResult.Failure -> {
+                    extraState.update { it.copy(driveStatusMessage = "Google Drive access required: ${active.error.summary}") }
+                    return@launch
+                }
             }
             extraState.update {
                 it.copy(
@@ -1172,17 +1337,37 @@ class ConnectorsViewModel @Inject constructor(
         extraState.update { it.copy(drivePreviewFile = null, drivePreviewContent = null) }
     }
 
-    private suspend fun getActiveDriveToken(): String? {
+    private suspend fun getActiveDriveToken(): VmResult<String> {
+        val prefs = preferencesRepository.preferences.first()
+        val refreshId = prefs.googleDriveRefreshTokenCredentialId
+        if (refreshId != null) {
+            val refreshSecret = when (val result = credentialStore.read(refreshId)) {
+                is VmResult.Success -> result.value
+                is VmResult.Failure -> return result
+            }
+            return try {
+                googleAuthClient.refreshDriveAccessToken(refreshSecret)
+            } finally {
+                refreshSecret.wipe()
+            }
+        }
+
         val stateToken = extraState.value.savedDriveToken
-        if (!stateToken.isNullOrBlank()) return stateToken
-        val id = preferencesRepository.preferences.first().googleDriveTokenCredentialId ?: return null
+        if (!stateToken.isNullOrBlank()) return VmResult.Success(stateToken)
+        val id = prefs.googleDriveTokenCredentialId
+            ?: return VmResult.Failure(
+                VmError.Authentication(
+                    summary = "Google Drive is not connected",
+                    suggestedAction = "Connect Google Drive to grant access to your files.",
+                )
+            )
         return when (val sec = credentialStore.read(id)) {
             is VmResult.Success -> {
                 val str = sec.value.useAsString { it }
                 sec.value.wipe()
-                str
+                VmResult.Success(str)
             }
-            is VmResult.Failure -> null
+            is VmResult.Failure -> sec
         }
     }
 

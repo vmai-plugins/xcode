@@ -16,10 +16,6 @@ class AiProviderRegistry @Inject constructor(
 
     suspend fun active(): AiProvider = omniRoute
 
-    fun forKind(kind: AiProviderKind): AiProvider = omniRoute
-
-    fun forId(providerId: String): AiProvider = omniRoute
-
     fun all(): List<AiProvider> = listOf(omniRoute)
 
     private val healthCache = ConcurrentHashMap<HealthCacheKey, CachedHealth>()

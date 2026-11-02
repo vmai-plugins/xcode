@@ -71,7 +71,6 @@ private const val DRAWER_RECENT_CHATS = 50
 fun VmApp(
     isOnline: Boolean,
     modifier: Modifier = Modifier,
-    hasSignedIn: Boolean = true,
     hasCompletedOnboarding: Boolean = true,
     navController: NavHostController = rememberNavController(),
     conversationsViewModel: AgentConversationsViewModel = hiltViewModel(),
@@ -157,7 +156,6 @@ fun VmApp(
                         isOnline = isOnline,
                         onOpenMenu = { scope.launch { drawerState.open() } },
                         hasCompletedOnboarding = hasCompletedOnboarding,
-                        hasSignedIn = hasSignedIn,
                         appViewModel = appViewModel,
                     )
                 }
@@ -199,7 +197,6 @@ fun VmApp(
                         isOnline = isOnline,
                         onOpenMenu = { scope.launch { drawerState.open() } },
                         hasCompletedOnboarding = hasCompletedOnboarding,
-                        hasSignedIn = hasSignedIn,
                         appViewModel = appViewModel,
                     )
                 }
@@ -214,7 +211,6 @@ private fun AppMainContent(
     isOnline: Boolean,
     onOpenMenu: () -> Unit,
     hasCompletedOnboarding: Boolean,
-    hasSignedIn: Boolean,
     appViewModel: VmAppViewModel,
 ) {
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
@@ -224,7 +220,6 @@ private fun AppMainContent(
                 isOnline = isOnline,
                 onOpenMenu = onOpenMenu,
                 hasCompletedOnboarding = hasCompletedOnboarding,
-                hasSignedIn = hasSignedIn,
                 onFinishOnboarding = appViewModel::completeOnboarding,
             )
 

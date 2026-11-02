@@ -58,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -269,6 +270,11 @@ internal fun TranscriptRow(
                     defaultBubbleColor
                 }
             }
+            val bubbleTextColor = if (hasCustomColor) {
+                if (bubbleColor.luminance() > 0.179f) Color(0xFF111827) else Color(0xFFF3F4F6)
+            } else {
+                defaultTextColor
+            }
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = bubbleColor,
@@ -278,7 +284,7 @@ internal fun TranscriptRow(
                 Text(
                     text = item.text,
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = if (hasCustomColor) Color(0xFFF3F4F6) else defaultTextColor,
+                    color = bubbleTextColor,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
@@ -1149,4 +1155,3 @@ internal fun FollowTail(listState: LazyListState, transcript: List<TranscriptIte
         }
     }
 }
-

@@ -14,6 +14,7 @@ dependencies {
     api(projects.core.network)
     implementation(projects.core.database)
     implementation(projects.core.git)
+    implementation(projects.core.security)
     implementation(projects.core.sftp)
     implementation(projects.core.terminal)
     implementation(libs.androidx.core.ktx)

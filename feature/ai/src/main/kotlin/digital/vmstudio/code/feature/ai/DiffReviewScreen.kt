@@ -240,9 +240,6 @@ fun DiffReviewScreen(
                         diff = currentDiff,
                         isSaving = state.isSaving,
                         isStaged = state.isStaged,
-                        onToggleStage = {
-                            if (state.isStaged) viewModel.unstageFile() else viewModel.stageFile()
-                        },
                         onOpenCommit = { viewModel.toggleCommitSheet(true) },
                         onReject = viewModel::reject,
                     )
@@ -257,7 +254,6 @@ private fun DiffContent(
     diff: GitDiff,
     isSaving: Boolean,
     isStaged: Boolean,
-    onToggleStage: () -> Unit,
     onOpenCommit: () -> Unit,
     onReject: () -> Unit,
 ) {

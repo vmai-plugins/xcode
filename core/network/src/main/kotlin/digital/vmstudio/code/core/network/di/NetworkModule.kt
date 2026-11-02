@@ -33,8 +33,7 @@ object NetworkModule {
         // handled by VmHttpClient, which knows which status codes deserve it.
         .retryOnConnectionFailure(true)
         // OkHttp drops Authorization when a redirect leaves the host, but not custom
-        // key headers such as x-api-key: a gateway (or a proxy in front of it) that
-        // redirected elsewhere would have handed the key to that other host.
+        // key headers: a gateway (or proxy) redirect could otherwise leak credentials.
         .addInterceptor { chain ->
             val request = chain.request()
             if (KEY_HEADERS.none { request.header(it) != null }) return@addInterceptor chain.proceed(request)
@@ -67,5 +66,11 @@ object NetworkModule {
     /** The host a request's credentials were meant for; follow-up requests keep the tag. */
     private class KeyOwner(val host: String)
 
-    private val KEY_HEADERS = listOf("Authorization", "x-api-key", "api-key")
+    private val KEY_HEADERS = listOf(
+        "Authorization",
+        "x-api-key",
+        "api-key",
+        "X-VMPJ-Key",
+        "X-Hub-Key",
+    )
 }

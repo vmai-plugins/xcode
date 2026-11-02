@@ -29,8 +29,8 @@ private val Context.preferencesDataStore: DataStore<Preferences> by preferencesD
 /**
  * Reads and writes app-wide settings.
  *
- * Deliberately holds no secrets: the AI API key is referenced by credential id and
- * the value itself lives in the Keystore-backed credential store.
+ * Active secrets are referenced by credential id and live in the Keystore-backed
+ * credential store. The legacy Hub key is exposed only for one-time migration.
  */
 @Singleton
 class UserPreferencesRepository @Inject constructor(
@@ -91,11 +91,23 @@ class UserPreferencesRepository @Inject constructor(
         it[Keys.HAS_SIGNED_IN] = signedIn
     }
 
-    suspend fun setHubApiKey(key: String?) = edit {
-        if (key.isNullOrBlank()) {
-            it.remove(Keys.HUB_API_KEY)
+    suspend fun setHubApiKeyCredentialId(credentialId: String?) = edit {
+        if (credentialId.isNullOrBlank()) {
+            it.remove(Keys.HUB_API_KEY_CREDENTIAL)
         } else {
-            it[Keys.HUB_API_KEY] = key.trim()
+            it[Keys.HUB_API_KEY_CREDENTIAL] = credentialId
+        }
+    }
+
+    suspend fun clearLegacyHubApiKey() = edit {
+        it.remove(Keys.HUB_API_KEY)
+    }
+
+    suspend fun setHubUserTokenCredential(credentialId: String?) = edit {
+        if (credentialId.isNullOrBlank()) {
+            it.remove(Keys.HUB_USER_TOKEN_CREDENTIAL)
+        } else {
+            it[Keys.HUB_USER_TOKEN_CREDENTIAL] = credentialId
         }
     }
 
@@ -117,6 +129,15 @@ class UserPreferencesRepository @Inject constructor(
             it.remove(Keys.AI_API_KEY_CREDENTIAL)
         } else {
             it[Keys.AI_API_KEY_CREDENTIAL] = credentialId
+        }
+    }
+
+    suspend fun setAiBaseUrl(baseUrl: String) = edit {
+        val trimmed = baseUrl.trim().removeSuffix("/")
+        if (trimmed.isBlank()) {
+            it.remove(Keys.AI_BASE_URL)
+        } else {
+            it[Keys.AI_BASE_URL] = trimmed
         }
     }
 
@@ -227,7 +248,7 @@ class UserPreferencesRepository @Inject constructor(
             hasSignedIn = this[Keys.HAS_SIGNED_IN] ?: defaults.hasSignedIn,
             confirmDestructiveCommands = this[Keys.CONFIRM_DESTRUCTIVE] ?: defaults.confirmDestructiveCommands,
             aiProviderId = UserPreferences.PROVIDER_OMNIROUTE,
-            aiBaseUrl = UserPreferences.DEFAULT_AI_BASE_URL,
+            aiBaseUrl = this[Keys.AI_BASE_URL] ?: defaults.aiBaseUrl,
             aiApiKeyCredentialId = this[Keys.AI_API_KEY_CREDENTIAL],
             aiSelectedModelId = this[Keys.AI_MODEL] ?: defaults.aiSelectedModelId,
             aiAvailableModelIds = parseModelIds(this[Keys.AI_MODELS]).ifEmpty { defaults.aiAvailableModelIds },
@@ -248,9 +269,12 @@ class UserPreferencesRepository @Inject constructor(
             userAvatarUrl = this[Keys.USER_AVATAR_URL],
             googleIdToken = this[Keys.GOOGLE_ID_TOKEN],
             googleDriveTokenCredentialId = this[Keys.GOOGLE_DRIVE_TOKEN_CREDENTIAL],
+            googleDriveRefreshTokenCredentialId = this[Keys.GOOGLE_DRIVE_REFRESH_TOKEN_CREDENTIAL],
             googleSheetsTokenCredentialId = this[Keys.GOOGLE_SHEETS_TOKEN_CREDENTIAL],
             googleSheetsSpreadsheetId = this[Keys.GOOGLE_SHEETS_SPREADSHEET_ID],
-            hubApiKey = this[Keys.HUB_API_KEY],
+            hubApiKeyCredentialId = this[Keys.HUB_API_KEY_CREDENTIAL],
+            legacyHubApiKey = this[Keys.HUB_API_KEY],
+            hubUserTokenCredentialId = this[Keys.HUB_USER_TOKEN_CREDENTIAL],
             hubBaseUrl = this[Keys.HUB_BASE_URL] ?: defaults.hubBaseUrl,
             biometricLockEnabled = this[Keys.BIOMETRIC_LOCK_ENABLED] ?: defaults.biometricLockEnabled,
             autoConnectServerId = this[Keys.AUTO_CONNECT_SERVER_ID],
@@ -289,6 +313,14 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setGoogleDriveTokenCredential(id: String?) = edit {
         if (id != null) it[Keys.GOOGLE_DRIVE_TOKEN_CREDENTIAL] = id else it.remove(Keys.GOOGLE_DRIVE_TOKEN_CREDENTIAL)
+    }
+
+    suspend fun setGoogleDriveRefreshTokenCredential(id: String?) = edit {
+        if (id != null) {
+            it[Keys.GOOGLE_DRIVE_REFRESH_TOKEN_CREDENTIAL] = id
+        } else {
+            it.remove(Keys.GOOGLE_DRIVE_REFRESH_TOKEN_CREDENTIAL)
+        }
     }
 
     suspend fun setGoogleSheetsSettings(credentialId: String?, spreadsheetId: String?) = edit {
@@ -358,9 +390,12 @@ class UserPreferencesRepository @Inject constructor(
         val USER_AVATAR_URL = stringPreferencesKey("user_avatar_url")
         val GOOGLE_ID_TOKEN = stringPreferencesKey("google_id_token")
         val HUB_API_KEY = stringPreferencesKey("hub_api_key")
+        val HUB_API_KEY_CREDENTIAL = stringPreferencesKey("hub_api_key_credential")
+        val HUB_USER_TOKEN_CREDENTIAL = stringPreferencesKey("hub_user_token_credential")
         val HUB_BASE_URL = stringPreferencesKey("hub_base_url")
         val BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("biometric_lock_enabled")
         val GOOGLE_DRIVE_TOKEN_CREDENTIAL = stringPreferencesKey("google_drive_token_credential")
+        val GOOGLE_DRIVE_REFRESH_TOKEN_CREDENTIAL = stringPreferencesKey("google_drive_refresh_token_credential")
         val GOOGLE_SHEETS_TOKEN_CREDENTIAL = stringPreferencesKey("google_sheets_token_credential")
         val GOOGLE_SHEETS_SPREADSHEET_ID = stringPreferencesKey("google_sheets_spreadsheet_id")
         val AUTO_CONNECT_SERVER_ID = stringPreferencesKey("auto_connect_server_id")
@@ -412,5 +447,3 @@ internal fun parseFolders(raw: String?): Map<String, String> =
     raw.orEmpty().lineSequence()
         .mapNotNull { line -> line.split('\t', limit = 2).takeIf { it.size == 2 && it[1].isNotBlank() } }
         .associate { (id, path) -> id to path }
-
-

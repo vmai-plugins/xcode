@@ -15,6 +15,7 @@ enum class SecretType {
     OAUTH_ACCESS_TOKEN,
     OAUTH_REFRESH_TOKEN,
     GIT_HTTP_TOKEN,
+    HUB_API_KEY,
     GENERIC,
 }
 

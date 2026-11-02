@@ -17,6 +17,7 @@ import digital.vmstudio.code.core.network.http.RetryPolicy
 import digital.vmstudio.code.core.network.http.VmHttpClient
 import digital.vmstudio.code.core.network.http.VmHttpException
 import digital.vmstudio.code.core.security.model.Secret
+import digital.vmstudio.code.core.security.store.HubCredentialManager
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.ssh.command.CommandGuard
 import digital.vmstudio.code.core.ssh.command.CommandLimits
@@ -66,6 +67,7 @@ class OmniRouteAgentLoop @Inject constructor(
     private val webFetcher: WebFetcher,
     private val gitHubRepositoryClient: GitHubRepositoryClient,
     private val userPreferencesRepository: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
+    private val hubCredentialManager: HubCredentialManager,
 ) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -953,12 +955,29 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
+    private suspend fun wordpressHubKey(): VmResult<String?> {
+        return when (val result = hubCredentialManager.read()) {
+            is VmResult.Success -> {
+                val secret = result.value ?: return VmResult.Success(null)
+                try {
+                    VmResult.Success(secret.useAsString { it.trim().takeIf { value -> value.isNotBlank() } })
+                } finally {
+                    secret.wipe()
+                }
+            }
+            is VmResult.Failure -> result
+        }
+    }
+
     private suspend fun wordpressFileList(call: OmniRouteToolCall): ToolOutcome {
         val relPath = argument(call.argumentsJson, "path")?.ifBlank { "wp-content" } ?: "wp-content"
         val prefs = userPreferencesRepository.preferences.first()
-        val hubKey = prefs.hubApiKey?.trim().orEmpty()
+        val hubKey = when (val result = wordpressHubKey()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
+        } ?: return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         if (hubKey.isBlank()) {
-            return ToolOutcome("WordPress REST bridge requires Hub Pairing Key. Please configure it in Settings > Connectors > VM Project Hub.", isError = true)
+            return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         }
         val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
         val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
@@ -979,9 +998,12 @@ class OmniRouteAgentLoop @Inject constructor(
         val relPath = argument(call.argumentsJson, "path")
             ?: return ToolOutcome("Missing required argument \"path\".", isError = true)
         val prefs = userPreferencesRepository.preferences.first()
-        val hubKey = prefs.hubApiKey?.trim().orEmpty()
+        val hubKey = when (val result = wordpressHubKey()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
+        } ?: return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         if (hubKey.isBlank()) {
-            return ToolOutcome("WordPress REST bridge requires Hub Pairing Key. Please configure it in Settings > Connectors > VM Project Hub.", isError = true)
+            return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         }
         val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
         val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
@@ -1013,9 +1035,12 @@ class OmniRouteAgentLoop @Inject constructor(
         val content = argument(call.argumentsJson, "content")
             ?: return ToolOutcome("Missing required argument \"content\".", isError = true)
         val prefs = userPreferencesRepository.preferences.first()
-        val hubKey = prefs.hubApiKey?.trim().orEmpty()
+        val hubKey = when (val result = wordpressHubKey()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
+        } ?: return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         if (hubKey.isBlank()) {
-            return ToolOutcome("WordPress REST bridge requires Hub Pairing Key. Please configure it in Settings > Connectors > VM Project Hub.", isError = true)
+            return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         }
         val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
         val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl

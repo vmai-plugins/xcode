@@ -48,7 +48,10 @@ data class UserPreferences(
     val agentAutonomyLevel: AgentAutonomyLevel = AgentAutonomyLevel.DEVELOPER,
     val hasCompletedOnboarding: Boolean = true,
     val hasSignedIn: Boolean = true,
-    val hubApiKey: String? = null,
+    val hubApiKeyCredentialId: String? = null,
+    /** Legacy plaintext value, read only so it can be migrated into secure storage. */
+    val legacyHubApiKey: String? = null,
+    val hubUserTokenCredentialId: String? = null,
     val hubBaseUrl: String = DEFAULT_HUB_BASE_URL,
     val biometricLockEnabled: Boolean = false,
     /**
@@ -63,7 +66,7 @@ data class UserPreferences(
     val agentMaxIterations: Int = 25,
     val agentMaxCommandsPerRun: Int = 50,
     val confirmDestructiveCommands: Boolean = true,
-    /** Retained for preference compatibility; OmniRoute is the only supported provider. */
+    /** OpenAI-compatible gateway address; the default points to VM Studio OmniRoute. */
     val aiProviderId: String = PROVIDER_OMNIROUTE,
     val aiBaseUrl: String = DEFAULT_AI_BASE_URL,
     /** Credential reference id for the user-provided AI API key. */
@@ -93,10 +96,10 @@ data class UserPreferences(
     val aiWebAccessEnabled: Boolean = true,
     /**
      * How much conversation the gateway agent keeps before trimming: one of
-     * [CONTEXT_SMALL], [CONTEXT_LARGE], [CONTEXT_HUGE]. Small protects free models
-     * with short windows; large and huge suit models with long ones.
+     * [CONTEXT_SMALL], [CONTEXT_LARGE], [CONTEXT_HUGE]. Huge is the default for
+     * long coding sessions; smaller values suit models with short context windows.
      */
-    val aiContextSize: String = CONTEXT_LARGE,
+    val aiContextSize: String = CONTEXT_HUGE,
     /** The model last picked in a chat; a new chat starts on it. */
     val lastChatModel: String? = null,
     /** Models remembered per project directory/identifier. */
@@ -112,6 +115,7 @@ data class UserPreferences(
     val userAvatarUrl: String? = null,
     val googleIdToken: String? = null,
     val googleDriveTokenCredentialId: String? = null,
+    val googleDriveRefreshTokenCredentialId: String? = null,
     val googleSheetsTokenCredentialId: String? = null,
     val googleSheetsSpreadsheetId: String? = null,
     val autoConnectServerId: String? = null,
@@ -130,7 +134,7 @@ data class UserPreferences(
         const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
         const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"
         const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
-        /** The only supported AI gateway. */
+        /** Default AI gateway; users may configure another OpenAI-compatible endpoint. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
         const val DEFAULT_AI_MODEL_ID = "auto/best-coding"
         val DEFAULT_FREE_AI_MODELS = setOf(

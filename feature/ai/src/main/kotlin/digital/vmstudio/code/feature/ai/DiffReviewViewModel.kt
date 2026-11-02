@@ -168,8 +168,15 @@ class DiffReviewViewModel @Inject constructor(
             val repoPath = directoryOf(filePath) ?: return@launch
             _uiState.update { it.copy(isSaving = true, showCommitSheet = false) }
 
-            // Ensure staged first
-            gitService.add(serverId, repoPath, listOf(filePath))
+            when (val stageResult = gitService.add(serverId, repoPath, listOf(filePath))) {
+                is GitResult.Success -> Unit
+                is GitResult.Failure -> {
+                    _uiState.update {
+                        it.copy(isSaving = false, error = mapGitError(stageResult.error))
+                    }
+                    return@launch
+                }
+            }
 
             when (val commitRes = gitService.commit(serverId, repoPath, message)) {
                 is GitResult.Success -> {

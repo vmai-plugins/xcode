@@ -1,35 +1,33 @@
 package digital.vmstudio.code.ui.auth
 
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialCancellationException
-import androidx.credentials.exceptions.GetCredentialException
-import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
+import digital.vmstudio.code.core.connectors.google.GoogleDriveOAuthState
+import digital.vmstudio.code.core.security.model.Secret
+import digital.vmstudio.code.core.security.model.SecretType
+import digital.vmstudio.code.core.security.store.SecureCredentialStore
+import digital.vmstudio.code.core.security.store.HubCredentialManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
-import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
-    private val gitHubAuthClient: digital.vmstudio.code.core.connectors.github.GitHubAuthClient,
     private val googleAuthClient: digital.vmstudio.code.core.connectors.google.GoogleAuthClient,
+    private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
+    private val credentialStore: SecureCredentialStore,
+    private val hubCredentialManager: HubCredentialManager,
+    private val driveOAuthState: GoogleDriveOAuthState,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
@@ -49,6 +47,7 @@ class AuthViewModel @Inject constructor(
                 .setShowTitle(true)
                 .build()
             customTabsIntent.launchUrl(context, uri)
+            _uiState.value = _uiState.value.copy(isLoading = false)
         } catch (e: Exception) {
             Log.w(TAG, "CustomTabs failed, falling back to standard ACTION_VIEW", e)
             try {
@@ -56,6 +55,7 @@ class AuthViewModel @Inject constructor(
                     addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
+                _uiState.value = _uiState.value.copy(isLoading = false)
             } catch (err: Exception) {
                 Log.e(TAG, "Failed to launch web browser for Google sign-in", err)
                 _uiState.value = _uiState.value.copy(
@@ -75,29 +75,148 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun handleGoogleAuthCode(code: String) {
+    fun handleGoogleAuthCode(code: String, state: String? = null) {
+        if (googleAuthClient.isDriveAuthorizationState(state)) {
+            handleGoogleDriveAuthCode(code, state)
+            return
+        }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            when (val result = googleAuthClient.exchangeCodeForProfile(code)) {
+            when (val verifier = googleAuthClient.consumeAuthorizationCodeVerifier(state)) {
                 is digital.vmstudio.code.core.common.result.VmResult.Success -> {
-                    val profile = result.value
-                    Log.d(TAG, "Google profile retrieved for ${profile.email}")
-                    preferencesRepository.setUserProfile(
-                        email = profile.email,
-                        name = profile.name ?: profile.email.substringBefore('@'),
-                        avatarUrl = profile.picture,
-                        idToken = profile.idToken,
-                    )
-                    preferencesRepository.setHasSignedIn(true)
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
+                    when (val result = projectHubClient.exchangeGoogleAuthorizationCode(code, verifier.value)) {
+                        is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                            val sessionSecret = Secret.of(result.value.accessToken)
+                            try {
+                                when (
+                                    val stored = credentialStore.put(
+                                        type = SecretType.OAUTH_ACCESS_TOKEN,
+                                        label = "VM Project Hub session",
+                                        secret = sessionSecret,
+                                    )
+                                ) {
+                                    is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                                        val previousId = preferencesRepository.preferences.first()
+                                            .hubUserTokenCredentialId
+                                        preferencesRepository.setHubUserTokenCredential(stored.value.id)
+                                        preferencesRepository.setUserProfile(
+                                            email = result.value.email,
+                                            name = result.value.name.ifBlank {
+                                                result.value.email.substringBefore('@')
+                                            },
+                                            avatarUrl = result.value.avatarUrl,
+                                        )
+                                        preferencesRepository.setHasSignedIn(true)
+                                        if (previousId != null && previousId != stored.value.id) {
+                                            when (val deleted = credentialStore.delete(previousId)) {
+                                                is digital.vmstudio.code.core.common.result.VmResult.Success -> Unit
+                                                is digital.vmstudio.code.core.common.result.VmResult.Failure ->
+                                                    Log.w(TAG, "Old Hub session cleanup failed: ${deleted.error.summary}")
+                                            }
+                                        }
+                                        _uiState.value = _uiState.value.copy(
+                                            isLoading = false,
+                                            error = null,
+                                            isSignedIn = true,
+                                        )
+                                    }
+                                    is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                                        Log.e(TAG, "Could not securely store the VM Project Hub session: ${stored.error.summary}")
+                                        _uiState.value = _uiState.value.copy(
+                                            isLoading = false,
+                                            error = "Google signed in, but the Hub session could not be stored securely.",
+                                        )
+                                    }
+                                }
+                            } finally {
+                                sessionSecret.wipe()
+                            }
+                        }
+                        is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                            Log.e(TAG, "Google account sign-in failed: ${result.error.summary}")
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                error = "Google sign-in failed: ${result.error.summary}",
+                            )
+                        }
+                    }
                 }
                 is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
-                    Log.e(TAG, "Google OAuth exchange failed: ${result.error.summary}")
+                    Log.e(TAG, "Google OAuth state validation failed: ${verifier.error.summary}")
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = "Google Sign-In failed: ${result.error.summary}",
+                        error = "Google sign-in failed: ${verifier.error.summary}",
                     )
                 }
+            }
+        }
+    }
+
+    fun handleGoogleAuthError(error: String, state: String?) {
+        val message = when (error) {
+            "access_denied" -> "Google authorization was cancelled."
+            else -> "Google authorization failed: ${error.take(120)}"
+        }
+        if (googleAuthClient.isDriveAuthorizationState(state)) {
+            driveOAuthState.updateStatus(message)
+        } else {
+            _uiState.value = _uiState.value.copy(isLoading = false, error = message)
+        }
+    }
+
+    private fun handleGoogleDriveAuthCode(code: String, state: String?) {
+        viewModelScope.launch {
+            driveOAuthState.updateStatus("Completing Google Drive authorization…")
+            try {
+                when (val result = googleAuthClient.exchangeCodeForDriveRefreshToken(code, state)) {
+                    is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                        val refreshToken = Secret.of(result.value)
+                        try {
+                            when (
+                                val stored = credentialStore.put(
+                                    type = SecretType.OAUTH_REFRESH_TOKEN,
+                                    label = "Google Drive refresh token",
+                                    secret = refreshToken,
+                                )
+                            ) {
+                                is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                                    val previous = preferencesRepository.preferences.first()
+                                    preferencesRepository.setGoogleDriveRefreshTokenCredential(stored.value.id)
+                                    preferencesRepository.setGoogleDriveTokenCredential(null)
+                                    listOfNotNull(
+                                        previous.googleDriveRefreshTokenCredentialId,
+                                        previous.googleDriveTokenCredentialId,
+                                    ).distinct().forEach { previousId ->
+                                        when (val deleted = credentialStore.delete(previousId)) {
+                                            is digital.vmstudio.code.core.common.result.VmResult.Success -> Unit
+                                            is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                                                Log.w(TAG, "Old Google Drive credential cleanup failed: ${deleted.error.summary}")
+                                            }
+                                        }
+                                    }
+                                    driveOAuthState.updateStatus("Google Drive connected. Full Drive access is ready.")
+                                }
+                                is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                                    driveOAuthState.updateStatus(
+                                        "Google Drive authorization succeeded, but the refresh token could not be stored: ${stored.error.summary}",
+                                    )
+                                }
+                            }
+                        } finally {
+                            refreshToken.wipe()
+                        }
+                    }
+                    is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                        driveOAuthState.updateStatus("Google Drive connection failed: ${result.error.summary}")
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                Log.e(TAG, "Google Drive authorization failed", exception)
+                driveOAuthState.updateStatus(
+                    "Google Drive connection failed: ${exception.localizedMessage ?: "Unexpected error"}",
+                )
             }
         }
     }
@@ -113,103 +232,24 @@ class AuthViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            preferencesRepository.setHubApiKey(trimmed)
-            preferencesRepository.setUserProfile(
-                email = "token-user@vmstudio.digital",
-                name = "API Developer",
-                avatarUrl = null,
-                idToken = null,
-            )
-            preferencesRepository.setHasSignedIn(true)
-            _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
-            onSignedIn()
-        }
-    }
-
-    fun signInWithGoogle(context: Context, onSignedIn: () -> Unit) {
-        if (_uiState.value.isLoading) return
-
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            try {
-                // CredentialManager requires an Activity context to anchor the system bottom sheet dialog
-                val activity = context.findActivity() ?: context
-                val credentialManager = CredentialManager.create(activity)
-
-                val webClientId = "1067538652652-3rtonh80siv4an0scham29psk0pilsaq.apps.googleusercontent.com"
-
-                val googleIdOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId(webClientId)
-                    .setAutoSelectEnabled(false) // Prompt user so they can select or switch accounts
-                    .setNonce(generateHashedNonce())
-                    .build()
-
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleIdOption)
-                    .build()
-
-                val result = credentialManager.getCredential(
-                    request = request,
-                    context = activity,
-                )
-
-                val credential = result.credential
-                if (credential is CustomCredential &&
-                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                ) {
-                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                    val email = googleIdTokenCredential.id
-                    val displayName = googleIdTokenCredential.displayName?.takeIf { it.isNotBlank() }
-                        ?: email.substringBefore('@')
-                    val avatarUrl = googleIdTokenCredential.profilePictureUri?.toString()
-                    val idToken = googleIdTokenCredential.idToken
-
+            when (val stored = hubCredentialManager.store(trimmed)) {
+                is digital.vmstudio.code.core.common.result.VmResult.Success -> {
                     preferencesRepository.setUserProfile(
-                        email = email,
-                        name = displayName,
-                        avatarUrl = avatarUrl,
-                        idToken = idToken,
+                        email = "token-user@vmstudio.digital",
+                        name = "API Developer",
+                        avatarUrl = null,
+                        idToken = null,
                     )
                     preferencesRepository.setHasSignedIn(true)
                     _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
                     onSignedIn()
-                } else {
-                    throw IllegalStateException("Unexpected credential format received: ${credential::class.java.simpleName}")
                 }
-            } catch (e: GetCredentialCancellationException) {
-                // User intentionally cancelled / dismissed the Google Account chooser
-                Log.d(TAG, "Google sign-in cancelled by user")
-                _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-            } catch (e: NoCredentialException) {
-                // No Google account configured on device
-                Log.w(TAG, "No Google accounts available on device", e)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "No Google account found on this device. Please add an account in Android Settings or Continue as Guest.",
-                )
-            } catch (e: GetCredentialException) {
-                Log.e(TAG, "Credential Manager error: ${e.type}", e)
-                val errorMessage = when {
-                    e.message?.contains("16", ignoreCase = true) == true ||
-                        e.message?.contains("Cannot find a matching credential", ignoreCase = true) == true ->
-                        "Account selection was dismissed. Tap Continue with Google to retry."
-                    e.message?.contains("10", ignoreCase = true) == true ||
-                        e.message?.contains("Developer Error", ignoreCase = true) == true ->
-                        "Play Services authorization error (Developer Error). Please Continue as Guest or verify signing credentials."
-                    else ->
-                        e.localizedMessage ?: "Google Sign-In failed. Please try again or Continue as Guest."
+                is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Could not securely save the Hub token: ${stored.error.summary}",
+                    )
                 }
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = errorMessage,
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Unexpected authentication exception", e)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = e.localizedMessage ?: "An unexpected error occurred during sign-in.",
-                )
             }
         }
     }
@@ -226,38 +266,6 @@ class AuthViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = false, error = null)
             onSignedIn()
         }
-    }
-
-    fun handleGitHubAuthCode(code: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            when (val result = gitHubAuthClient.exchangeCodeForToken(code)) {
-                is digital.vmstudio.code.core.common.result.VmResult.Success -> {
-                    Log.d(TAG, "GitHub Token exchanged successfully.")
-                    preferencesRepository.setHasSignedIn(true)
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null, isSignedIn = true)
-                }
-                is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
-                    Log.e(TAG, "GitHub Token exchange failed: ${result.error.summary}")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Failed to authenticate with GitHub: ${result.error.summary}"
-                    )
-                }
-            }
-        }
-    }
-
-    private fun generateHashedNonce(): String {
-        val rawNonce = UUID.randomUUID().toString()
-        val bytes = MessageDigest.getInstance("SHA-256").digest(rawNonce.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-
-    private tailrec fun Context.findActivity(): Activity? = when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
     }
 
     private companion object {

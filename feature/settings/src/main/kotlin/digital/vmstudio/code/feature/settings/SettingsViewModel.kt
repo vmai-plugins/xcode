@@ -11,6 +11,7 @@ import digital.vmstudio.code.core.common.preferences.UserPreferences
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
 import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.common.version.AppVersionProvider
+import digital.vmstudio.code.core.project.VmProjectHubClient
 import digital.vmstudio.code.core.security.crypto.KeystoreCrypto
 import digital.vmstudio.code.core.security.crypto.VaultCrypto
 import digital.vmstudio.code.core.security.store.SecureCredentialStore
@@ -51,6 +52,7 @@ class SettingsViewModel @Inject constructor(
     private val updateManager: UpdateManager,
     private val serverRepository: ServerRepository,
     private val vaultCrypto: VaultCrypto,
+    private val projectHubClient: VmProjectHubClient,
 ) : ViewModel() {
 
     private val isErasing = MutableStateFlow(false)
@@ -274,6 +276,22 @@ class SettingsViewModel @Inject constructor(
 
     fun signOut() {
         viewModelScope.launch {
+            when (val result = projectHubClient.revokeGoogleSession()) {
+                is VmResult.Success -> Unit
+                is VmResult.Failure -> {
+                    credentialEraseError.value = "Could not revoke the VM Project Hub session: ${result.error.summary}"
+                }
+            }
+            val credentialId = preferencesRepository.preferences.first().hubUserTokenCredentialId
+            preferencesRepository.setHubUserTokenCredential(null)
+            if (credentialId != null) {
+                when (val result = credentialStore.delete(credentialId)) {
+                    is VmResult.Success -> Unit
+                    is VmResult.Failure -> {
+                        credentialEraseError.value = "Could not remove the stored Hub session: ${result.error.summary}"
+                    }
+                }
+            }
             preferencesRepository.signOutUser()
         }
     }

@@ -87,29 +87,12 @@
   <script>
     (function() {
       const search = window.location.search || '';
-      const customSchemeUri = 'vmstudio://auth/google' + search;
-      const androidIntentUri = 'intent://auth/google' + search + '#Intent;scheme=vmstudio;package=digital.vmstudio.code;end';
-
+      const appUri = 'vmstudio://auth/google' + search;
       const btn = document.getElementById('action-btn');
-      
-      // On Android browsers, intent:// format reliably opens the registered app
-      const isAndroid = /Android/i.test(navigator.userAgent);
-      const targetUri = isAndroid ? androidIntentUri : customSchemeUri;
-      btn.href = targetUri;
 
-      btn.addEventListener('click', function(e) {
-        // Fallback to custom scheme if intent doesn't trigger
-        setTimeout(function() {
-          window.location.href = customSchemeUri;
-        }, 600);
-      });
-
-      // Attempt automatic redirect
-      try {
-        window.location.href = targetUri;
-      } catch (err) {
-        console.warn('Auto redirect failed', err);
-      }
+      // The custom scheme works for both debug and release app IDs.
+      btn.href = appUri;
+      window.location.href = appUri;
     })();
   </script>
 </body>

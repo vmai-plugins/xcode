@@ -98,11 +98,11 @@ fun ChatColorPickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Chat Color Accent") },
+        title = { Text("Chat theme color") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
-                    "Choose an accent color for this chat conversation:",
+                    "Choose a color for this chat's prompt bubbles and chat accent:",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Row(

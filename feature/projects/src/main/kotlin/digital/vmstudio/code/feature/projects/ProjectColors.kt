@@ -40,8 +40,7 @@ object ProjectColors {
                 return Color(fullHex.toLong(16))
             } catch (_: Exception) {}
         }
-        val safeHash = fallbackSeed.hashCode().let { if (it < 0) -it else it }
-        val index = if (Palette.isNotEmpty()) safeHash % Palette.size else 0
+        val index = Math.floorMod(fallbackSeed.hashCode(), Palette.size)
         val fallbackHex = Palette[index].hex.removePrefix("#")
         return Color("FF$fallbackHex".toLong(16))
     }

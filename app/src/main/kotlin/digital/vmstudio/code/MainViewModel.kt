@@ -46,8 +46,12 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val prefs = preferencesRepository.preferences.first()
-                if (!prefs.hubApiKey.isNullOrBlank()) {
+                val hasAdminHubKey = prefs.hubApiKeyCredentialId != null ||
+                    !prefs.legacyHubApiKey.isNullOrBlank()
+                if (hasAdminHubKey) {
                     projectHubClient.syncHubCredentialsAndVps()
+                }
+                if (hasAdminHubKey || prefs.hubUserTokenCredentialId != null) {
                     projectHubClient.syncUniversalProjects()
                     projectHubClient.syncAllChatsFromServer()
                 }

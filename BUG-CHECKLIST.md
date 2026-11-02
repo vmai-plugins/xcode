@@ -53,3 +53,13 @@
 ## Earlier checklist items not reproduced
 
 - [ ] Re-check the previously suspected editor null assertions, terminal coroutine null assertion, GitHub settings cancellation handling, and one-click VPS navigation behavior. Targeted searches during this pass did not reproduce those reported patterns.
+
+## Findings from the 2026-11-02 follow-up audit
+
+- [x] **P1 — Partial AI stream can be marked successful.** A transport failure after visible text now produces a terminal `Failed` event instead of a false successful completion; regression coverage verifies the partial delta is preserved and fallback is not attempted.
+- [x] **P2 — Project color fallback can crash for one hash.** `ProjectColors.parseColor` now uses `floorMod`; regression coverage verifies the `polygenelubricants` seed whose hash is `Int.MIN_VALUE`.
+- [x] **P2 — GitHub account OAuth was an unusable orphan path.** Removed the unconfigured callback, view-model handler, and client. GitHub repository access remains through the existing token-based connector flow.
+- [x] **P1 — Diff review ignored staging failures before committing.** A failed `git add` now aborts the commit and is surfaced; regression coverage verifies the commit is not attempted.
+- [ ] **P3 — Credential reference Room schema is unused by production code.** `CredentialReferenceDao` is registered in Room and tested, but production credential storage uses `FileSecureCredentialStore` and does not call the DAO. Decide which persistence design is authoritative; if removing the table, do so through a Room migration.
+- [x] **P3 — Remove obsolete UI/provider plumbing.** Removed the unused sign-in state propagation, composer parameters, diff callback, and provider lookup methods that had no callers. Staging remains available in the Diff Review screen's staged-state control.
+- [ ] **P3 — Reduce agent-loop change risk.** `OmniRouteAgentLoop` is a 1,655-line, 49-function class; Detekt reports `run` cyclomatic complexity of 69 against a threshold of 20. Split by responsibility behind focused tests. Detekt currently uses `ignoreFailures = true`, so these findings do not fail the build.
