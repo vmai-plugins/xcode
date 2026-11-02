@@ -5,12 +5,9 @@ remote development machines over SSH, browse and edit projects, run commands, us
 Git, and delegate coding work to an AI agent that operates inside a real workspace
 rather than guessing from a chat window.
 
-> **Status: in development.** Foundation, security, SSH, SFTP, the terminal and the
-> AI agent are built: you can add a server, connect, verify its host key, browse and
-> manage its files, run an interactive shell, and give a coding task to Claude Code
-> running on that machine. The editor, Git and the direct HTTP AI provider are not yet
-> implemented. See [Current status](#current-status) for exactly what does and does
-> not work.
+> **Status: in development.** The app already supports SSH, SFTP, a terminal, remote
+> editing, Git, an AI chat gateway and Claude Code over SSH. Some planned subsystems
+> remain incomplete; see [Current status](#current-status) for what works today.
 
 ---
 
@@ -60,7 +57,7 @@ alongside a release build (`applicationId` suffix `.debug`).
 
 ### Working
 
-- **Build system** — 24 Gradle modules driven by seven convention plugins, with a
+- **Build system** — 25 Gradle modules driven by seven convention plugins, with a
   resolution-verified version catalog.
 - **Structured errors** — every failure carries what happened, the likely reason, a
   suggested action and whether retrying can help. `VmErrorPanel` renders them; there
@@ -193,4 +190,3 @@ Anthropic Messages API; see [AI-AGENT.md](AI-AGENT.md#setting-up-the-server).
 ## Licence
 
 Not yet determined.
-

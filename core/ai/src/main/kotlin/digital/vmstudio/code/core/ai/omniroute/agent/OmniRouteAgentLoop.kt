@@ -1213,7 +1213,14 @@ class OmniRouteAgentLoop @Inject constructor(
             caseSensitive = caseSensitive,
         )
 
-        return when (val result = commandGuard.run(serverId, command, requestedByAgent = true)) {
+        return when (
+            val result = commandGuard.run(
+                serverId,
+                command,
+                requestedByAgent = true,
+                projectRoot = workingDirectory,
+            )
+        ) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
             is VmResult.Success -> {
                 val output = result.value.combinedOutput()
@@ -1590,7 +1597,13 @@ class OmniRouteAgentLoop @Inject constructor(
         // in the SSH login directory; builds and tests get time to finish.
         val command = if (workingDirectory.isBlank()) requested else "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(workingDirectory)} && $requested"
 
-        val result = commandGuard.run(serverId, command, AGENT_COMMAND_LIMITS, requestedByAgent = true)
+        val result = commandGuard.run(
+            serverId,
+            command,
+            AGENT_COMMAND_LIMITS,
+            requestedByAgent = true,
+            projectRoot = workingDirectory,
+        )
         return when (result) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
             is VmResult.Success -> {
@@ -1655,7 +1668,13 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         val resolved = resolvePath(workingDirectory, directory)
         val command = "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(resolved)} && ./gradlew $tasks --no-daemon"
-        val result = commandGuard.run(serverId, command, AGENT_COMMAND_LIMITS, requestedByAgent = true)
+        val result = commandGuard.run(
+            serverId,
+            command,
+            AGENT_COMMAND_LIMITS,
+            requestedByAgent = true,
+            projectRoot = workingDirectory,
+        )
         return when (result) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
             is VmResult.Success -> {
@@ -1695,6 +1714,7 @@ class OmniRouteAgentLoop @Inject constructor(
             "cd $quotedApks && (find . -maxdepth 5 -type f -name '*.apk' -exec ls -lh {} + 2>/dev/null || find . -maxdepth 5 -type f -name '*.apk')",
             AGENT_COMMAND_LIMITS,
             requestedByAgent = true,
+            projectRoot = workingDirectory,
         )
         return when (result) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
@@ -2174,4 +2194,3 @@ internal fun trimHistory(
     if (trimmed.sumOf { it.size() } > budget) trimmed = trimmed.map { it.shortened() }
     return trimmed
 }
-

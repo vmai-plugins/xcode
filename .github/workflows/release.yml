@@ -54,13 +54,18 @@ jobs:
       - name: Restore the release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "VMSTUDIO_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          else
-            echo "::notice::KEYSTORE_BASE64 secret not set; using debug key signing for release APK."
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || \
+             [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Release signing secrets are required. Refusing to publish a release signed with a debug key."
+            exit 1
           fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          test -s "$RUNNER_TEMP/release.jks"
+          echo "VMSTUDIO_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -84,10 +89,7 @@ jobs:
         run: |
           APK="$(ls app/build/outputs/apk/release/*.apk | grep -v unsigned | head -n1)"
           if [ -z "$APK" ]; then
-            APK="$(ls app/build/outputs/apk/release/*.apk | head -n1)"
-          fi
-          if [ -z "$APK" ]; then
-            echo "::error::No release APK was produced."
+            echo "::error::No signed release APK was produced."
             exit 1
           fi
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)"
@@ -105,15 +107,18 @@ jobs:
           gh release upload "$TARGET_TAG" "xcodes-${VERSION}.apk" --clobber
 
       - name: Deploy APK to App Hub VPS
-        if: ${{ secrets.DEPLOY_SSH_KEY != '' }}
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
           TARGET_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes
           META_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info
-          VMPJ_KEY: ${{ secrets.VMPJ_KEY || 'xc_a081cf117bf790917874c8a0f5dee6634442fa9d' }}
+          VMPJ_KEY: ${{ secrets.VMPJ_KEY }}
         run: |
           set -e
+          if [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::notice::DEPLOY_SSH_KEY is not configured; skipping VPS deployment."
+            exit 0
+          fi
           mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR $META_DIR /home/vmstudio/htdocs/vmstudio.digital/apps /home/vmstudio/htdocs/vmstudio.digital/apps/x-codes"
           scp -i ~/.ssh/id_rsa "xcodes-${VERSION}.apk" "${DEPLOY_HOST}:${TARGET_DIR}/app-release.apk"
@@ -130,10 +135,15 @@ jobs:
             "sed -i \"s/'version_name'          => '[0-9.]*'/'version_name'          => '${VERSION}'/g\" /home/vmstudio/htdocs/vmstudio.digital/wp-content/plugins/vm-project-hub/includes/class-vmpj-rest.php 2>/dev/null || true"
 
           # Update Project #25 on App Hub REST API
-          curl -s -X POST -H "Content-Type: application/json" \
-            -H "X-VMPJ-Key: ${VMPJ_KEY}" \
-            -d "{\"name\":\"X-Codes (Android IDE App)\",\"status\":\"live\",\"live_url\":\"https://vmstudio.digital/apps/xcodes-${VERSION}.apk\",\"app_urls\":\"v${VERSION} Direct APK: https://vmstudio.digital/apps/xcodes-${VERSION}.apk\\nMirror APK: https://apps.vmstudio.digital/x-codes/app-release.apk\\nGitHub Release: https://github.com/vmai-plugins/xcode/releases/download/v${VERSION}/xcodes-${VERSION}.apk\"}" \
-            "https://vmstudio.digital/wp-json/xcodes/v1/projects/25" || true
+          if [ -n "$VMPJ_KEY" ]; then
+            curl --fail --silent --show-error \
+              -H "Content-Type: application/json" \
+              -H "X-VMPJ-Key: ${VMPJ_KEY}" \
+              -d "{\"name\":\"X-Codes (Android IDE App)\",\"status\":\"live\",\"live_url\":\"https://vmstudio.digital/apps/xcodes-${VERSION}.apk\",\"app_urls\":\"v${VERSION} Direct APK: https://vmstudio.digital/apps/xcodes-${VERSION}.apk\\nMirror APK: https://apps.vmstudio.digital/x-codes/app-release.apk\\nGitHub Release: https://github.com/vmai-plugins/xcode/releases/download/v${VERSION}/xcodes-${VERSION}.apk\"}" \
+              "https://vmstudio.digital/wp-json/xcodes/v1/projects/25"
+          else
+            echo "::notice::VMPJ_KEY is not configured; skipping the optional App Hub project update."
+          fi
 
           cat > meta.json <<EOF
           {

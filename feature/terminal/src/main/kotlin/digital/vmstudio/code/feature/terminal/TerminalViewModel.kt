@@ -244,9 +244,9 @@ class TerminalViewModel @Inject constructor(
      * Best-effort by nature. The mirror is discarded whenever the user edits with
      * arrow keys or history recall, and a full-screen program owns the keystrokes
      * entirely — in both cases the line is sent unchecked, because a guess about
-     * what the shell's line buffer contains is worse than no guess. Authoritative
-     * enforcement lives on [CommandGuard.run], where the whole command string is
-     * known: configured project commands and, later, every agent tool call.
+     * what the shell's line buffer contains is worse than no guess. The local
+     * assessment is a mistake-prevention check, not a sandbox; agent subprocesses
+     * are separately governed by the selected provider's own permission controls.
      */
     private fun submitLine() {
         viewModelScope.launch {
@@ -330,5 +330,4 @@ class TerminalViewModel @Inject constructor(
         const val ARG_PATH = "path"
     }
 }
-
 

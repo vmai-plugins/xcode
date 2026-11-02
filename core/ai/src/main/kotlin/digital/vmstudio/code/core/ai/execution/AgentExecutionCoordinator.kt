@@ -13,6 +13,7 @@ import digital.vmstudio.code.core.common.log.LogCategory
 import digital.vmstudio.code.core.common.log.VmLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -69,7 +70,6 @@ class AgentExecutionCoordinator @Inject constructor(
         prompt: String,
         runner: suspend (emitEvent: suspend (AgentEvent) -> Unit) -> Unit,
     ): SharedFlow<AgentEvent> {
-        activeRuns[conversationId]?.job?.cancel()
         VmLog.d(LogCategory.AI, TAG, "Starting execution in conversation $conversationId: ${prompt.take(60)}")
 
         val eventFlow = MutableSharedFlow<AgentEvent>(
@@ -79,10 +79,9 @@ class AgentExecutionCoordinator @Inject constructor(
         )
         val lastEvent = AtomicReference<AgentEvent?>(null)
 
-        wakeLockManager.acquire()
-        notifyServiceStart()
+        lateinit var activeRun: ActiveRun
 
-        val job = scope.launch {
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 runner { event ->
                     lastEvent.set(event)
@@ -108,34 +107,45 @@ class AgentExecutionCoordinator @Inject constructor(
                 lastEvent.set(errorEvent)
                 eventFlow.emit(errorEvent)
             } finally {
-                activeRuns.remove(conversationId)
-                updateState()
-                wakeLockManager.release()
-                if (activeRuns.isEmpty()) {
-                    notifyServiceStop()
+                val wasActiveRun = activeRuns.remove(conversationId, activeRun)
+                if (wasActiveRun) {
+                    updateState()
                 }
+                wakeLockManager.release()
+                if (wasActiveRun && activeRuns.isEmpty()) notifyServiceStop()
             }
         }
 
-        activeRuns[conversationId] = ActiveRun(conversationId, taskId, job, eventFlow, lastEvent)
-        updateState()
+        activeRun = ActiveRun(conversationId, taskId, job, eventFlow, lastEvent)
+        synchronized(activeRuns) {
+            activeRuns[conversationId]?.job?.cancel()
+            activeRuns[conversationId] = activeRun
+            updateState()
+            wakeLockManager.acquire()
+            notifyServiceStart()
+            job.start()
+        }
         return eventFlow.asSharedFlow()
     }
 
     fun stopRun(conversationId: String) {
-        val run = activeRuns.remove(conversationId)
-        run?.job?.cancel()
-        updateState()
-        if (activeRuns.isEmpty()) {
-            notifyServiceStop()
+        synchronized(activeRuns) {
+            val run = activeRuns.remove(conversationId)
+            run?.job?.cancel()
+            updateState()
+            if (activeRuns.isEmpty()) {
+                notifyServiceStop()
+            }
         }
     }
 
     fun stopAll() {
-        activeRuns.values.forEach { it.job.cancel() }
-        activeRuns.clear()
-        updateState()
-        notifyServiceStop()
+        synchronized(activeRuns) {
+            activeRuns.values.forEach { it.job.cancel() }
+            activeRuns.clear()
+            updateState()
+            notifyServiceStop()
+        }
     }
 
     private fun updateState() {

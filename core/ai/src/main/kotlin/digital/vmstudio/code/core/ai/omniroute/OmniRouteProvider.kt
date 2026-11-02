@@ -101,7 +101,7 @@ class OmniRouteProvider @Inject constructor(
             )
         }
 
-        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId)
             ?: return VmResult.Success(
                 AiProviderHealth(
                     kind = kind,
@@ -185,7 +185,7 @@ class OmniRouteProvider @Inject constructor(
             return@flow
         }
 
-        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId)
         if (key == null) {
             emit(noApiKeyError())
             return@flow
@@ -475,7 +475,7 @@ class OmniRouteProvider @Inject constructor(
                 ),
             )
         }
-        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId)
             ?: return VmResult.Failure(
                 VmError.Authentication(
                     summary = "No API key is stored",
@@ -507,7 +507,7 @@ class OmniRouteProvider @Inject constructor(
                 ),
             )
         }
-        val key = resolveApiKey(settings.aiApiKeyCredentialId, baseUrl)
+        val key = resolveApiKey(settings.aiApiKeyCredentialId)
             ?: return VmResult.Failure(
                 VmError.Authentication(
                     summary = "No API key is stored",
@@ -531,20 +531,14 @@ class OmniRouteProvider @Inject constructor(
 
     // --- internals ---------------------------------------------------------------
 
-    private suspend fun resolveApiKey(credentialId: String?, baseUrl: String = ""): Secret? {
+    private suspend fun resolveApiKey(credentialId: String?): Secret? {
         if (credentialId != null) {
             when (val result = credentialStore.read(credentialId)) {
                 is VmResult.Success -> return result.value.registerForRedaction()
                 is VmResult.Failure -> Unit
             }
         }
-        val isDefaultGateway = baseUrl.isBlank() ||
-            baseUrl.contains("vmstudio.digital", ignoreCase = true)
-        return if (isDefaultGateway) {
-            Secret.of(DEFAULT_GATEWAY_API_KEY).registerForRedaction()
-        } else {
-            null
-        }
+        return null
     }
 
     private suspend fun fetchModels(baseUrl: String, key: Secret): VmResult<GatewayModelList> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fetchModelsInternal(baseUrl, key) }
@@ -741,7 +735,6 @@ class OmniRouteProvider @Inject constructor(
 
     private companion object {
         const val TAG = "OmniRouteProvider"
-        const val DEFAULT_GATEWAY_API_KEY = "sk-fdcfc87a62a78521-a3cc2b-917e354e"
         const val DEFAULT_MAX_TOKENS = 8192
         const val MODELS_PAGE_SIZE = 1000
         const val MAX_MODEL_PAGES = 20
@@ -872,4 +865,3 @@ data class GatewayModelList(val ids: List<String>, val freeIds: Set<String>)
 
 /** Gateway connection details handed to a server-side run. */
 class GatewayAccess(val baseUrl: String, val dialect: OmniRouteDialect, val key: Secret)
-

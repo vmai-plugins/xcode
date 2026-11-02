@@ -1,4 +1,5 @@
 import digital.vmstudio.buildlogic.libs
+import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.dependencies
@@ -24,6 +25,29 @@ class AndroidFeatureConventionPlugin : Plugin<Project> {
             add("implementation", libs.findLibrary("androidx-navigation-compose").get())
             add("implementation", libs.findLibrary("hilt-navigation-compose").get())
             add("implementation", libs.findLibrary("compose-material-icons-extended").get())
+        }
+
+        val featurePath = path
+        val verifyFeatureBoundaries = tasks.register("verifyFeatureBoundaries") {
+            group = "verification"
+            description = "Checks that this feature does not depend directly on another feature."
+            doLast {
+                val violations = configurations.flatMap { configuration ->
+                    configuration.dependencies
+                        .withType(ProjectDependency::class.java)
+                        .filter {
+                            it.dependencyProject.path.startsWith(":feature:") &&
+                                it.dependencyProject.path != featurePath
+                        }
+                        .map { "${configuration.name} -> ${it.dependencyProject.path}" }
+                }.distinct()
+                check(violations.isEmpty()) {
+                    "Feature modules cannot depend on other features: ${violations.joinToString()}"
+                }
+            }
+        }
+        tasks.named("check").configure {
+            dependsOn(verifyFeatureBoundaries)
         }
     }
 }

@@ -100,11 +100,17 @@ internal fun AiGatewaySection(
                     }
                 }
 
-                // Live status badge
+                val gatewayIsOnline = state.health?.isAvailable == true
+                val statusColor = when {
+                    gatewayIsOnline -> Color(0xFF10B981)
+                    state.isTesting -> Color(0xFF818CF8)
+                    state.hasStoredKey -> Color(0xFFF59E0B)
+                    else -> Color(0xFF8E919B)
+                }
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF10B981).copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                    color = statusColor.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.4f)),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
@@ -115,13 +121,18 @@ internal fun AiGatewaySection(
                             modifier = Modifier
                                 .size(7.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF10B981)),
+                                .background(statusColor),
                         )
                         Text(
-                            text = "Online",
+                            text = when {
+                                gatewayIsOnline -> "Online"
+                                state.isTesting -> "Testing"
+                                state.hasStoredKey -> "Ready to test"
+                                else -> "API key required"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF34D399),
+                            color = statusColor,
                         )
                     }
                 }
@@ -129,9 +140,9 @@ internal fun AiGatewaySection(
 
             Text(
                 text = if (state.hasStoredKey) {
-                    "Using custom API key override stored securely in Android Keystore."
+                    "Your API key is stored securely in Android Keystore."
                 } else {
-                    "Connected via built-in VM Studio Cloud key. Zero setup required for free & coding models."
+                    "Pair this device with VM Project Hub in Connectors to provision gateway access, or add your own OmniRoute API key."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFA0A3AD),
@@ -244,7 +255,7 @@ private fun ApiKeyField(
         onValueChange = onKeyChange,
         placeholder = {
             Text(
-                if (hasStoredKey) "Stored in hardware keystore" else "Enter custom API key (optional)",
+                if (hasStoredKey) "Saved in Android Keystore" else "Enter API key or pair via Project Hub",
                 color = Color(0xFF6B7280),
             )
         },
@@ -286,7 +297,7 @@ private fun ApiKeyField(
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 9.dp)) {
                 Text(
-                    "Save Override Key",
+                    "Save & Test API Key",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = if (key.isNotBlank()) Color.White else Color(0xFF6B7280),
@@ -303,7 +314,7 @@ private fun ApiKeyField(
                     .clickable(onClick = onClear),
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                    Text("Use Built-in Key", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE2E2E6))
+                    Text("Remove Saved Key", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE2E2E6))
                 }
             }
         }

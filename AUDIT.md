@@ -1,5 +1,10 @@
 # Audit — universal Claude Code client
 
+> Historical integration snapshot. Some findings and validation notes below have
+> since changed; use the current code, [README.md](README.md), and
+> [SECURITY.md](SECURITY.md) for present behavior. The credential-rotation reminder
+> remains applicable because removing a committed key does not revoke it.
+
 Scope: turn the app from a "VM Studio" ecosystem tool into a generic mobile client
 for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
 
@@ -58,11 +63,12 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
 5. **No context trimming.** Long tool-heavy conversations grow until the gateway rejects them. Trim oldest turns while keeping tool-call/result pairs together.
 6. **Cost is always $0.** The gateway bills upstream; show tokens only, or read cost if the gateway reports it.
 
-## Findings still open
+## Findings recorded in that snapshot
 
 **Security (act on these first)**
-1. The Hub API key (`xc_a081…`) was committed and is still in git history. Rotate it
-   server-side; deleting the file does not revoke it.
+1. A Hub API key was committed and remains in git history. It has been removed from
+   the working tree, but must still be revoked/rotated server-side; deleting it does
+   not revoke it.
 2. Devices that already ran an older build keep the two seeded VPS rows. Delete them in
    Servers (or ship a one-off migration).
 3. `scripts/build-app.sh` and `scripts/publish-app.sh` hard-code `root@31.97.63.239` and
@@ -81,7 +87,7 @@ for Claude Code running on any SSH-reachable machine, with a Claude-style UI.
    Remove them or implement them.
 10. README / ARCHITECTURE still describe the VM Studio ecosystem and a 29-module count.
 
-## Not verified
+## Validation status at the time of that snapshot
 The sandbox has no Android SDK, so nothing was compiled or run. Brace/paren balance and
 dangling references were checked by script and grep. Run `./build.sh :app:assembleDebug`
 (or let CI do it) before merging.

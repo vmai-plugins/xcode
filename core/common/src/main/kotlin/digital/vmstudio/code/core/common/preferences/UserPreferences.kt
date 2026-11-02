@@ -66,7 +66,7 @@ data class UserPreferences(
     /** Retained for preference compatibility; OmniRoute is the only supported provider. */
     val aiProviderId: String = PROVIDER_OMNIROUTE,
     val aiBaseUrl: String = DEFAULT_AI_BASE_URL,
-    /** Credential reference id for the AI API key, or null when using the built-in online gateway key. */
+    /** Credential reference id for the user-provided AI API key. */
     val aiApiKeyCredentialId: String? = null,
     val aiSelectedModelId: String? = DEFAULT_AI_MODEL_ID,
     /**
@@ -129,7 +129,6 @@ data class UserPreferences(
     companion object {
         const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
         const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"
-        const val DEFAULT_HUB_API_KEY = "xc_a081cf117bf790917874c8a0f5dee6634442fa9d"
         const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
         /** The only supported AI gateway. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"
@@ -181,4 +180,3 @@ data class UserPreferences(
         const val PROVIDER_OMNIROUTE = "omniroute"
     }
 }
-

@@ -29,6 +29,7 @@ interface CommandGuard {
         serverId: String,
         command: String,
         requestedByAgent: Boolean = false,
+        projectRoot: String? = null,
     ): VmResult<CommandAssessment>
 
     /**
@@ -41,6 +42,7 @@ interface CommandGuard {
         serverId: String,
         command: String,
         requestedByAgent: Boolean = false,
+        projectRoot: String? = null,
     ): VmResult<CommandAssessment>
 
     /** [authorize] followed by execution. The only sanctioned way to run a command. */
@@ -49,6 +51,7 @@ interface CommandGuard {
         command: String,
         limits: CommandLimits = CommandLimits(),
         requestedByAgent: Boolean = false,
+        projectRoot: String? = null,
     ): VmResult<CommandResult>
 }
 
@@ -64,16 +67,18 @@ class DefaultCommandGuard @Inject constructor(
         serverId: String,
         command: String,
         requestedByAgent: Boolean,
+        projectRoot: String?,
     ): VmResult<CommandAssessment> = resolveServer(serverId).flatMap { server ->
-        VmResult.Success(CommandSafety.assess(command, contextFor(server, requestedByAgent)))
+        VmResult.Success(CommandSafety.assess(command, contextFor(server, requestedByAgent, projectRoot)))
     }
 
     override suspend fun authorize(
         serverId: String,
         command: String,
         requestedByAgent: Boolean,
+        projectRoot: String?,
     ): VmResult<CommandAssessment> = resolveServer(serverId).flatMap { server ->
-        val assessment = CommandSafety.assess(command, contextFor(server, requestedByAgent))
+        val assessment = CommandSafety.assess(command, contextFor(server, requestedByAgent, projectRoot))
 
         // Blocked commands are refused outright and never prompted for. Offering a
         // confirmation would imply there is a correct answer other than no.
@@ -134,6 +139,7 @@ class DefaultCommandGuard @Inject constructor(
         command: String,
         limits: CommandLimits,
         requestedByAgent: Boolean,
+        projectRoot: String?,
     ): VmResult<CommandResult> {
         if (isNonSshWorkspace(serverId)) {
             return VmResult.Failure(
@@ -144,7 +150,7 @@ class DefaultCommandGuard @Inject constructor(
                 ),
             )
         }
-        return authorize(serverId, command, requestedByAgent).flatMap {
+        return authorize(serverId, command, requestedByAgent, projectRoot).flatMap {
             connectionManager.withSession(serverId) { session ->
                 session.execute(command, limits)
             }
@@ -180,15 +186,17 @@ class DefaultCommandGuard @Inject constructor(
     /**
      * Builds the policy context for a command.
      *
-     * `projectRoot` is null until projects exist, which disables path-confinement
-     * checks. That is a real current limitation rather than an oversight: with no
-     * project there is no root to confine to, and inventing one would either block
-     * legitimate work or give false assurance.
+     * The root enables a limited protected-path heuristic; it is not a filesystem
+     * sandbox. Callers must pass the active workspace when one is known.
      */
-    private suspend fun contextFor(server: Server, requestedByAgent: Boolean): CommandContext {
+    private suspend fun contextFor(
+        server: Server,
+        requestedByAgent: Boolean,
+        projectRoot: String?,
+    ): CommandContext {
         val current = preferences.preferences.first()
         return CommandContext(
-            projectRoot = null,
+            projectRoot = projectRoot,
             environment = server.environment,
             confirmDestructive = current.confirmDestructiveCommands,
             proposedByAgent = requestedByAgent,

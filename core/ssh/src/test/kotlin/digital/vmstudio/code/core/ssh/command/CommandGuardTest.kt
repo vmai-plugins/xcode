@@ -128,6 +128,22 @@ class CommandGuardTest {
     }
 
     @Test
+    fun `agent command assessment receives the active project root`() = runTest {
+        val gate = ScriptedGate(approve = true)
+
+        val result = guard(gate = gate).authorize(
+            serverId = "srv-1",
+            command = "cat /etc/passwd",
+            requestedByAgent = true,
+            projectRoot = "/home/deploy/project",
+        )
+
+        assertTrue(result is VmResult.Success)
+        assertEquals(CommandRisk.DESTRUCTIVE, gate.lastRequest?.assessment?.risk)
+        assertTrue(gate.lastRequest?.assessment?.findings?.any { it.rule == "protected-path" } == true)
+    }
+
+    @Test
     fun `the request carries the context the dialog needs`() = runTest {
         val gate = ScriptedGate(approve = false)
 

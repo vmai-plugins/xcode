@@ -44,14 +44,15 @@ expressed as directory nesting, which is the idiomatic Gradle layout.
 ## Build logic
 
 Seven convention plugins in `build-logic/` own all shared Gradle configuration, so
-SDK levels, Java/Kotlin targets and compiler flags cannot drift between 24 modules:
+SDK levels, Java/Kotlin targets and compiler flags cannot drift between 25 modules:
 
 `vmstudio.android.application`, `.library`, `.compose`, `.hilt`, `.room`,
 `.feature`, and `vmstudio.jvm.library`.
 
-`vmstudio.android.feature` is the important one: applying it gives a module the
-library + Compose + Hilt setup *and* dependencies on `:core:common` and `:core:ui`
-and nothing else, which is what structurally prevents feature-to-feature coupling.
+`vmstudio.android.feature` gives each feature the library + Compose + Hilt setup and
+the shared `:core:common` and `:core:ui` dependencies. Its `check` task also runs
+`verifyFeatureBoundaries`, which rejects direct dependencies on other feature modules.
+This keeps the flat feature graph enforceable rather than relying on convention alone.
 
 ## Key decisions
 
@@ -106,10 +107,10 @@ Letting the wallpaper repaint them would make the UI less legible, not more pers
 ### The AI is an operator, not the environment
 
 The Android app owns the workspace, files, SSH, terminal, Git, permissions and
-execution. The agent reaches all of it through a tool registry with declared
-permissions and confirmation requirements — never by manipulating app state directly.
-This is what allows the safety layer to sit in one place and apply identically to
-the user and to the agent.
+execution. The in-app gateway agent reaches workspace tools through a registry; its remote shell
+commands are assessed by `CommandGuard`. Claude Code runs as a separate process on the
+remote host, so the app cannot intercept its individual tool calls. Neither path
+should be treated as an OS-level sandbox; see [SECURITY.md](SECURITY.md).
 
 ## Data flow
 

@@ -104,7 +104,7 @@ Constraint comes from the CLI's controls instead, set per run:
 | `--permission-mode acceptEdits` | Applies edits, asks for the rest |
 | `--restricted` | Removes Bash and the other code-running tools entirely |
 | `--allowedTools` / `--disallowedTools` | Explicit allow and deny lists |
-| working directory | The agent's filesystem scope |
+| working directory | The starting/default workspace; not an OS sandbox |
 
 Every tool call is surfaced as an event so the run is auditable, but the app cannot
 gate individual calls. There is no `--permission-prompt-tool` in CLI 2.1.x that would
@@ -153,13 +153,10 @@ OpenAI-shaped `{"choices":[…]}` means it will not.
 The health check distinguishes *not installed* from *installed but not signed in* and
 says which, because both otherwise present identically: a prompt that produces nothing.
 
-## Not yet built
+## Current limitation
 
-- **Diff review (§21).** `Edit` and `Write` events carry the affected path, but the
-  before/after viewer needs the editor from Phase 3.
-- **Background runs.** `claude --bg` plus `claude agents/logs/stop` maps onto Tasks
-  (§28) and would let a long run survive the app being closed.
-- **The OmniRoute HTTP provider.** The abstraction is in place; the implementation is
-  not, and it requires the app to own the agent loop.
-- **Approval routing.** If a future CLI exposes a permission-prompt hook, individual
-  tool calls could be gated by the app's existing approval gate.
+The app cannot route per-tool Claude Code approval prompts to the phone. Commands
+issued internally by the remote CLI do not pass through the app's `CommandGuard`.
+Use Claude Code's own permission controls and a dedicated, low-privilege server
+account; the CLI working directory is not an OS-level sandbox. See
+[SECURITY.md](SECURITY.md#agent-safety-boundaries).

@@ -10,9 +10,8 @@ plugins {
  * Release signing material, from the environment first (CI) and a gitignored
  * properties file second (local).
  *
- * Nothing here fails when signing is not configured: the release build stays
- * unsigned so a contributor without the keystore can still verify that R8 and lint
- * pass, which is the part of the release build that actually breaks.
+ * A local release build can remain unsigned so contributors can verify R8 and lint.
+ * CI release publishing separately requires signing material and verifies the APK.
  */
 val signingProperties = Properties().apply {
     rootProject.file("keystore.properties")
@@ -71,16 +70,15 @@ android {
         }
         getByName("release") {
             buildConfigField("boolean", "VERBOSE_DIAGNOSTICS", "false")
-            signingConfig = if (hasReleaseSigning) {
-                signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")
+                signingConfig = null
             }
         }
-        // The release build exactly (R8 shrinking and all), signed with the debug
-        // key so CI can install it on an emulator and prove it starts. Shrinking
-        // bugs (a stripped serializer, a Hilt class) only show at runtime, and only
-        // in this variant. Its own app id keeps it apart from every real install.
+        // Smoke the release build exactly (R8 shrinking and all), signed with the
+        // debug key so CI can install it on an emulator and prove it starts. Its own
+        // app id keeps it apart from every real install.
         create("smoke") {
             initWith(getByName("release"))
             applicationIdSuffix = ".smoke"
@@ -129,4 +127,3 @@ dependencies {
     implementation(libs.compose.material3.window.size)
     implementation(libs.compose.material.icons.extended)
 }
-

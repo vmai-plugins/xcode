@@ -299,7 +299,7 @@ fun ConnectorsScreen(
                                 value = hubKeyDraft,
                                 onValueChange = { hubKeyDraft = it },
                                 label = { Text("App Hub Master API Key (xc_...)") },
-                                placeholder = { Text("xc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") },
+                                placeholder = { Text("Enter your Hub pairing key") },
                                 singleLine = true,
                                 visualTransformation = if (hubKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {

@@ -16,8 +16,6 @@ on:
     workflows: [Build]
     types: [completed]
     branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -34,7 +32,7 @@ env:
 jobs:
   publish:
     name: Publish nightly APK
-    if: always()
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -104,7 +102,6 @@ jobs:
             --notes "Debug build of main at ${SHA}. Installs next to a release build. On your phone: tap the .apk below, then allow installs from your browser if asked. Stable link to the latest: https://github.com/${GITHUB_REPOSITORY}/releases/download/nightly/xcodes-nightly.apk"
 
       - name: Deploy APK to apps.vmstudio.digital
-        if: ${{ secrets.DEPLOY_SSH_KEY != '' }}
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || 'root@200.234.41.231' }}
@@ -112,6 +109,10 @@ jobs:
           META_DIR: /home/vmstudio-apps/htdocs/apps.vmstudio.digital/x-codes/build-info
         run: |
           set -e
+          if [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::notice::DEPLOY_SSH_KEY is not configured; skipping VPS deployment."
+            exit 0
+          fi
           mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
           ssh -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST" "mkdir -p $TARGET_DIR $META_DIR"
           scp -i ~/.ssh/id_rsa xcodes-nightly.apk "${DEPLOY_HOST}:${TARGET_DIR}/.xcodes-latest.uploading.apk"

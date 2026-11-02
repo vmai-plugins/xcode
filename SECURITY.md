@@ -11,7 +11,7 @@ What this design defends against:
 | Database dump revealing credentials | Room stores opaque references only; no secret material in any table |
 | Man-in-the-middle on SSH | Trust-on-first-use host keys with an explicit, non-retryable prompt on change |
 | Path traversal via a malformed credential id | Credential filenames validated against a strict allowlist pattern |
-| AI agent acting outside its sandbox | Tool registry with declared permissions; project-root confinement; destructive-command confirmation |
+| Accidental unsafe command from a supported command entry point | `CommandGuard` risk checks and approval prompts; heuristic only, not a sandbox |
 | Timing attacks on secret comparison | Constant-time comparison in `Secret.equals` |
 
 Explicitly **not** defended against: a rooted device with an active attacker, or a
@@ -54,6 +54,11 @@ re-enter their credentials, not to a generic failure.
   write then fails, every credential created in that call is deleted. Superseded
   credentials are removed only after the new row commits. A secret is never orphaned
   by a failed save, and never left behind by a delete.
+
+  The OmniRoute API key is provided by the user and stored through this credential
+  store. The Android app must not contain a shared gateway key: values embedded in an
+  APK can be extracted and abused. Previously distributed builds containing a shared
+  key must have that key revoked and rotated at the gateway.
 
 ## The `Secret` type
 
@@ -177,23 +182,26 @@ The mirror is deliberately abandoned — and the line sent unchecked — when:
 - a control character is sent.
 
 In those cases a guess about the shell's line buffer is worse than no guess. **This is
-a guard against mistakes, not a sandbox.** Authoritative enforcement is on
-`CommandGuard.run`, where the whole command string is known: configured project
-commands and, once built, every agent tool call.
+a guard against mistakes, not a sandbox.** Supported command-runner actions are
+assessed by `CommandGuard`; its path checks are heuristic and only apply when the
+caller supplies a project root. They do not confine arbitrary shell behavior.
 
-## Agent safety (design, pending implementation)
+## Agent safety boundaries
 
-- Every tool declares its permissions, risk level and whether it requires confirmation.
-- Autonomy levels raise the floor, never the ceiling: destructive and
-  production-affecting operations require confirmation at **every** level, including
-  Full Agent.
-- Filesystem access is confined to the project root; `/etc`, `/root` and sibling
-  projects are outside the sandbox. `RemotePath.confine` implements this; the guard
-  passes `projectRoot = null` until projects exist, which disables path checks rather
-  than inventing a root.
-- Servers marked `PRODUCTION` always require confirmation for destructive commands.
-  This is live today.
-- The user can stop a running agent at any point.
+- The in-app gateway agent checks file paths against its selected workspace and sends
+  its remote shell commands through `CommandGuard` with that workspace as context.
+  The guard's shell path rules detect a limited set of protected absolute paths; they
+  are not complete path confinement and do not defend against shell obfuscation,
+  symlinks or arbitrary subprocess behavior.
+- Claude Code runs on the remote host. The app can select the CLI's permission mode
+  and working directory, but cannot intercept individual CLI tool calls. A working
+  directory is not an OS sandbox.
+- Destructive command confirmations apply to commands that pass through
+  `CommandGuard`. They do not automatically apply to actions performed internally by
+  the remote Claude Code process.
+- For untrusted code or prompts, use a dedicated low-privilege account and an
+  independently enforced container/VM boundary. Do not rely on the app as a security
+  boundary for a machine containing sensitive data.
 
 ## Reporting
 
