@@ -41,6 +41,7 @@ include(":core:git")
 include(":core:project")
 include(":core:connectors")
 include(":core:ai")
+include(":core:voice")
 include(":core:update")
 
 // Feature layer — flat; features never depend on each other.
