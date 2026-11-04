@@ -272,7 +272,30 @@ fun SettingsScreen(
             }
         }
 
-        // --- 3. Advanced Developer & Infrastructure Tools (Collapsible) ---
+        // --- 3. Infrastructure & Activity Hub ---
+        item { ModernSectionHeader(title = "Infrastructure & Activity") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModernSettingsRow(
+                    title = "Servers (SSH & PC)",
+                    description = "Manage PC, VPS, SSH keys, passwords, and OpenSSH terminal connections",
+                    icon = Icons.Default.Dns,
+                    badgeText = "SSH & PC",
+                    iconColor = Color(0xFF10B981),
+                    onClick = onOpenServers,
+                )
+                ModernSettingsRow(
+                    title = "Activity Timeline",
+                    description = "Audit trail of agent runs, server actions, file transfers & tasks",
+                    icon = Icons.Default.History,
+                    badgeText = "Audit",
+                    iconColor = Color(0xFF38BDF8),
+                    onClick = onOpenActivityTimeline,
+                )
+            }
+        }
+
+        // --- 4. Advanced Developer & Infrastructure Tools (Collapsible) ---
         item {
             Surface(
                 shape = RoundedCornerShape(14.dp),

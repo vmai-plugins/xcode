@@ -38,6 +38,14 @@ internal object PathGuard {
         if (cleanPath.startsWith("content://")) {
             return "Cannot use content:// URIs in a remote or POSIX workspace."
         }
+        val normalizedGithub = cleanPath.let { if (it.startsWith("github/")) "/$it" else it }
+        if (normalizedGithub.startsWith("/github/")) {
+            return if (isSecret(normalizedGithub)) {
+                "That path holds credentials, so the agent may not read or change it."
+            } else {
+                null
+            }
+        }
         // Use RemotePath for robust confinement
         val confined = RemotePath.confine(workingDirectory, cleanPath)
         return when {
@@ -51,6 +59,10 @@ internal object PathGuard {
         if (isTreeUri(workingDirectory)) return resolveTreeUriPath(workingDirectory, path)
         val cleanPath = path.replace('\\', '/')
         if (cleanPath.startsWith("content://")) return null
+        val normalizedGithub = cleanPath.let { if (it.startsWith("github/")) "/$it" else it }
+        if (normalizedGithub.startsWith("/github/")) {
+            return normalize(normalizedGithub)
+        }
         return RemotePath.confine(workingDirectory, cleanPath)
     }
 

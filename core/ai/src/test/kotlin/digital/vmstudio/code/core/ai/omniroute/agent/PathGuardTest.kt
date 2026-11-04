@@ -95,4 +95,19 @@ class PathGuardTest {
         assertNotNull(PathGuard.problem(winRoot, ".env"))
         assertNull(PathGuard.resolve(winRoot, "C:\\Users\\tripc\\secret.txt"))
     }
+
+    @Test
+    fun `github virtual paths are allowed across any workspace`() {
+        val posixRoot = "/home/ubuntu/app"
+        val ghPath = "/github/vmai-plugins/z-agents/README.md"
+        assertNull(PathGuard.problem(posixRoot, ghPath))
+        assertEquals(ghPath, PathGuard.resolve(posixRoot, ghPath))
+
+        // Relative without leading slash
+        assertEquals(ghPath, PathGuard.resolve(posixRoot, "github/vmai-plugins/z-agents/README.md"))
+
+        // Secrets inside github repo are still protected
+        assertNotNull(PathGuard.problem(posixRoot, "/github/vmai-plugins/z-agents/.env"))
+        assertNotNull(PathGuard.problem(posixRoot, "/github/vmai-plugins/z-agents/keys/id_rsa"))
+    }
 }

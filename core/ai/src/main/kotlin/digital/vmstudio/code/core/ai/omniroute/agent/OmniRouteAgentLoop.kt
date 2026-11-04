@@ -410,7 +410,7 @@ class OmniRouteAgentLoop @Inject constructor(
         return repoFullName to relativePath
     }
 
-    private fun buildRequest(
+    private suspend fun buildRequest(
         target: GatewayTarget,
         workingDirectory: String,
         allowedTools: Set<OmniRouteTool>,
@@ -2073,6 +2073,11 @@ class OmniRouteAgentLoop @Inject constructor(
 
     /** Confines paths to [workingDirectory] to prevent escaping the project root. */
     private fun resolvePath(workingDirectory: String, path: String): String {
+        val clean = path.replace('\\', '/')
+        val githubPath = if (clean.startsWith("github/")) "/$clean" else clean
+        if (githubPath.startsWith("/github/")) {
+            return PathGuard.normalize(githubPath)
+        }
         PathGuard.resolve(workingDirectory, path)?.let { return it }
         val root = workingDirectory.replace('\\', '/').trimEnd('/')
         if (root.startsWith("~") && (path.startsWith(root) || !path.startsWith("/"))) {
@@ -2167,7 +2172,7 @@ class OmniRouteAgentLoop @Inject constructor(
 
     private fun VmError.summaryWithReason(): String = reason?.let { "$summary: $it" } ?: summary
 
-    private fun systemPrompt(
+    private suspend fun systemPrompt(
         workingDirectory: String,
         allowedTools: Set<OmniRouteTool>,
         extraSystemPrompt: String? = null,
@@ -2223,6 +2228,9 @@ class OmniRouteAgentLoop @Inject constructor(
                 "This run only proposes a plan: you cannot write files or run " +
                     "commands, so describe what you would do instead of attempting it. ",
             )
+        }
+        if (gitHubRepositoryClient.hasToken()) {
+            append(" GitHub Integration: CONNECTED. You have zero-clone access to read, search, and edit GitHub repositories via '/github/<owner>/<repo>/<path>' using list_directory, read_file, grep_search, and edit_file. ")
         }
         append(
             "Prefer relative paths under $workingDirectory. Do not stop until all necessary actions and validations are complete. When done, reply with a clear, concise summary of changes.",

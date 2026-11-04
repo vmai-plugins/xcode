@@ -1267,8 +1267,17 @@ class AgentChatViewModel @Inject constructor(
                     state.githubRepositories.firstOrNull { repo ->
                         repo.fullName.equals(token, ignoreCase = true) ||
                             repo.fullName.substringAfterLast('/').equals(token, ignoreCase = true)
-                    }
-                }.distinctBy { it.id }
+                    } ?: if (token.contains('/') && !token.contains(':') && !token.startsWith("http") && token.count { it == '/' } == 1) {
+                        digital.vmstudio.code.core.git.GitHubRepository(
+                            id = token.hashCode().toLong(),
+                            fullName = token,
+                            description = null,
+                            defaultBranch = "main",
+                            cloneUrl = "https://github.com/$token.git",
+                            isPrivate = false,
+                        )
+                    } else null
+                }.distinctBy { it.fullName.lowercase() }
 
                 val isSwarmRequested = resolvedPrompt.contains("@swarm", ignoreCase = true)
                 val isWebSearchRequested = resolvedPrompt.contains("@web", ignoreCase = true)
@@ -1344,9 +1353,23 @@ class AgentChatViewModel @Inject constructor(
                         }
                         matchedRepos.forEachIndexed { idx, r ->
                             append("${idx + 1}. GitHub Repository \"${r.fullName}\"\n")
-                            append("   - Clone URL: ${r.cloneUrl}\n")
+                            append("   - Accessible Path: /github/${r.fullName}\n")
                             append("   - Default Branch: ${r.defaultBranch}\n")
                             if (!r.description.isNullOrBlank()) append("   - Description: ${r.description}\n")
+                            try {
+                                val treeResult = githubRepositoryClient.getRepositoryTree(r.fullName)
+                                if (treeResult is VmResult.Success) {
+                                    val topFiles = treeResult.value.take(25).map { if (it.type == "tree") "${it.path}/" else it.path }
+                                    if (topFiles.isNotEmpty()) {
+                                        append("   - Structure Preview: " + topFiles.joinToString(", ") + "\n")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                VmLog.w(LogCategory.AI, TAG, "Failed to pre-fetch repository tree for ${r.fullName}", e)
+                            }
+                        }
+                        if (matchedRepos.isNotEmpty()) {
+                            append("You have DIRECT zero-clone access to read and inspect referenced GitHub repositories! Use list_directory('/github/<repo>'), read_file('/github/<repo>/<path>'), and edit_file('/github/<repo>/<path>').\n")
                         }
                         append("Cross-reference and consider all referenced projects above when answering or fulfilling instructions.\n")
                     }
