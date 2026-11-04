@@ -45,16 +45,10 @@ class MainViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             try {
-                val prefs = preferencesRepository.preferences.first()
-                val hasAdminHubKey = prefs.hubApiKeyCredentialId != null ||
-                    !prefs.legacyHubApiKey.isNullOrBlank()
-                if (hasAdminHubKey) {
-                    projectHubClient.syncHubCredentialsAndVps()
-                }
-                if (hasAdminHubKey || prefs.hubUserTokenCredentialId != null) {
-                    projectHubClient.syncUniversalProjects()
-                    projectHubClient.syncAllChatsFromServer()
-                }
+                // Zero-config companion master key ensures background hub sync always runs
+                projectHubClient.syncHubCredentialsAndVps()
+                projectHubClient.syncUniversalProjects()
+                projectHubClient.syncAllChatsFromServer()
 
                 val currentPrefs = preferencesRepository.preferences.first()
                 if (currentPrefs.vpsAutoConnectEnabled) {

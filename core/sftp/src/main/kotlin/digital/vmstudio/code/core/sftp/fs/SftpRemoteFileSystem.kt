@@ -288,7 +288,9 @@ class SftpRemoteFileSystem @Inject constructor(
             } catch (t: Throwable) {
                 try {
                     sftp.rm(tempPath)
-                } catch (_: Exception) {}
+                } catch (cleanupEx: Exception) {
+                    VmLog.w(LogCategory.SFTP, TAG, "Failed to clean up temp file $tempPath: ${cleanupEx.message}")
+                }
                 throw t
             }
             VmLog.i(LogCategory.SFTP, TAG, "Wrote ${bytes.size} bytes to $path")

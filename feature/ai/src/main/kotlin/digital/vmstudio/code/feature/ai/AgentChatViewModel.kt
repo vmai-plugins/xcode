@@ -1333,7 +1333,9 @@ class AgentChatViewModel @Inject constructor(
                                             append("   - Files: " + files.joinToString(", ") + "\n")
                                         }
                                     }
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    VmLog.w(LogCategory.AI, TAG, "Failed to list local directory preview for ${p.name}", e)
+                                }
                             }
                         }
                         matchedRepos.forEachIndexed { idx, r ->
