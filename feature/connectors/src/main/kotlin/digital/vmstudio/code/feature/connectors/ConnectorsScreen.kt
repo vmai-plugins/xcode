@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Cloud
@@ -174,6 +175,7 @@ fun ConnectorsScreen(
     var curatedApiKeyDraft by remember { mutableStateOf("") }
     var curatedEndpointDraft by remember { mutableStateOf("") }
     var curatedApiKeyVisible by remember { mutableStateOf(false) }
+    var editingMcpServer by remember { mutableStateOf<McpServerConfig?>(null) }
 
     LaunchedEffect(state.savedDriveToken) {
         state.savedDriveToken?.let { if (driveTokenDraft.isBlank()) driveTokenDraft = it }
@@ -1626,6 +1628,45 @@ fun ConnectorsScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                         )
 
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(
+                                                text = "Server Protocol / Type",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                listOf("HTTP", "WORDPRESS", "SSE").forEach { type ->
+                                                    val selected = mcpTypeDraft.equals(type, ignoreCase = true)
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                        border = BorderStroke(
+                                                            1.dp,
+                                                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                                        ),
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .clickable { mcpTypeDraft = type },
+                                                    ) {
+                                                        Box(
+                                                            contentAlignment = Alignment.Center,
+                                                            modifier = Modifier.padding(vertical = 7.dp),
+                                                        ) {
+                                                            Text(
+                                                                text = type,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         OutlinedTextField(
                                             value = mcpUrlDraft,
                                             onValueChange = { mcpUrlDraft = it },
@@ -1781,6 +1822,7 @@ fun ConnectorsScreen(
                                         onToggle = { viewModel.toggleMcpServer(server.id, it) },
                                         onDelete = { viewModel.deleteMcpServer(server.id) },
                                         onTest = { viewModel.testMcpServer(server) },
+                                        onEdit = { editingMcpServer = server },
                                     )
                                 }
                             }
@@ -1967,6 +2009,32 @@ fun ConnectorsScreen(
                 TextButton(onClick = { curatedDialogConnector = null }) {
                     Text("Cancel")
                 }
+            },
+        )
+    }
+
+    // Edit MCP Server Dialog
+    editingMcpServer?.let { server ->
+        EditMcpServerDialog(
+            server = server,
+            isTesting = state.isTestingMcp,
+            onDismiss = { editingMcpServer = null },
+            onSave = { name, url, apiKey, type, projectPath, enabled ->
+                viewModel.saveMcpServer(
+                    id = server.id,
+                    name = name,
+                    endpointUrl = url,
+                    apiKey = apiKey,
+                    serverType = type,
+                    projectPath = projectPath,
+                    isEnabled = enabled,
+                )
+            },
+            onTest = { testConfig ->
+                viewModel.testMcpServer(testConfig)
+            },
+            onDelete = {
+                viewModel.deleteMcpServer(server.id)
             },
         )
     }
@@ -2424,8 +2492,10 @@ private fun ConfiguredMcpServerItem(
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit,
     onTest: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     val isWp = server.serverType.equals("WORDPRESS", ignoreCase = true)
+    val isSse = server.serverType.equals("SSE", ignoreCase = true)
     val iconColor = when {
         !server.isEnabled -> MaterialTheme.colorScheme.outline
         isWp -> Color(0xFF21759B)
@@ -2434,6 +2504,7 @@ private fun ConfiguredMcpServerItem(
         server.name.contains("github", ignoreCase = true) -> Color(0xFF9C27B0)
         server.name.contains("memory", ignoreCase = true) -> Color(0xFF673AB7)
         server.name.contains("brave", ignoreCase = true) -> Color(0xFFFF5722)
+        isSse -> Color(0xFF4CAF50)
         else -> MaterialTheme.colorScheme.primary
     }
     val iconVector = when {
@@ -2441,6 +2512,7 @@ private fun ConfiguredMcpServerItem(
         server.name.contains("database", ignoreCase = true) || server.name.contains("sql", ignoreCase = true) -> Icons.Default.Storage
         server.name.contains("code", ignoreCase = true) || server.name.contains("git", ignoreCase = true) -> Icons.Default.Code
         server.name.contains("memory", ignoreCase = true) -> Icons.Default.SmartToy
+        server.name.contains("pc", ignoreCase = true) || server.name.contains("windows", ignoreCase = true) -> Icons.Default.Terminal
         else -> Icons.Default.Extension
     }
 
@@ -2478,43 +2550,64 @@ private fun ConfiguredMcpServerItem(
                     }
                 }
 
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = server.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Text(
-                            text = server.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            color = iconColor.copy(alpha = 0.15f),
+                            border = BorderStroke(0.5.dp, iconColor.copy(alpha = 0.35f)),
                         ) {
                             Text(
                                 text = server.serverType.uppercase(),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                color = iconColor,
                                 softWrap = false,
                                 maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
                             )
                         }
-                    }
 
-                    Text(
-                        text = server.endpointUrl,
-                        style = VmTheme.code.mono.copy(fontSize = 11.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                        if (!server.apiKey.isNullOrBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            ) {
+                                Text(
+                                    text = "AUTH",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    softWrap = false,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = server.endpointUrl,
+                            style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
                 }
 
                 Row(
@@ -2524,14 +2617,25 @@ private fun ConfiguredMcpServerItem(
                     Switch(
                         checked = server.isEnabled,
                         onCheckedChange = onToggle,
-                        modifier = Modifier.scale(0.8f),
+                        modifier = Modifier.scale(0.78f),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = MaterialTheme.colorScheme.primary,
                         ),
                     )
                     IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(30.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Server",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(32.dp),
+                        modifier = Modifier.size(30.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -2625,21 +2729,301 @@ private fun ConfiguredMcpServerItem(
                     )
                 }
 
-                OutlinedButton(
-                    onClick = onTest,
-                    enabled = !isTesting,
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(28.dp),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = if (isTesting) "Testing…" else "Test Tools",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                    )
+                    OutlinedButton(
+                        onClick = onEdit,
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp),
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Edit",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = onTest,
+                        enabled = !isTesting,
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp),
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = if (isTesting) "Testing…" else "Test Tools",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun EditMcpServerDialog(
+    server: McpServerConfig,
+    isTesting: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (name: String, endpointUrl: String, apiKey: String?, serverType: String, projectPath: String?, isEnabled: Boolean) -> Unit,
+    onTest: (McpServerConfig) -> Unit,
+    onDelete: () -> Unit,
+) {
+    var nameDraft by remember(server) { mutableStateOf(server.name) }
+    var endpointUrlDraft by remember(server) { mutableStateOf(server.endpointUrl) }
+    var apiKeyDraft by remember(server) { mutableStateOf(server.apiKey.orEmpty()) }
+    var apiKeyVisible by remember { mutableStateOf(false) }
+    var serverTypeDraft by remember(server) { mutableStateOf(server.serverType) }
+    var projectPathDraft by remember(server) { mutableStateOf(server.projectPath.orEmpty()) }
+    var isEnabledDraft by remember(server) { mutableStateOf(server.isEnabled) }
+    val clipboardManager = LocalClipboardManager.current
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete MCP Server?") },
+            text = { Text("Are you sure you want to remove \"${server.name}\"? Remote tools from this server will no longer be available.") },
+            confirmButton = {
+                VmButton(
+                    text = "Delete",
+                    onClick = {
+                        showDeleteConfirmation = false
+                        onDelete()
+                        onDismiss()
+                    },
+                    style = VmButtonStyle.Destructive,
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = "Edit MCP Server",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // Enabled status toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text(
+                            text = "Server Enabled",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = if (isEnabledDraft) "Active and available for agent tools" else "Disabled temporarily",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = isEnabledDraft,
+                        onCheckedChange = { isEnabledDraft = it },
+                        modifier = Modifier.scale(0.85f),
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Server Name
+                OutlinedTextField(
+                    value = nameDraft,
+                    onValueChange = { nameDraft = it },
+                    label = { Text("Server Name") },
+                    placeholder = { Text("e.g. WordPress MCP Bridge or VM Desktop PC") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                // Protocol / Type Selector Chips
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Protocol / Server Type",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf("HTTP", "WORDPRESS", "SSE").forEach { type ->
+                            val selected = serverTypeDraft.equals(type, ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { serverTypeDraft = type },
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                ) {
+                                    Text(
+                                        text = type,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Endpoint URL
+                OutlinedTextField(
+                    value = endpointUrlDraft,
+                    onValueChange = { endpointUrlDraft = it },
+                    label = { Text("Endpoint URL") },
+                    placeholder = { Text("https://example.com/mcp or http://192.168.1.10:8080/mcp") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                // Bearer Token / API Key
+                OutlinedTextField(
+                    value = apiKeyDraft,
+                    onValueChange = { apiKeyDraft = it },
+                    label = { Text("Bearer Token / API Key (optional)") },
+                    singleLine = true,
+                    visualTransformation = if (apiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                clipboardManager.getText()?.text?.let { apiKeyDraft = it }
+                            }) {
+                                Icon(Icons.Default.ContentPaste, contentDescription = "Paste", modifier = Modifier.size(18.dp))
+                            }
+                            IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                                Icon(
+                                    imageVector = if (apiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                // Project Path
+                OutlinedTextField(
+                    value = projectPathDraft,
+                    onValueChange = { projectPathDraft = it },
+                    label = { Text("Project Scope (optional)") },
+                    placeholder = { Text("Leave blank for all projects") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                // Test Connection Button inside Dialog
+                OutlinedButton(
+                    onClick = {
+                        val temp = server.copy(
+                            name = nameDraft.trim(),
+                            endpointUrl = endpointUrlDraft.trim(),
+                            apiKey = apiKeyDraft.trim().ifBlank { null },
+                            serverType = serverTypeDraft,
+                            projectPath = projectPathDraft.trim().ifBlank { null },
+                            isEnabled = isEnabledDraft,
+                        )
+                        onTest(temp)
+                    },
+                    enabled = endpointUrlDraft.isNotBlank() && !isTesting,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    if (isTesting) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Testing Connection…", style = MaterialTheme.typography.labelMedium)
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Test Connection", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (nameDraft.isNotBlank() && endpointUrlDraft.isNotBlank()) {
+                        onSave(
+                            nameDraft.trim(),
+                            endpointUrlDraft.trim(),
+                            apiKeyDraft.trim().ifBlank { null },
+                            serverTypeDraft,
+                            projectPathDraft.trim().ifBlank { null },
+                            isEnabledDraft,
+                        )
+                        onDismiss()
+                    }
+                },
+                enabled = nameDraft.isNotBlank() && endpointUrlDraft.isNotBlank() && !isTesting,
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("Save Changes")
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(
+                    onClick = { showDeleteConfirmation = true },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Delete")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        },
+    )
 }

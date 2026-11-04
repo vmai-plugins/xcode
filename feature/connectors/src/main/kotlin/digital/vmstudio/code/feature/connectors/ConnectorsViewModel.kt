@@ -1547,18 +1547,21 @@ class ConnectorsViewModel @Inject constructor(
     }
 
     fun saveMcpServer(
+        id: String? = null,
         name: String,
         endpointUrl: String,
         apiKey: String?,
         serverType: String = "HTTP",
         projectPath: String? = null,
+        isEnabled: Boolean = true,
     ) {
         viewModelScope.launch {
             val server = McpServerConfig(
+                id = id ?: java.util.UUID.randomUUID().toString(),
                 name = name.trim(),
                 endpointUrl = endpointUrl.trim(),
                 apiKey = apiKey?.trim()?.takeIf { it.isNotEmpty() },
-                isEnabled = true,
+                isEnabled = isEnabled,
                 serverType = serverType.trim().uppercase(),
                 projectPath = projectPath?.trim()?.takeIf { it.isNotEmpty() },
             )
