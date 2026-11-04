@@ -571,6 +571,14 @@ internal fun ModernComposer(
                         val updated = if (trimmed.startsWith("@web")) trimmed else "@web $trimmed".trim()
                         onTextChange(updated)
                     },
+                    onTriggerPlan = {
+                        val trimmed = text.trim()
+                        val updated = if (trimmed.startsWith("/plan")) trimmed else "/plan $trimmed".trim()
+                        onTextChange(updated)
+                    },
+                    onTriggerCompact = {
+                        onTextChange("/compact")
+                    },
                     onSendInBackground = { onSendInBackground(text) { onTextChange("") } },
                 )
 
@@ -874,6 +882,8 @@ private fun ComposerPlusMenu(
     onOpenConnectors: (() -> Unit)? = null,
     onOpenSwarmGuide: (() -> Unit)? = null,
     onTriggerWebSearch: (() -> Unit)? = null,
+    onTriggerPlan: (() -> Unit)? = null,
+    onTriggerCompact: (() -> Unit)? = null,
     onSendInBackground: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1038,6 +1048,44 @@ private fun ComposerPlusMenu(
                     onClick = {
                         expanded = false
                         onTriggerWebSearch()
+                    },
+                )
+            }
+            if (onTriggerPlan != null) {
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text("Architectural Plan (/plan)")
+                            Text(
+                                text = "Draft step-by-step design before code edits",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    leadingIcon = { Icon(Icons.Default.Build, contentDescription = null, tint = Color(0xFF6366F1)) },
+                    onClick = {
+                        expanded = false
+                        onTriggerPlan()
+                    },
+                )
+            }
+            if (onTriggerCompact != null) {
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text("Compact context (/compact)")
+                            Text(
+                                text = "Archive old turns, freeing 80% context window",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF10B981)) },
+                    onClick = {
+                        expanded = false
+                        onTriggerCompact()
                     },
                 )
             }

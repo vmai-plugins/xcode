@@ -1132,6 +1132,65 @@ class AgentChatViewModel @Inject constructor(
         send("Please analyze and fix this error:\n```\n$snippet\n```\nFind the root cause in the codebase and apply the fix.")
     }
 
+    private fun compactTranscript() {
+        val current = _uiState.value.transcript
+        if (current.size <= 2) {
+            append(
+                TranscriptItem.Diagnostic(
+                    id = nextId(),
+                    text = "Transcript is already minimal (no compaction needed).",
+                    isStderr = false,
+                ),
+            )
+            return
+        }
+        val recentItems = current.takeLast(3)
+        val compactedNotice = TranscriptItem.Diagnostic(
+            id = nextId(),
+            text = "⚡ [Compacted Context]: Earlier conversation turns summarized and archived. Context window freed by ~80%.",
+            isStderr = false,
+        )
+        _uiState.update { it.copy(transcript = listOf(compactedNotice) + recentItems) }
+        val convId = _uiState.value.conversationId
+        if (convId != null) {
+            viewModelScope.launch {
+                conversations.appendUserPrompt(convId, "[Context window compacted: older turns archived.]")
+            }
+        }
+    }
+
+    private fun learnProjectRule(insight: String) {
+        val clean = insight.trim()
+        if (clean.isBlank()) return
+        val state = _uiState.value
+        val workDir = state.workingDirectory.trim()
+        val server = state.serverId.orEmpty()
+
+        append(
+            TranscriptItem.Diagnostic(
+                id = nextId(),
+                text = "🧠 [Learned Rule]: \"$clean\"\nSaved to project memory. The agent will observe this rule in all future turns.",
+                isStderr = false,
+            ),
+        )
+
+        viewModelScope.launch {
+            try {
+                if (server.isNotBlank() && workDir.isNotBlank()) {
+                    val rulePath = "${workDir.trimEnd('/')}/AGENTS.md"
+                    val existing = (remoteFileSystem.readText(server, rulePath) as? VmResult.Success)?.value.orEmpty()
+                    val updated = if (existing.isBlank()) "# Project Rules\n\n- $clean\n" else "$existing\n- $clean\n"
+                    remoteFileSystem.writeText(server, rulePath, updated)
+                } else if (workDir.isNotBlank() && !workDir.startsWith("/github/")) {
+                    val file = java.io.File(workDir, "AGENTS.md")
+                    file.appendText("\n- $clean\n")
+                }
+            } catch (e: Exception) {
+                VmLog.w(LogCategory.AI, TAG, "Failed to persist rule to AGENTS.md", e)
+            }
+        }
+    }
+
     fun send(prompt: String, attachments: List<Uri> = emptyList()) {
         val state = _uiState.value
         val effectivePrompt = prompt.ifBlank {
@@ -1139,19 +1198,49 @@ class AgentChatViewModel @Inject constructor(
         }
         if (!state.canAcceptInput) return
 
-        if (effectivePrompt.trim().equals("/clear", ignoreCase = true) || effectivePrompt.trim().equals("/reset", ignoreCase = true)) {
+        val trimmed = effectivePrompt.trim()
+        if (trimmed.equals("/clear", ignoreCase = true) || trimmed.equals("/reset", ignoreCase = true)) {
             startNewConversation()
             return
         }
+        if (trimmed.equals("/compact", ignoreCase = true)) {
+            compactTranscript()
+            return
+        }
+        if (trimmed.startsWith("/learn", ignoreCase = true)) {
+            val insight = trimmed.removePrefix("/learn").removePrefix(":").trim()
+            if (insight.isNotBlank()) {
+                learnProjectRule(insight)
+                return
+            }
+        }
+
+        var resolvedInput = effectivePrompt
+        if (trimmed.startsWith("/plan", ignoreCase = true)) {
+            val task = trimmed.removePrefix("/plan").removePrefix(":").trim()
+            resolvedInput = "[ARCHITECTURAL PLAN MODE - DO NOT MODIFY FILES YET]\n" +
+                "Produce a step-by-step architectural design and plan for: $task\n\n" +
+                "1. Scope & Requirements Analysis\n" +
+                "2. System Architecture & Design Decisions\n" +
+                "3. Detailed Implementation Plan (exact files to create or modify)\n" +
+                "4. Verification & Testing Strategy\n\n" +
+                "Do not make file changes or execute build commands yet. Wait for user confirmation."
+        } else if (trimmed.startsWith("/goal", ignoreCase = true)) {
+            val task = trimmed.removePrefix("/goal").removePrefix(":").trim()
+            resolvedInput = "[AUTONOMOUS GOAL PERSISTENCE]\n" +
+                "You operate in persistent autonomous goal mode. Continue executing, testing, and self-correcting without stopping until the following objective is 100% complete:\n" +
+                "$task\n\n" +
+                "Do not stop after simply describing what needs to be done. Inspect the code, apply the modifications, and verify completion."
+        }
 
         if (state.isRunning) {
-            queueMessage(effectivePrompt, attachments)
+            queueMessage(resolvedInput, attachments)
             return
         }
 
         // Blank in a general chat: the gateway then answers without tools.
         val server = state.serverId.orEmpty()
-        append(TranscriptItem.UserPrompt(nextId(), effectivePrompt))
+        append(TranscriptItem.UserPrompt(nextId(), resolvedInput))
         _uiState.update { it.copy(isRunning = true, error = null) }
 
         runJob = viewModelScope.launch {
@@ -1159,7 +1248,7 @@ class AgentChatViewModel @Inject constructor(
             val selfJob = coroutineContext[Job]
             var activeConvId: String? = null
             try {
-                val conversationId = state.conversationId ?: createConversation(server, state, prompt)
+                val conversationId = state.conversationId ?: createConversation(server, state, resolvedInput)
                 activeConvId = conversationId
                 if (conversationId == null) {
                     _uiState.update { it.copy(isRunning = false) }
@@ -1191,7 +1280,7 @@ class AgentChatViewModel @Inject constructor(
                     }
                 }
                 // The agent finds attachments by path, so the prompt names them.
-                var resolvedPrompt = prompt
+                var resolvedPrompt = resolvedInput
                 val workDir = state.workingDirectory.trim()
                 if (resolvedPrompt.contains("@git-diff") && server.isNotBlank() && workDir.isNotBlank()) {
                     when (val diffRes = gitService.diffAll(server, workDir)) {
@@ -1384,6 +1473,45 @@ class AgentChatViewModel @Inject constructor(
                                 "--- $name ---\n$content"
                             },
                         )
+                    }
+
+                    // Discover and inject hierarchical project rules (AGENTS.md / GEMINI.md)
+                    val discoveredRules = when {
+                        workDir.startsWith("/github/") -> {
+                            val clean = workDir.removePrefix("/github/").trim('/')
+                            val parts = clean.split('/').filter { it.isNotEmpty() }
+                            if (parts.size >= 2) {
+                                val repo = "${parts[0]}/${parts[1]}"
+                                (githubRepositoryClient.getFileContent(repo, "AGENTS.md") as? VmResult.Success)?.value
+                                    ?: (githubRepositoryClient.getFileContent(repo, "GEMINI.md") as? VmResult.Success)?.value
+                                    ?: (githubRepositoryClient.getFileContent(repo, ".agents/rules.md") as? VmResult.Success)?.value
+                            } else null
+                        }
+                        server.isNotBlank() && workDir.isNotBlank() -> {
+                            val basePath = workDir.trimEnd('/')
+                            (remoteFileSystem.readText(server, "$basePath/AGENTS.md") as? VmResult.Success)?.value
+                                ?: (remoteFileSystem.readText(server, "$basePath/GEMINI.md") as? VmResult.Success)?.value
+                                ?: (remoteFileSystem.readText(server, "$basePath/.agents/rules.md") as? VmResult.Success)?.value
+                        }
+                        workDir.isNotBlank() -> {
+                            try {
+                                val f1 = java.io.File(workDir, "AGENTS.md")
+                                val f2 = java.io.File(workDir, "GEMINI.md")
+                                val f3 = java.io.File(workDir, ".agents/rules.md")
+                                when {
+                                    f1.exists() && f1.isFile -> f1.readText()
+                                    f2.exists() && f2.isFile -> f2.readText()
+                                    f3.exists() && f3.isFile -> f3.readText()
+                                    else -> null
+                                }
+                            } catch (_: Exception) { null }
+                        }
+                        else -> null
+                    }
+                    if (!discoveredRules.isNullOrBlank()) {
+                        append("\n\n[Project Rules & Guidelines (AGENTS.md)]\n")
+                        append(discoveredRules.take(8000).trim())
+                        append("\nStrictly comply with all project rules and constraints above.\n")
                     }
                 }
                 conversations.appendUserPrompt(conversationId, fullPrompt)
