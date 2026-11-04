@@ -40,34 +40,74 @@ class McpClient @Inject constructor(
             params = buildJsonObject {},
         )
 
-        return executeRpc(server, rpcRequest).flatMap { response ->
-            vmCatching {
-                if (response.error != null) {
-                    throw IllegalStateException("MCP error (${response.error.code}): ${response.error.message}")
-                }
-                val resultObj = response.result as? JsonObject
-                    ?: throw IllegalStateException("Expected object result from tools/list")
-                val toolsArray = (resultObj["tools"] as? JsonArray)
-                    ?: (resultObj["result"] as? JsonArray)
-                    ?: JsonArray(emptyList())
+        val primaryResult = executeRpc(server, rpcRequest).flatMap { response ->
+            parseToolsFromRpcResponse(response)
+        }
 
-                toolsArray.mapNotNull { element ->
-                    runCatching {
-                        val obj = element.jsonObject
-                        val fnObj = obj["function"] as? JsonObject
-                        val name = (obj["name"] as? JsonPrimitive)?.content
-                            ?: (fnObj?.get("name") as? JsonPrimitive)?.content
-                            ?: return@mapNotNull null
-                        val desc = (obj["description"] as? JsonPrimitive)?.content
-                            ?: (fnObj?.get("description") as? JsonPrimitive)?.content
-                            ?: ""
-                        val schema = (obj["inputSchema"] as? JsonObject)
-                            ?: (obj["parameters"] as? JsonObject)
-                            ?: (fnObj?.get("parameters") as? JsonObject)
-                            ?: buildJsonObject { put("type", "object") }
-                        McpToolDefinition(name = name, description = desc, inputSchema = schema)
-                    }.getOrNull()
-                }
+        if (primaryResult is VmResult.Failure && server.serverType.equals("WORDPRESS", ignoreCase = true)) {
+            val err = primaryResult.error.summary + " " + (primaryResult.error.reason ?: "")
+            if (err.contains("404") || err.contains("rest_no_route", ignoreCase = true) || err.contains("not found", ignoreCase = true)) {
+                return fetchWordPressLegacyTools(server)
+            }
+        }
+        return primaryResult
+    }
+
+    private fun parseToolsFromRpcResponse(response: McpJsonRpcResponse): VmResult<List<McpToolDefinition>> = vmCatching {
+        if (response.error != null) {
+            throw IllegalStateException("MCP error (${response.error.code}): ${response.error.message}")
+        }
+        val resultObj = response.result as? JsonObject
+            ?: throw IllegalStateException("Expected object result from tools/list")
+        val toolsArray = (resultObj["tools"] as? JsonArray)
+            ?: (resultObj["result"] as? JsonArray)
+            ?: JsonArray(emptyList())
+
+        parseToolsArray(toolsArray)
+    }
+
+    private fun parseToolsArray(toolsArray: JsonArray): List<McpToolDefinition> {
+        return toolsArray.mapNotNull { element ->
+            runCatching {
+                val obj = element.jsonObject
+                val fnObj = obj["function"] as? JsonObject
+                val name = (obj["name"] as? JsonPrimitive)?.content
+                    ?: (fnObj?.get("name") as? JsonPrimitive)?.content
+                    ?: return@mapNotNull null
+                val desc = (obj["description"] as? JsonPrimitive)?.content
+                    ?: (fnObj?.get("description") as? JsonPrimitive)?.content
+                    ?: ""
+                val schema = (obj["inputSchema"] as? JsonObject)
+                    ?: (obj["parameters"] as? JsonObject)
+                    ?: (fnObj?.get("parameters") as? JsonObject)
+                    ?: buildJsonObject { put("type", "object") }
+                McpToolDefinition(name = name, description = desc, inputSchema = schema)
+            }.getOrNull()
+        }
+    }
+
+    private suspend fun fetchWordPressLegacyTools(server: McpServerConfig): VmResult<List<McpToolDefinition>> {
+        val root = extractSiteRoot(server.endpointUrl)
+        val legacyUrl = "$root/wp-json/xcodes/v1/mcp/tools"
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val effectiveKey = server.apiKey?.trim()?.takeIf { it.isNotBlank() } ?: masterKey
+
+        val request = Request.Builder()
+            .url(legacyUrl)
+            .header("Accept", "application/json")
+            .header("X-VMPJ-Key", effectiveKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
+            .header("Authorization", "Bearer $effectiveKey")
+            .get()
+            .build()
+
+        return httpClient.execute(request, RetryPolicy(maxAttempts = 1)).flatMap { body ->
+            vmCatching {
+                val rootObj = json.parseToJsonElement(body).jsonObject
+                val toolsArray = (rootObj["tools"] as? JsonArray)
+                    ?: (rootObj["result"] as? JsonArray)
+                    ?: JsonArray(emptyList())
+                parseToolsArray(toolsArray)
             }
         }
     }
@@ -90,28 +130,92 @@ class McpClient @Inject constructor(
             params = params,
         )
 
-        return executeRpc(server, rpcRequest).flatMap { response ->
+        val primaryResult = executeRpc(server, rpcRequest).flatMap { response ->
+            parseToolCallResponse(response)
+        }
+        if (primaryResult is VmResult.Failure && server.serverType.equals("WORDPRESS", ignoreCase = true)) {
+            val err = primaryResult.error.summary + " " + (primaryResult.error.reason ?: "")
+            if (err.contains("404") || err.contains("rest_no_route", ignoreCase = true) || err.contains("not found", ignoreCase = true)) {
+                return executeWordPressLegacyTool(server, toolName, arguments)
+            }
+        }
+        return primaryResult
+    }
+
+    private fun parseToolCallResponse(response: McpJsonRpcResponse): VmResult<String> = vmCatching {
+        if (response.error != null) {
+            throw IllegalStateException("MCP tool execution error: ${response.error.message}")
+        }
+        val resultObj = response.result as? JsonObject
+        val contentArray = resultObj?.get("content") as? JsonArray
+        if (contentArray != null && contentArray.isNotEmpty()) {
+            contentArray.joinToString("\n") { element ->
+                val item = element as? JsonObject
+                (item?.get("text") as? JsonPrimitive)?.content ?: element.toString()
+            }
+        } else {
+            val resultField = resultObj?.get("result")
+            if (resultField != null) {
+                (resultField as? JsonPrimitive)?.content ?: resultField.toString()
+            } else {
+                response.result?.toString() ?: "(empty response)"
+            }
+        }
+    }
+
+    private suspend fun executeWordPressLegacyTool(
+        server: McpServerConfig,
+        toolName: String,
+        arguments: JsonObject,
+    ): VmResult<String> {
+        val root = extractSiteRoot(server.endpointUrl)
+        val legacyUrl = "$root/wp-json/xcodes/v1/mcp/execute"
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val effectiveKey = server.apiKey?.trim()?.takeIf { it.isNotBlank() } ?: masterKey
+
+        val body = buildJsonObject {
+            put("tool", toolName)
+            put("arguments", arguments)
+            if (!server.projectPath.isNullOrBlank()) {
+                put("workspace_path", server.projectPath)
+            }
+        }.toString()
+
+        val request = Request.Builder()
+            .url(legacyUrl)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("X-VMPJ-Key", effectiveKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
+            .header("Authorization", "Bearer $effectiveKey")
+            .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+
+        return httpClient.execute(request, RetryPolicy(maxAttempts = 1)).flatMap { respBody ->
             vmCatching {
-                if (response.error != null) {
-                    throw IllegalStateException("MCP tool execution error: ${response.error.message}")
-                }
-                val resultObj = response.result as? JsonObject
-                val contentArray = resultObj?.get("content") as? JsonArray
-                if (contentArray != null && contentArray.isNotEmpty()) {
-                    contentArray.joinToString("\n") { element ->
-                        val item = element as? JsonObject
-                        (item?.get("text") as? JsonPrimitive)?.content ?: element.toString()
+                val rootObj = runCatching { json.parseToJsonElement(respBody).jsonObject }.getOrNull()
+                val resultField = rootObj?.get("result")
+                when {
+                    resultField is JsonPrimitive -> resultField.content
+                    resultField != null -> resultField.toString()
+                    rootObj?.containsKey("content") == true -> {
+                        val contentArray = rootObj["content"] as? JsonArray
+                        contentArray?.joinToString("\n") { (it as? JsonObject)?.get("text")?.let { t -> (t as? JsonPrimitive)?.content } ?: it.toString() } ?: respBody
                     }
-                } else {
-                    val resultField = resultObj?.get("result")
-                    if (resultField != null) {
-                        (resultField as? JsonPrimitive)?.content ?: resultField.toString()
-                    } else {
-                        response.result?.toString() ?: "(empty response)"
-                    }
+                    else -> respBody
                 }
             }
         }
+    }
+
+    private fun extractSiteRoot(url: String): String {
+        val raw = url.trim().removeSuffix("/")
+        val withScheme = if (raw.startsWith("http://", ignoreCase = true) || raw.startsWith("https://", ignoreCase = true)) {
+            raw
+        } else {
+            "https://$raw"
+        }
+        return withScheme.substringBefore("/wp-json")
     }
 
     /**

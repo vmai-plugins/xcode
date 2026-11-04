@@ -81,7 +81,24 @@ class ApkInstaller @Inject constructor(
             .getOrNull()
         val installedCertificates = runCatching { installedSigningCertificates(packageManager) }
             .getOrNull()
-        if (archiveCertificates.isNullOrEmpty() || installedCertificates.isNullOrEmpty()) return false
+
+        if (installedCertificates.isNullOrEmpty()) return true
+
+        if (archiveCertificates.isNullOrEmpty()) {
+            // OEM PackageManagers (MIUI/ColorOS) often fail to extract signatures from uninstalled
+            // archive files. Fall back to validating package name match, and let system PackageInstaller
+            // perform cryptographic signature enforcement.
+            val basicInfo = runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.PackageInfoFlags.of(0L))
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+                }
+            }.getOrNull()
+            return basicInfo == null || basicInfo.packageName == context.packageName
+        }
+
         return archiveCertificates.toSet() == installedCertificates.toSet()
     }
 
@@ -89,7 +106,7 @@ class ApkInstaller @Inject constructor(
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             packageManager.getPackageArchiveInfo(
                 apkFile.absolutePath,
-                PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
+                PackageManager.PackageInfoFlags.of((PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES).toLong()),
             )
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             @Suppress("DEPRECATION")

@@ -282,11 +282,20 @@ class GitHubRepositoryClient @Inject constructor(
                 is VmResult.Failure -> response
                 is VmResult.Success -> {
                     val body = response.value
-                    if (body.trimStart().startsWith("[")) {
+                    val trimmed = body.trimStart()
+                    if (trimmed.startsWith("[")) {
                         VmResult.Failure(
                             VmError.FileSystem(
                                 summary = "Cannot read directory as a file",
                                 reason = "Target path '$path' resolves to a directory.",
+                                path = path,
+                            ),
+                        )
+                    } else if (trimmed.startsWith("{") && trimmed.contains("\"type\"") && (trimmed.contains("\"submodule\"") || trimmed.contains("\"symlink\""))) {
+                        VmResult.Failure(
+                            VmError.FileSystem(
+                                summary = "Cannot open special Git reference",
+                                reason = "Target path '$path' is a Git submodule or symbolic link.",
                                 path = path,
                             ),
                         )

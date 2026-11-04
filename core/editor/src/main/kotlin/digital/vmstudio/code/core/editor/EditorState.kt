@@ -105,6 +105,11 @@ class EditorState(
     fun redo() {
         if (redoStack.isEmpty()) return
         undoStack.addLast(checkpointText)
+        while (undoStack.size > MAX_UNDO_SIZE ||
+            (undoStack.size > 1 && undoStack.sumOf { it.length } > MAX_UNDO_CHARS)
+        ) {
+            undoStack.removeFirst()
+        }
         val next = redoStack.removeLast()
         checkpointText = next
         applyText(next)

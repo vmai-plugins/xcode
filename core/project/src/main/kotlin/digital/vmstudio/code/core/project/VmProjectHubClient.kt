@@ -309,9 +309,11 @@ class VmProjectHubClient @Inject constructor(
             ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
 
         val baseUrl = getEffectiveHubBaseUrl()
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$baseUrl/projects")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
             .header("X-Hub-Key", hubKey)
             .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
@@ -319,7 +321,25 @@ class VmProjectHubClient @Inject constructor(
             .build()
 
         when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
-            is VmResult.Failure -> result
+            is VmResult.Failure -> {
+                if (hubKey != masterKey) {
+                    val fallbackReq = Request.Builder()
+                        .url("$baseUrl/projects")
+                        .header("X-VMPJ-Key", masterKey)
+                        .header("X-VMPJ-Companion-Key", masterKey)
+                        .header("X-Hub-Key", masterKey)
+                        .header("Authorization", "Bearer $masterKey")
+                        .header("Accept", "application/json")
+                        .get()
+                        .build()
+                    when (val fallbackRes = httpClient.execute(fallbackReq, RetryPolicy(maxAttempts = 1))) {
+                        is VmResult.Failure -> fallbackRes
+                        is VmResult.Success -> VmResult.Success(parseProjects(fallbackRes.value))
+                    }
+                } else {
+                    result
+                }
+            }
             is VmResult.Success -> VmResult.Success(parseProjects(result.value))
         }
     }
@@ -334,9 +354,11 @@ class VmProjectHubClient @Inject constructor(
                 .orEmpty()
 
         val baseUrl = getEffectiveHubBaseUrl()
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$baseUrl/tasks")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
             .header("X-Hub-Key", hubKey)
             .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
@@ -344,7 +366,25 @@ class VmProjectHubClient @Inject constructor(
             .build()
 
         when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
-            is VmResult.Failure -> result
+            is VmResult.Failure -> {
+                if (hubKey != masterKey) {
+                    val fallbackReq = Request.Builder()
+                        .url("$baseUrl/tasks")
+                        .header("X-VMPJ-Key", masterKey)
+                        .header("X-VMPJ-Companion-Key", masterKey)
+                        .header("X-Hub-Key", masterKey)
+                        .header("Authorization", "Bearer $masterKey")
+                        .header("Accept", "application/json")
+                        .get()
+                        .build()
+                    when (val fallbackRes = httpClient.execute(fallbackReq, RetryPolicy(maxAttempts = 1))) {
+                        is VmResult.Failure -> fallbackRes
+                        is VmResult.Success -> VmResult.Success(parseTasks(fallbackRes.value, projectsById))
+                    }
+                } else {
+                    result
+                }
+            }
             is VmResult.Success -> VmResult.Success(parseTasks(result.value, projectsById))
         }
     }

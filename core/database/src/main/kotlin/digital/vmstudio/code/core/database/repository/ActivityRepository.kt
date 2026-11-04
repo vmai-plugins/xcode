@@ -1,10 +1,13 @@
 package digital.vmstudio.code.core.database.repository
- 
+
+import digital.vmstudio.code.core.common.dispatcher.IoDispatcher
 import digital.vmstudio.code.core.database.dao.ActivityDao
 import digital.vmstudio.code.core.database.entity.ActivityCategory
 import digital.vmstudio.code.core.database.entity.ActivityEntity
 import digital.vmstudio.code.core.database.entity.ActivitySeverity
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,6 +15,7 @@ import javax.inject.Singleton
 @Singleton
 class ActivityRepository @Inject constructor(
     private val activityDao: ActivityDao,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) {
     fun observeRecent(limit: Int = 100): Flow<List<ActivityEntity>> =
         activityDao.observeRecent(limit)
@@ -24,7 +28,7 @@ class ActivityRepository @Inject constructor(
         serverId: String? = null,
         taskId: String? = null,
         severity: ActivitySeverity = ActivitySeverity.INFO,
-    ) {
+    ) = withContext(ioDispatcher) {
         val entity = ActivityEntity(
             id = UUID.randomUUID().toString(),
             timestampMillis = System.currentTimeMillis(),
@@ -39,7 +43,7 @@ class ActivityRepository @Inject constructor(
         activityDao.insert(entity)
     }
 
-    suspend fun clearAll() {
+    suspend fun clearAll() = withContext(ioDispatcher) {
         activityDao.clear()
     }
 }

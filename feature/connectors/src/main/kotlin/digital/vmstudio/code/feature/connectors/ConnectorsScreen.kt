@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
@@ -2189,10 +2190,18 @@ private fun ModernConnectorCard(
 
             // Live status banner if present
             statusMessage?.let { msg ->
+                val isError = msg.contains("fail", ignoreCase = true) ||
+                    msg.contains("error", ignoreCase = true) ||
+                    msg.contains("403") ||
+                    msg.contains("404") ||
+                    msg.contains("reject", ignoreCase = true) ||
+                    msg.contains("refused", ignoreCase = true) ||
+                    msg.contains("could not", ignoreCase = true)
+
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    color = if (isError) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, if (isError) MaterialTheme.colorScheme.error.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(
@@ -2201,15 +2210,15 @@ private fun ModernConnectorCard(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Default.CheckCircle,
+                            imageVector = if (isError) Icons.Default.Error else Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = VmTheme.colors.success,
+                            tint = if (isError) MaterialTheme.colorScheme.error else VmTheme.colors.success,
                             modifier = Modifier.size(15.dp),
                         )
                         Text(
                             text = msg,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
