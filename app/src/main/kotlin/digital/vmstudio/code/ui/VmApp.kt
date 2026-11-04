@@ -1,10 +1,13 @@
 package digital.vmstudio.code.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -15,13 +18,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -31,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.PermanentDrawerSheet
 import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
@@ -45,9 +53,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -232,39 +243,22 @@ private fun AppMainContent(
 
 @Composable
 private fun DrawerWorkspaceHeader() {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(start = 24.dp, end = 20.dp, top = 28.dp, bottom = 12.dp),
     ) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(40.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Dns,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "X-codes Workspace",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Cloud IDE & Autonomous Agent",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            text = "X-Codes",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = "Cloud IDE & Autonomous Agent",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+        )
     }
 }
 
@@ -281,26 +275,19 @@ private fun ColumnScope.DrawerNavigationItems(
     onSelectChat: (String) -> Unit,
     onNavigate: (VmDestination) -> Unit,
 ) {
-    NavigationDrawerItem(
-        label = { Text("New chat", fontWeight = FontWeight.SemiBold) },
-        icon = { Icon(Icons.Default.Add, contentDescription = null) },
-        selected = false,
-        onClick = onNewChat,
-        modifier = Modifier.padding(horizontal = 12.dp),
-    )
-
     Text(
-        text = "Recents & History",
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
+        text = "Recents",
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 6.dp),
+        modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 6.dp),
     )
     LazyColumn(modifier = Modifier.weight(1f)) {
         items(
             conversations.conversations.take(DRAWER_RECENT_CHATS),
             key = { it.id },
         ) { chat ->
+            val isSelected = chat.id == currentConversationId
             NavigationDrawerItem(
                 label = {
                     Column {
@@ -308,6 +295,7 @@ private fun ColumnScope.DrawerNavigationItems(
                             text = chat.title.ifBlank { "Untitled chat" },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                         chat.workingDirectory?.let { dir ->
                             Text(
@@ -320,7 +308,23 @@ private fun ColumnScope.DrawerNavigationItems(
                         }
                     }
                 },
-                selected = chat.id == currentConversationId,
+                icon = {
+                    Icon(
+                        Icons.Default.ChatBubbleOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                    )
+                },
+                selected = isSelected,
+                shape = RoundedCornerShape(12.dp),
+                colors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
+                    unselectedContainerColor = Color.Transparent,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                ),
                 badge = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (chat.isRunning) {
@@ -351,29 +355,92 @@ private fun ColumnScope.DrawerNavigationItems(
                     }
                 },
                 onClick = { onSelectChat(chat.id) },
-                modifier = Modifier.padding(horizontal = 12.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
             )
         }
         if (conversations.conversations.isNotEmpty()) {
             item(key = "all-chats") {
-                NavigationDrawerItem(
-                    label = { Text("All chats") },
-                    selected = false,
-                    onClick = { onNavigate(VmDestination.Chats) },
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onNavigate(VmDestination.Chats) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = "All chats",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = "›",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
 
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-    NavigationDrawerItem(
-        label = { Text("Settings") },
-        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-        selected = currentRoute == VmDestination.Settings.route,
-        onClick = { onNavigate(VmDestination.Settings) },
-        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
     )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE07A5F))
+                    .clickable { onNavigate(VmDestination.Settings) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "XC",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color.White,
+                )
+            }
+            IconButton(
+                onClick = { onNavigate(VmDestination.Settings) },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (currentRoute == VmDestination.Settings.route) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Button(
+            onClick = onNewChat,
+            shape = RoundedCornerShape(24.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.White,
+                contentColor = Color.Black,
+            ),
+            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.Black)
+            Spacer(Modifier.width(6.dp))
+            Text("New chat", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
+        }
+    }
 }
 
 private val DRAWER_ROUTES = setOf(

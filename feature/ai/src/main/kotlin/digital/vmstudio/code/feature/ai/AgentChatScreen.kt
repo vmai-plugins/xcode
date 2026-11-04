@@ -625,32 +625,33 @@ fun AgentChatScreen(
 
                     val showScrollToBottom by remember {
                         derivedStateOf {
-                            listState.firstVisibleItemIndex > 1 || listState.firstVisibleItemScrollOffset > 200
+                            val total = groupedTranscript.size
+                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            total > 2 && lastVisible < total - 1
                         }
                     }
                     if (showScrollToBottom) {
                         Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(groupedTranscript.size)
+                                }
+                            },
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            shadowElevation = 4.dp,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                            shadowElevation = 6.dp,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(spacing.md)
-                                .size(36.dp),
+                                .padding(end = 16.dp, bottom = 12.dp)
+                                .size(40.dp),
                         ) {
-                            IconButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(groupedTranscript.size)
-                                    }
-                                },
-                            ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
                                     contentDescription = "Scroll to bottom",
                                     tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(24.dp),
                                 )
                             }
                         }

@@ -478,6 +478,35 @@ internal fun ModernComposer(
                     )
                 }
             }
+            // Active Project / Working Directory Pill
+            if (workingDirectory.isNotBlank() && workingDirectory != "/") {
+                val dirLabel = workingDirectory.trimEnd('/').substringAfterLast('/')
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { onEditDirectory() },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981)),
+                        )
+                        Text(
+                            text = dirLabel,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFF10B981),
+                        )
+                    }
+                }
+            }
+
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = if (text.contains("@swarm", ignoreCase = true)) Color(0xFFFFB74D).copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,

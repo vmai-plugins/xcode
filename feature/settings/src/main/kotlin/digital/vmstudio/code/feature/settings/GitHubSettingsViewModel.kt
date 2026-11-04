@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.git.GitHubDeviceAuth
+import digital.vmstudio.code.core.git.GitHubDevicePollResult
 import digital.vmstudio.code.core.git.GitHubRepository
 import digital.vmstudio.code.core.git.GitHubRepositoryClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +24,8 @@ data class GitHubSettingsUiState(
     val hasToken: Boolean = false,
     val error: String? = null,
     val repositories: List<GitHubRepo> = emptyList(),
+    val deviceAuth: GitHubDeviceAuth? = null,
+    val isPollingDeviceAuth: Boolean = false,
 )
 
 @HiltViewModel
@@ -56,6 +61,58 @@ class GitHubSettingsViewModel @Inject constructor(
                 val message = exception.message ?: "Failed to trigger GitHub workflow"
                 _uiState.update { it.copy(isLoading = false, error = message) }
                 onTriggered(false, message)
+            }
+        }
+    }
+
+    fun cancelDeviceAuth() {
+        _uiState.update { it.copy(deviceAuth = null, isPollingDeviceAuth = false) }
+    }
+
+    fun startDeviceAuth(onCodeReady: (userCode: String, verificationUri: String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            when (val result = github.requestDeviceCode()) {
+                is VmResult.Failure -> {
+                    _uiState.update { it.copy(isLoading = false, error = result.error.summary) }
+                }
+                is VmResult.Success -> {
+                    val auth = result.value
+                    _uiState.update { it.copy(isLoading = false, deviceAuth = auth, isPollingDeviceAuth = true) }
+                    onCodeReady(auth.userCode, auth.verificationUri)
+                    pollForDeviceToken(auth.deviceCode, auth.intervalSeconds)
+                }
+            }
+        }
+    }
+
+    private fun pollForDeviceToken(deviceCode: String, intervalSeconds: Int) {
+        viewModelScope.launch {
+            val delayMs = maxOf(intervalSeconds, 5) * 1000L
+            while (_uiState.value.isPollingDeviceAuth) {
+                delay(delayMs)
+                when (val pollResult = github.pollDeviceToken(deviceCode = deviceCode)) {
+                    is VmResult.Failure -> {
+                        _uiState.update { it.copy(isPollingDeviceAuth = false, error = pollResult.error.summary) }
+                        break
+                    }
+                    is VmResult.Success -> {
+                        when (val outcome = pollResult.value) {
+                            is GitHubDevicePollResult.Pending -> {
+                                // continue polling
+                            }
+                            is GitHubDevicePollResult.Success -> {
+                                _uiState.update { it.copy(isPollingDeviceAuth = false, deviceAuth = null) }
+                                setToken(outcome.accessToken)
+                                break
+                            }
+                            is GitHubDevicePollResult.Error -> {
+                                _uiState.update { it.copy(isPollingDeviceAuth = false, error = outcome.message) }
+                                break
+                            }
+                        }
+                    }
+                }
             }
         }
     }

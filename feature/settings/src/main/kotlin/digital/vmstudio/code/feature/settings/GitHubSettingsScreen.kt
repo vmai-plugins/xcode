@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -268,6 +269,122 @@ fun GitHubSettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                    }
+
+                    // --- 1-Tap OAuth Sign-in with GitHub ---
+                    val deviceAuth = state.deviceAuth
+                    if (deviceAuth != null && state.isPollingDeviceAuth) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    text = "Device Authorization Code",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = deviceAuth.userCode,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 4.sp,
+                                )
+                                Text(
+                                    text = "Code copied to clipboard! Paste it on github.com/login/device to grant access to your account & organizations.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Text("Waiting for GitHub approval...", style = MaterialTheme.typography.labelSmall)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                clipboardManager.setText(AnnotatedString(deviceAuth.userCode))
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deviceAuth.verificationUri))
+                                                context.startActivity(intent)
+                                            },
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
+                                            Text("Reopen GitHub Browser", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                                        }
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { viewModel.cancelDeviceAuth() },
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                            Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (!state.hasToken) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF24292F),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.startDeviceAuth { userCode, uri ->
+                                        clipboardManager.setText(AnnotatedString(userCode))
+                                        Toast.makeText(context, "Code '$userCode' copied to clipboard!", Toast.LENGTH_LONG).show()
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {
+                                            Toast.makeText(context, "Open $uri to authorize", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(Icons.Default.Code, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = "Sign in with GitHub (Recommended)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                )
+                            }
+                        }
+                        Text(
+                            text = "— OR PASTE PERSONAL ACCESS TOKEN —",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(vertical = 2.dp),
+                        )
                     }
 
                     OutlinedTextField(
