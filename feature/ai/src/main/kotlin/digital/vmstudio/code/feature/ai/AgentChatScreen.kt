@@ -499,6 +499,8 @@ fun AgentChatScreen(
                                 }
                             },
                             onOpenConnectors = onOpenConnectors,
+                            clusterNodes = state.clusterNodes,
+                            onRefreshCluster = viewModel::refreshClusterNodes,
                         )
                     }
 

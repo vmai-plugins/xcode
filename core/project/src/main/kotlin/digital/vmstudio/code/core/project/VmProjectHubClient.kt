@@ -127,6 +127,21 @@ data class HubGoogleSession(
     val workspaceId: Long,
 )
 
+data class ClusterNode(
+    val id: String,
+    val name: String,
+    val specs: String,
+    val ip: String,
+    val tailscaleIp: String,
+    val role: String,
+    val status: String,
+    val ollamaReady: Boolean,
+    val latencyMs: Long,
+    val lastSeen: Long,
+) {
+    val isOnline: Boolean get() = status.equals("online", ignoreCase = true)
+}
+
 @Singleton
 class VmProjectHubClient @Inject constructor(
     private val httpClient: VmHttpClient,
@@ -657,7 +672,12 @@ class VmProjectHubClient @Inject constructor(
             is VmResult.Failure -> return@withContext res
             is VmResult.Success -> res.value
         }
-        val activeServers = serverRepository.servers.first()
+        // 1. Ensure VPS is provisioned from Hub credentials so projects can bind immediately
+        var activeServers = serverRepository.servers.first()
+        if (activeServers.none { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }) {
+            syncHubCredentialsAndVps()
+            activeServers = serverRepository.servers.first()
+        }
         val autoConnectId = preferencesRepository.preferences.first().autoConnectServerId
         val primaryServerId = autoConnectId?.let { id -> activeServers.firstOrNull { it.id == id }?.id }
             ?: activeServers.firstOrNull {
@@ -669,10 +689,12 @@ class VmProjectHubClient @Inject constructor(
 
         for (hub in hubProjects) {
             val targetPath = hub.universalPath()
+            val isLinuxServerPath = targetPath.startsWith("/home/") || targetPath.startsWith("/var/") || targetPath.startsWith("/opt/") || targetPath.startsWith("/etc/")
             val targetServerId = when {
                 targetPath.startsWith("/github/") -> null
                 targetPath.startsWith("/vmhub/") -> null
-                else -> primaryServerId // Null if no VPS added yet; re-binds when new VPS is added
+                isLinuxServerPath -> primaryServerId
+                else -> primaryServerId
             }
             val descParts = mutableListOf<String>()
             descParts += "VM Hub #${hub.id}"
@@ -703,7 +725,11 @@ class VmProjectHubClient @Inject constructor(
                 )
                 if (created is VmResult.Success) syncedCount++
             } else {
-                val updatedServerId = if (match.serverId == null && targetServerId != null) targetServerId else match.serverId
+                val updatedServerId = if ((match.serverId == null || match.serverId == "local") && targetServerId != null) {
+                    targetServerId
+                } else {
+                    match.serverId ?: targetServerId
+                }
                 val updatedPath = if (match.remotePath.startsWith("/vmhub/") && targetPath.startsWith("/github/")) targetPath else match.remotePath
                 val updatedBranch = if (hub.hasGithubRepo) (match.branch ?: "main") else match.branch
                 projectRepository.update(
@@ -973,6 +999,50 @@ class VmProjectHubClient @Inject constructor(
                 priority = obj.str("priority").orEmpty().ifBlank { "medium" },
                 dueDate = obj.str("due_date")?.takeIf { it.isNotBlank() },
             )
+        }
+    }
+
+    suspend fun fetchClusterNodes(): VmResult<List<ClusterNode>> = withContext(ioDispatcher) {
+        val hubKey = getEffectiveHubKey() ?: digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val baseUrl = getEffectiveHubBaseUrl().replace("/xcodes/v1", "/vmpj/v1")
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val encKey = java.net.URLEncoder.encode(hubKey, "UTF-8")
+        val encMaster = java.net.URLEncoder.encode(masterKey, "UTF-8")
+        val sep = if (baseUrl.contains("?")) "&" else "?"
+        val authenticatedUrl = "$baseUrl/cluster/nodes${sep}key=$encKey&companion_key=$encMaster"
+
+        val request = Request.Builder()
+            .url(authenticatedUrl)
+            .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+
+        when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 1))) {
+            is VmResult.Failure -> result
+            is VmResult.Success -> {
+                runCatching {
+                    val root = json.parseToJsonElement(result.value) as? JsonObject
+                    val nodesArray = root?.get("nodes") as? JsonArray ?: JsonArray(emptyList())
+                    val nodes = nodesArray.mapNotNull { el ->
+                        val obj = el as? JsonObject ?: return@mapNotNull null
+                        ClusterNode(
+                            id = obj.str("id").orEmpty(),
+                            name = obj.str("name").orEmpty(),
+                            specs = obj.str("specs").orEmpty(),
+                            ip = obj.str("ip").orEmpty(),
+                            tailscaleIp = obj.str("tailscale_ip").orEmpty(),
+                            role = obj.str("role").orEmpty(),
+                            status = obj.str("status").orEmpty().ifBlank { "offline" },
+                            ollamaReady = (obj["ollama_ready"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
+                            latencyMs = obj.long("latency_ms") ?: 0L,
+                            lastSeen = obj.long("last_seen") ?: 0L,
+                        )
+                    }
+                    VmResult.Success(nodes)
+                }.getOrElse { VmResult.Failure(VmError.Unexpected("Failed to parse cluster nodes: ${it.message}")) }
+            }
         }
     }
 

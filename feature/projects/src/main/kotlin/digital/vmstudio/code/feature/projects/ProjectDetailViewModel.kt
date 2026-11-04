@@ -147,12 +147,25 @@ class ProjectDetailViewModel @Inject constructor(
             val proj = projectRepository.get(projectId)
             project.value = proj
             val srvId = proj?.serverId
+            val isLinux = proj?.remotePath?.let {
+                it.startsWith("/home/") || it.startsWith("/var/") || it.startsWith("/opt/") || it.startsWith("/etc/")
+            } ?: false
+
             if (srvId != null && proj.isRemote) {
                 when (val result = serverRepository.get(srvId)) {
                     is VmResult.Success -> server.value = result.value
                     is VmResult.Failure -> server.value = null
                 }
                 loadGitStatus(srvId, proj.remotePath)
+            } else if (isLinux && proj != null) {
+                val activeServers = serverRepository.servers.first()
+                val vps = activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }
+                    ?: activeServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }
+                if (vps != null) {
+                    server.value = vps
+                    projectRepository.update(proj.copy(serverId = vps.id))
+                    loadGitStatus(vps.id, proj.remotePath)
+                }
             } else if (proj != null && proj.isLocal) {
                 server.value = Server(
                     id = RemoteFileSystem.LOCAL_SERVER_ID,

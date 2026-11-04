@@ -65,6 +65,7 @@ import digital.vmstudio.code.core.database.entity.AgentTaskEntity
 import digital.vmstudio.code.core.database.entity.AgentTaskStatus
 import digital.vmstudio.code.core.project.Project
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
+import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmCard
@@ -164,6 +165,7 @@ fun ProjectDetailScreen(
                 item(key = "actions") {
                     ProjectActionsRow(
                         project = project,
+                        server = state.server,
                         onOpenTerminal = onOpenTerminal,
                         onOpenFiles = onOpenFiles,
                         onOpenAgent = onOpenAgent,
@@ -437,14 +439,21 @@ private fun ProjectOverviewCard(
 @Composable
 private fun ProjectActionsRow(
     project: Project,
+    server: Server?,
     onOpenTerminal: (serverId: String, path: String) -> Unit,
     onOpenFiles: (serverId: String, path: String) -> Unit,
     onOpenAgent: (serverId: String, path: String) -> Unit,
     onTerminalNotice: () -> Unit = {},
 ) {
     val spacing = VmTheme.spacing
-    val effectiveServerId = project.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
-    val hasTerminal = project.isRemote && !project.serverId.isNullOrBlank()
+    val isLinuxPath = project.remotePath.startsWith("/home/") || project.remotePath.startsWith("/var/") || project.remotePath.startsWith("/opt/") || project.remotePath.startsWith("/etc/")
+    val effectiveServerId: String = when {
+        project.serverId != null && !RemoteFileSystem.isLocalServer(project.serverId) -> project.serverId!!
+        isLinuxPath && server != null && !RemoteFileSystem.isLocalServer(server.id) -> server.id
+        project.remotePath.startsWith("/github/") -> RemoteFileSystem.LOCAL_SERVER_ID
+        else -> project.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
+    }
+    val hasTerminal = (project.isRemote || (isLinuxPath && server != null)) && !effectiveServerId.isNullOrBlank()
 
     Row(
         modifier = Modifier.fillMaxWidth(),

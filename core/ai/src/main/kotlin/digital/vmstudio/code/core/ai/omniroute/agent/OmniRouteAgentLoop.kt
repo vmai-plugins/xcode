@@ -93,8 +93,17 @@ class OmniRouteAgentLoop @Inject constructor(
         autonomyLevel: AgentAutonomyLevel,
         fallbackModel: String? = null,
     ): Flow<AgentEvent> = flow {
-        val serverId = config.serverId
+        val rawServerId = config.serverId
         val workingDirectory = config.workingDirectory
+        val isLinuxPath = workingDirectory.startsWith("/home/") || workingDirectory.startsWith("/var/") || workingDirectory.startsWith("/opt/") || workingDirectory.startsWith("/etc/")
+        val serverId = if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(rawServerId) && isLinuxPath) {
+            val servers = serverRepository.servers.first()
+            servers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
+                ?: servers.firstOrNull { !digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(it.id) }?.id
+                ?: rawServerId
+        } else {
+            rawServerId
+        }
         val startedAt = System.currentTimeMillis()
 
         val allowedTools = allowedToolsFor(config)

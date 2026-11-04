@@ -159,6 +159,7 @@ data class AgentChatUiState(
     val githubImportingRepo: String? = null,
     val availableServers: List<ChatServerOption> = emptyList(),
     val queuedMessages: List<QueuedMessage> = emptyList(),
+    val clusterNodes: List<digital.vmstudio.code.core.project.ClusterNode> = emptyList(),
     val githubFileTree: List<GitHubTreeItem> = emptyList(),
     val isLoadingGithubFileTree: Boolean = false,
     val squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK,
@@ -315,6 +316,7 @@ class AgentChatViewModel @Inject constructor(
         // Live model sync: refresh the gateway's list whenever the chat opens on a
         // stale one. A failure here is silent; an explicit sync reports it.
         viewModelScope.launch { modelCatalog.syncIfStale() }
+        viewModelScope.launch { refreshClusterNodes() }
         viewModelScope.launch {
             try {
                 projectHubClient.syncAllChatsFromServer()
@@ -330,8 +332,21 @@ class AgentChatViewModel @Inject constructor(
             existingConversationId != null -> restoreConversation(existingConversationId)
             // A project supplies its own directory; probing the home directory is the
             // fallback for an agent opened straight from a server.
-            !projectPath.isNullOrBlank() ->
+            !projectPath.isNullOrBlank() -> {
                 _uiState.update { it.copy(workingDirectory = projectPath) }
+                val isLinux = projectPath.startsWith("/home/") || projectPath.startsWith("/var/") || projectPath.startsWith("/opt/") || projectPath.startsWith("/etc/")
+                if (isLinux && (serverId == null || RemoteFileSystem.isLocalServer(serverId))) {
+                    viewModelScope.launch {
+                        val activeServers = serverRepository.servers.first()
+                        val vpsServerId = activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
+                            ?: activeServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }?.id
+                        if (vpsServerId != null) {
+                            _uiState.update { it.copy(serverId = vpsServerId) }
+                            scanServerGitRepos()
+                        }
+                    }
+                }
+            }
             // Defaults the agent's scope to the login home directory rather than `/`.
             else -> serverId?.let { server ->
                 viewModelScope.launch {
@@ -999,12 +1014,18 @@ class AgentChatViewModel @Inject constructor(
         }
         gitDiscoveryJob?.cancel()
         gitDiscoveryJob = null
+
+        val path = project?.remotePath.orEmpty()
+        val isLinuxPath = path.startsWith("/home/") || path.startsWith("/var/") || path.startsWith("/opt/") || path.startsWith("/etc/") || path.startsWith("/root/")
+        val currentServer = _uiState.value.serverId
+
         _uiState.update {
             it.copy(
-                serverId = if (project == null) {
-                    null
-                } else {
-                    project.serverId ?: if (project.remotePath.startsWith("/github/")) null else (it.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID)
+                serverId = when {
+                    project == null -> null
+                    project.serverId != null && !RemoteFileSystem.isLocalServer(project.serverId) -> project.serverId
+                    project.remotePath.startsWith("/github/") -> null
+                    else -> currentServer ?: RemoteFileSystem.LOCAL_SERVER_ID
                 },
                 workingDirectory = project?.remotePath.orEmpty(),
                 conversationId = null,
@@ -1021,9 +1042,22 @@ class AgentChatViewModel @Inject constructor(
             preferenceStore.setLastChatGeneral(project == null)
             val server = _uiState.value.serverId
             if (project != null && server != null) preferenceStore.setLastFolder(server, project.remotePath)
+
+            // Auto-bind Linux VPS server if not bound yet
+            if (project != null && isLinuxPath && (project.serverId == null || RemoteFileSystem.isLocalServer(project.serverId))) {
+                val activeServers = serverRepository.servers.first()
+                val vpsServer = activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }
+                    ?: activeServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }
+                if (vpsServer != null) {
+                    _uiState.update { it.copy(serverId = vpsServer.id) }
+                    projectRepository.update(project.copy(serverId = vpsServer.id))
+                    scanServerGitRepos()
+                }
+            }
         }
         refreshBackgroundRuns()
-        if (project?.serverId != null && !RemoteFileSystem.isLocalServer(project.serverId)) {
+        val activeServer = _uiState.value.serverId
+        if (activeServer != null && !RemoteFileSystem.isLocalServer(activeServer)) {
             scanServerGitRepos()
         }
         checkHealth()
@@ -1095,6 +1129,19 @@ class AgentChatViewModel @Inject constructor(
         val next = _uiState.value.queuedMessages.firstOrNull() ?: return
         _uiState.update { it.copy(queuedMessages = it.queuedMessages.drop(1)) }
         send(next.prompt, next.attachments)
+    }
+
+    fun refreshClusterNodes() {
+        viewModelScope.launch {
+            when (val res = projectHubClient.fetchClusterNodes()) {
+                is digital.vmstudio.code.core.common.result.VmResult.Success -> {
+                    _uiState.update { it.copy(clusterNodes = res.value) }
+                }
+                is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
+                    VmLog.d(LogCategory.AI, TAG, "Cluster nodes fetch failed: ${res.error.summary}")
+                }
+            }
+        }
     }
 
     fun installApk(rawPath: String) {

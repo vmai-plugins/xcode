@@ -47,6 +47,7 @@ class SftpRemoteFileSystem @Inject constructor(
     private val connectionManager: SshConnectionManager,
     @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val shadowCache: PhoneShadowCache,
 ) : RemoteFileSystem {
 
     private val localFs = LocalFileSystemDelegate(context, ioDispatcher)
@@ -169,6 +170,8 @@ class SftpRemoteFileSystem @Inject constructor(
     }
 
     override suspend fun rename(serverId: String, from: String, to: String): VmResult<Unit> {
+        shadowCache.invalidate(serverId, from)
+        shadowCache.invalidate(serverId, to)
         if (isLocalOrVirtual(serverId, from) || isLocalOrVirtual(serverId, to)) return localFs.rename(from, to)
         return withSftp(serverId, from) { sftp ->
             sftp.rename(expandPath(sftp, from), expandPath(sftp, to))
@@ -181,6 +184,8 @@ class SftpRemoteFileSystem @Inject constructor(
         path: String,
         recursive: Boolean,
     ): VmResult<Unit> {
+        shadowCache.invalidate(serverId, path)
+        shadowCache.invalidatePrefix(serverId, path)
         if (isLocalOrVirtual(serverId, path)) return localFs.delete(path, recursive)
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
@@ -218,8 +223,12 @@ class SftpRemoteFileSystem @Inject constructor(
         maxBytes: Long,
     ): VmResult<String> {
         if (isLocalOrVirtual(serverId, path)) return localFs.readText(path, maxBytes)
+        val cached = shadowCache.get(serverId, path)
+        if (cached != null) return VmResult.Success(cached)
         return withSftp(serverId, path) { sftp ->
             val normalised = expandPath(sftp, path)
+            val cachedNormalised = shadowCache.get(serverId, normalised)
+            if (cachedNormalised != null) return@withSftp cachedNormalised
             sftp.open(normalised, setOf(OpenMode.READ)).use { remote ->
                 val length = remote.length()
                 if (length > maxBytes) {
@@ -228,7 +237,7 @@ class SftpRemoteFileSystem @Inject constructor(
                             "${formatBytes(maxBytes)} editor limit.",
                     )
                 }
-                if (length > 0L) {
+                val text = if (length > 0L) {
                     val buffer = ByteArray(length.toInt().coerceAtLeast(0))
                     var offset = 0
                     while (offset < buffer.size) {
@@ -251,6 +260,9 @@ class SftpRemoteFileSystem @Inject constructor(
                     val bytes = out.toByteArray()
                     decodeTextStrictly(bytes, bytes.size)
                 }
+                shadowCache.put(serverId, path, text)
+                shadowCache.put(serverId, normalised, text)
+                text
             }
         }
     }
@@ -296,6 +308,8 @@ class SftpRemoteFileSystem @Inject constructor(
                         try { sftp.rm(backupPath) } catch (_: Exception) {}
                     }
                 }
+                shadowCache.put(serverId, path, content)
+                shadowCache.put(serverId, normalised, content)
             } catch (t: Throwable) {
                 if (hasBackup) {
                     try { sftp.rename(backupPath, normalised) } catch (_: Exception) {}
