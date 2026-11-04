@@ -11,6 +11,8 @@ import digital.vmstudio.code.core.ssh.command.CommandResult
 import digital.vmstudio.code.core.ssh.model.Server
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -66,19 +68,32 @@ class SshSession internal constructor(
             // The whole read-and-wait is bounded here rather than relying on
             // cmd.join's timeout: a process that keeps stdout open but idle (or
             // trickling) never lets the drain loops reach EOF, so a join placed
-            // after them would never run. On expiry the finally block closes the
-            // session, which terminates the remote process.
+            // after them would never run. On expiry the timeout handler immediately
+            // closes the session, breaking out of any blocking network stream read.
             val drained = withTimeoutOrNull(limits.timeoutMillis) {
-                val pair = coroutineScope {
-                    val outDeferred = async { drain(cmd.inputStream, limits.maxOutputBytes) }
-                    val errDeferred = async { drain(cmd.errorStream, limits.maxOutputBytes) }
-                    outDeferred.await() to errDeferred.await()
+                val timeoutJob = currentCoroutineContext().job
+                val timeoutHandle = timeoutJob.invokeOnCompletion { cause ->
+                    if (cause != null) {
+                        runCatching { session?.close() }
+                    }
                 }
-                runInterruptible { cmd.join(limits.timeoutMillis, TimeUnit.MILLISECONDS) }
-                pair
-            } ?: return@withContext VmResult.Failure(
-                mapCommandFailure(command, CommandTimeoutException(limits.timeoutMillis), startedAt, limits),
-            )
+                try {
+                    val pair = coroutineScope {
+                        val outDeferred = async { drain(cmd.inputStream, limits.maxOutputBytes) }
+                        val errDeferred = async { drain(cmd.errorStream, limits.maxOutputBytes) }
+                        outDeferred.await() to errDeferred.await()
+                    }
+                    runInterruptible { cmd.join(limits.timeoutMillis, TimeUnit.MILLISECONDS) }
+                    pair
+                } finally {
+                    timeoutHandle.dispose()
+                }
+            } ?: run {
+                runCatching { session?.close() }
+                return@withContext VmResult.Failure(
+                    mapCommandFailure(command, CommandTimeoutException(limits.timeoutMillis), startedAt, limits),
+                )
+            }
             val (stdout, stderr) = drained
 
             val result = CommandResult(
@@ -144,15 +159,26 @@ class SshSession internal constructor(
 
             // Bounded so a command that never closes its streams (a hung build, a
             // forgotten `tail -f`) cannot pin this coroutine forever. On expiry the
-            // readers are cancelled and the finally block closes the session.
+            // timeout handler immediately closes the session so reader loops unblock.
             val finished = withTimeoutOrNull(limits.timeoutMillis) {
-                stdout.join()
-                stderr.join()
-                runInterruptible { cmd.join(limits.timeoutMillis, TimeUnit.MILLISECONDS) }
-                true
+                val timeoutJob = currentCoroutineContext().job
+                val timeoutHandle = timeoutJob.invokeOnCompletion { cause ->
+                    if (cause != null) {
+                        runCatching { session?.close() }
+                    }
+                }
+                try {
+                    stdout.join()
+                    stderr.join()
+                    runInterruptible { cmd.join(limits.timeoutMillis, TimeUnit.MILLISECONDS) }
+                    true
+                } finally {
+                    timeoutHandle.dispose()
+                }
             }
 
             if (finished == null) {
+                runCatching { session?.close() }
                 stdout.cancel()
                 stderr.cancel()
                 send(

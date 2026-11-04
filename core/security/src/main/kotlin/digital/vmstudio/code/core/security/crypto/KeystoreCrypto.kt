@@ -57,7 +57,14 @@ class AndroidKeystoreCrypto @Inject constructor() : KeystoreCrypto {
 
     override fun encrypt(plaintext: ByteArray): VmResult<ByteArray> = vmCatching(::mapCryptoError) {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, masterKey())
+        try {
+            cipher.init(Cipher.ENCRYPT_MODE, masterKey())
+        } catch (_: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            // Lock screen or biometrics reset invalidated the alias in Keystore.
+            // Purge the unusable alias and generate a fresh master key for newly stored secrets.
+            destroyMasterKey()
+            cipher.init(Cipher.ENCRYPT_MODE, generateMasterKey())
+        }
         val iv = cipher.iv
         require(iv.size == IV_LENGTH) { "Unexpected GCM IV length ${iv.size}" }
         val encrypted = cipher.doFinal(plaintext)
@@ -165,13 +172,16 @@ class AndroidKeystoreCrypto @Inject constructor() : KeystoreCrypto {
     }.getOrDefault(false)
 
     private fun mapCryptoError(throwable: Throwable): VmError = when (throwable) {
-        is android.security.keystore.KeyPermanentlyInvalidatedException -> VmError.Security(
-            summary = "Stored credentials can no longer be decrypted",
-            reason = "The device security configuration changed (screen lock removed or " +
-                "biometrics reset), which permanently invalidated the encryption key.",
-            suggestedAction = "Re-enter your server and AI credentials to store them again.",
-            cause = throwable,
-        )
+        is android.security.keystore.KeyPermanentlyInvalidatedException -> {
+            runCatching { destroyMasterKey() }
+            VmError.Security(
+                summary = "Stored credentials can no longer be decrypted",
+                reason = "The device security configuration changed (screen lock removed or " +
+                    "biometrics reset), which permanently invalidated the encryption key.",
+                suggestedAction = "Re-enter your server and AI credentials to store them again.",
+                cause = throwable,
+            )
+        }
         is javax.crypto.AEADBadTagException -> VmError.Security(
             summary = "Stored credential failed integrity check",
             reason = "The encrypted data was modified or corrupted.",

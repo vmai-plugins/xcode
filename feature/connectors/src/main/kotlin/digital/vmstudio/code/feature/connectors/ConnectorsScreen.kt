@@ -698,8 +698,8 @@ fun ConnectorsScreen(
                         iconTint = Color(0xFF2E7D32),
                         title = "Google Sheets",
                         category = "Data & Living Knowledge Base",
-                        status = if (state.sheetPreviewRows.isNotEmpty()) VmStatus.CONNECTED else VmStatus.IDLE,
-                        statusText = if (state.sheetPreviewRows.isNotEmpty()) "${state.sheetPreviewRows.size} rows cached" else "Available",
+                        status = if (state.sheetPreviewRows.isNotEmpty() || state.hasSheetsToken) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.sheetPreviewRows.isNotEmpty()) "${state.sheetPreviewRows.size} rows cached" else if (state.hasSheetsToken) "Google Workspace Live" else "Available",
                         description = "Allows AI agents to read context tables, inspect tracking sheets, and append build logs to Google Spreadsheets.",
                         tags = listOf("Sheets v4", "Cell Ranges", "Table Read/Append", "Live Sync"),
                         isExpanded = sheetsExpanded,
@@ -728,7 +728,7 @@ fun ConnectorsScreen(
                             OutlinedTextField(
                                 value = sheetsTokenDraft,
                                 onValueChange = { sheetsTokenDraft = it },
-                                label = { Text("Google OAuth Token / Service Key") },
+                                label = { Text(if (state.hasDriveToken) "Google OAuth Token (optional - inherits Google Login)" else "Google OAuth Token / Service Key") },
                                 singleLine = true,
                                 visualTransformation = if (sheetsTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {
@@ -789,7 +789,7 @@ fun ConnectorsScreen(
                                 onClick = {
                                     viewModel.testGoogleSheets(sheetsTokenDraft, sheetsIdDraft, sheetsRangeDraft)
                                 },
-                                enabled = sheetsTokenDraft.isNotBlank() && sheetsIdDraft.isNotBlank() && !state.isTestingSheet,
+                                enabled = (sheetsTokenDraft.isNotBlank() || state.hasDriveToken) && sheetsIdDraft.isNotBlank() && !state.isTestingSheet,
                                 style = VmButtonStyle.Secondary,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -2322,17 +2322,18 @@ private fun CuratedConnectorItem(
             Surface(
                 shape = RoundedCornerShape(10.dp),
                 color = when (connector.id) {
-                    "google_drive" -> Color(0xFF34A853).copy(alpha = 0.15f)
-                    "gmail" -> Color(0xFFEA4335).copy(alpha = 0.15f)
-                    "google_calendar" -> Color(0xFF4285F4).copy(alpha = 0.15f)
-                    "microsoft_365" -> Color(0xFF0078D4).copy(alpha = 0.15f)
+                    "wordpress" -> Color(0xFF21759B).copy(alpha = 0.15f)
+                    "brave_search" -> Color(0xFFFF5722).copy(alpha = 0.15f)
+                    "github_mcp" -> Color(0xFF9C27B0).copy(alpha = 0.15f)
+                    "postgres_mcp" -> Color(0xFF336791).copy(alpha = 0.15f)
+                    "sqlite_mcp" -> Color(0xFF003B57).copy(alpha = 0.15f)
+                    "puppeteer_mcp" -> Color(0xFF00D1B2).copy(alpha = 0.15f)
+                    "memory_mcp" -> Color(0xFF673AB7).copy(alpha = 0.15f)
                     "slack" -> Color(0xFF4A154B).copy(alpha = 0.15f)
                     "canva" -> Color(0xFF00C4CC).copy(alpha = 0.15f)
                     "notion" -> Color(0xFF808080).copy(alpha = 0.15f)
-                    "google_sheets" -> Color(0xFF0F9D58).copy(alpha = 0.15f)
                     "atlassian_mcp" -> Color(0xFF0052CC).copy(alpha = 0.15f)
                     "figma" -> Color(0xFFF24E1E).copy(alpha = 0.15f)
-                    "wordpress" -> Color(0xFF21759B).copy(alpha = 0.15f)
                     else -> MaterialTheme.colorScheme.primaryContainer
                 },
                 modifier = Modifier.size(40.dp),
@@ -2340,32 +2341,34 @@ private fun CuratedConnectorItem(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = when (connector.id) {
-                            "google_drive" -> Icons.Default.Cloud
-                            "gmail" -> Icons.AutoMirrored.Filled.Send
-                            "google_calendar" -> Icons.Default.Refresh
-                            "microsoft_365" -> Icons.Default.Storage
+                            "wordpress" -> Icons.Default.Language
+                            "brave_search" -> Icons.Default.Language
+                            "github_mcp" -> Icons.Default.Code
+                            "postgres_mcp" -> Icons.Default.Storage
+                            "sqlite_mcp" -> Icons.Default.Storage
+                            "puppeteer_mcp" -> Icons.Default.Language
+                            "memory_mcp" -> Icons.Default.SmartToy
                             "slack" -> Icons.AutoMirrored.Filled.Chat
                             "canva" -> Icons.Default.Extension
                             "notion" -> Icons.Default.Description
-                            "google_sheets" -> Icons.Default.TableChart
                             "atlassian_mcp" -> Icons.Default.Code
                             "figma" -> Icons.Default.Extension
-                            "wordpress" -> Icons.Default.Language
                             else -> Icons.Default.Extension
                         },
                         contentDescription = connector.name,
                         tint = when (connector.id) {
-                            "google_drive" -> Color(0xFF34A853)
-                            "gmail" -> Color(0xFFEA4335)
-                            "google_calendar" -> Color(0xFF4285F4)
-                            "microsoft_365" -> Color(0xFF0078D4)
+                            "wordpress" -> Color(0xFF21759B)
+                            "brave_search" -> Color(0xFFFF5722)
+                            "github_mcp" -> Color(0xFF9C27B0)
+                            "postgres_mcp" -> Color(0xFF336791)
+                            "sqlite_mcp" -> Color(0xFF0098FF)
+                            "puppeteer_mcp" -> Color(0xFF00D1B2)
+                            "memory_mcp" -> Color(0xFF9C27B0)
                             "slack" -> Color(0xFFE01E5A)
                             "canva" -> Color(0xFF00C4CC)
                             "notion" -> MaterialTheme.colorScheme.onSurface
-                            "google_sheets" -> Color(0xFF0F9D58)
                             "atlassian_mcp" -> Color(0xFF0052CC)
                             "figma" -> Color(0xFFF24E1E)
-                            "wordpress" -> Color(0xFF21759B)
                             else -> MaterialTheme.colorScheme.primary
                         },
                         modifier = Modifier.size(20.dp),
@@ -2376,19 +2379,24 @@ private fun CuratedConnectorItem(
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
                         text = connector.name,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Verified connector",
-                        tint = Color(0xFF4CAF50),
-                        modifier = Modifier.size(13.dp),
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    ) {
+                        Text(
+                            text = "MCP",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
+                    }
                 }
                 Text(
                     text = connector.description,

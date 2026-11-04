@@ -412,6 +412,7 @@ class VmProjectHubClient @Inject constructor(
                     val fallbackRequest = Request.Builder()
                         .url("$baseUrl/credentials")
                         .header("X-VMPJ-Key", masterKey)
+                        .header("X-VMPJ-Companion-Key", masterKey)
                         .header("X-Hub-Key", masterKey)
                         .header("Authorization", "Bearer $masterKey")
                         .header("Accept", "application/json")

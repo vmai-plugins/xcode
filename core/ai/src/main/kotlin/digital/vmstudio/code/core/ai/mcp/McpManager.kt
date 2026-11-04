@@ -163,6 +163,8 @@ class McpManager @Inject constructor(
         projectPath: String? = null,
     ): McpServerConfig {
         val cleanUrl = siteUrl.trim().removeSuffix("/")
+        val hostName = cleanUrl.removePrefix("https://").removePrefix("http://").substringBefore("/").substringBefore(":")
+        val effectiveName = if (name.isNotBlank() && name != "WordPress Site") name else if (hostName.isNotBlank()) hostName else "WordPress Site"
         val endpoint = when {
             cleanUrl.endsWith("/wp-json/mcp/v1", ignoreCase = true) -> cleanUrl
             cleanUrl.endsWith("/wp-json/mcp", ignoreCase = true) -> "$cleanUrl/v1"
@@ -178,7 +180,7 @@ class McpManager @Inject constructor(
 
         return McpServerConfig(
             id = UUID.randomUUID().toString(),
-            name = name.ifBlank { "WordPress Site" },
+            name = effectiveName,
             endpointUrl = endpoint,
             apiKey = effectiveApiKey,
             isEnabled = true,

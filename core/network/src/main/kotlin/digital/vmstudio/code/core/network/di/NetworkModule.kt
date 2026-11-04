@@ -5,6 +5,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -26,18 +27,26 @@ object NetworkModule {
         // would cancel legitimate generations mid-answer.
         .readTimeout(READ_TIMEOUT_MINUTES, TimeUnit.MINUTES)
         .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        // Connection pool keep-alive for AI token streaming, MCP queries, and SSH web bridges
+        .connectionPool(ConnectionPool(8, 5, TimeUnit.MINUTES))
         // Periodic ping keeps HTTP/2 connections and carrier NAT mappings alive during
         // extended model reasoning and while the device screen is locked.
         .pingInterval(20, TimeUnit.SECONDS)
         // OkHttp's own retry only covers connection-level failures; request retry is
         // handled by VmHttpClient, which knows which status codes deserve it.
         .retryOnConnectionFailure(true)
-        // OkHttp drops Authorization when a redirect leaves the host, but not custom
-        // key headers: a gateway (or proxy) redirect could otherwise leak credentials.
+        // Provide standard user agent and prevent credential leakage on redirects
         .addInterceptor { chain ->
-            val request = chain.request()
-            if (KEY_HEADERS.none { request.header(it) != null }) return@addInterceptor chain.proceed(request)
-            chain.proceed(request.newBuilder().tag(KeyOwner::class.java, KeyOwner(request.url.host)).build())
+            val original = chain.request()
+            val requestWithUserAgent = if (original.header("User-Agent") == null) {
+                original.newBuilder()
+                    .header("User-Agent", "X-Codes-Android/0.16.2 (Linux; Android; Mobile IDE)")
+                    .build()
+            } else {
+                original
+            }
+            if (KEY_HEADERS.none { requestWithUserAgent.header(it) != null }) return@addInterceptor chain.proceed(requestWithUserAgent)
+            chain.proceed(requestWithUserAgent.newBuilder().tag(KeyOwner::class.java, KeyOwner(requestWithUserAgent.url.host)).build())
         }
         .addNetworkInterceptor { chain ->
             val request = chain.request()

@@ -434,11 +434,13 @@ class SftpRemoteFileSystem @Inject constructor(
             val total = source.length()
 
             val alreadyThere = sftp.statExistence(normalised)?.size ?: 0L
-            // Upper bound is inclusive: a remote file already exactly the right size
-            // (a previous upload that completed but wasn't recorded locally) should
-            // short-circuit to done rather than retransmitting the whole file, which
-            // "1 until total" excluded by construction.
-            val startOffset = if (resume && alreadyThere in 1..total) alreadyThere else 0L
+            // If already complete on remote, fast-path exit identically to download()
+            if (resume && alreadyThere >= total && total > 0) {
+                emit(TransferEvent.Started(totalBytes = total, resumedFromBytes = total))
+                emit(TransferEvent.Completed(totalBytes = total, durationMillis = System.currentTimeMillis() - startedAt))
+                return@flow
+            }
+            val startOffset = if (resume && alreadyThere in 1 until total) alreadyThere else 0L
             transferred = startOffset
 
             val modes = if (startOffset > 0) {

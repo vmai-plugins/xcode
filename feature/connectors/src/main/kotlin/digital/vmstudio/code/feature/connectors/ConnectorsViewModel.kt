@@ -219,7 +219,7 @@ class ConnectorsViewModel @Inject constructor(
             isTestingSheet = extra.isTestingSheet,
             sheetStatusMessage = extra.sheetStatusMessage,
             sheetPreviewRows = extra.sheetPreviewRows,
-            hasSheetsToken = prefs.googleSheetsTokenCredentialId != null,
+            hasSheetsToken = prefs.googleSheetsTokenCredentialId != null || prefs.googleDriveTokenCredentialId != null || prefs.googleDriveRefreshTokenCredentialId != null,
             savedSheetsToken = extra.savedSheetsToken,
             savedSpreadsheetId = extra.savedSpreadsheetId ?: prefs.googleSheetsSpreadsheetId,
             githubRepoCount = extra.githubRepoCount,
@@ -1002,17 +1002,35 @@ class ConnectorsViewModel @Inject constructor(
     // --- Google Sheets ------------------------------------------------------
 
     fun testGoogleSheets(token: String, spreadsheetId: String, range: String) {
-        if (token.isBlank() || spreadsheetId.isBlank()) {
+        val cleanSheetId = spreadsheetId.trim()
+        if (cleanSheetId.isBlank()) {
             extraState.update {
-                it.copy(sheetStatusMessage = "Please enter an Access Token and Spreadsheet ID.")
+                it.copy(sheetStatusMessage = "Please enter a Spreadsheet ID.")
             }
             return
         }
         viewModelScope.launch {
             extraState.update { it.copy(isTestingSheet = true, sheetStatusMessage = "Querying Sheets API v4…", sheetPreviewRows = emptyList()) }
             try {
+                val effectiveTokenRes = if (token.isNotBlank()) {
+                    VmResult.Success(token.trim())
+                } else {
+                    getActiveDriveToken()
+                }
+                val authToken = when (effectiveTokenRes) {
+                    is VmResult.Success -> effectiveTokenRes.value
+                    is VmResult.Failure -> {
+                        extraState.update {
+                            it.copy(
+                                isTestingSheet = false,
+                                sheetStatusMessage = "Google account not authenticated. Connect Google Drive or provide a Sheets token.",
+                            )
+                        }
+                        return@launch
+                    }
+                }
                 val cleanRange = range.ifBlank { "Sheet1!A1:E5" }
-                when (val result = googleSheetsClient.getValues(token, spreadsheetId, cleanRange)) {
+                when (val result = googleSheetsClient.getValues(authToken, cleanSheetId, cleanRange)) {
                     is VmResult.Success -> {
                         val rows = result.value.stringValues
                         extraState.update {

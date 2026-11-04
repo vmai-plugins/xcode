@@ -174,6 +174,7 @@ class TerminalSession internal constructor(
             } finally {
                 trailingPublish?.cancel()
                 trailingPublish = null
+                runCatching { channel.close() }
             }
         }
     }

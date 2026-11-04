@@ -46,7 +46,11 @@ class McpClient @Inject constructor(
 
         if (primaryResult is VmResult.Failure && server.serverType.equals("WORDPRESS", ignoreCase = true)) {
             val err = primaryResult.error.summary + " " + (primaryResult.error.reason ?: "")
-            if (err.contains("404") || err.contains("rest_no_route", ignoreCase = true) || err.contains("not found", ignoreCase = true)) {
+            val isNotFound = (primaryResult.error as? digital.vmstudio.code.core.common.error.VmError.Network)?.statusCode == 404 ||
+                err.contains("404") ||
+                err.contains("rest_no_route", ignoreCase = true) ||
+                err.contains("not found", ignoreCase = true)
+            if (isNotFound) {
                 return fetchWordPressLegacyTools(server)
             }
         }
@@ -135,7 +139,11 @@ class McpClient @Inject constructor(
         }
         if (primaryResult is VmResult.Failure && server.serverType.equals("WORDPRESS", ignoreCase = true)) {
             val err = primaryResult.error.summary + " " + (primaryResult.error.reason ?: "")
-            if (err.contains("404") || err.contains("rest_no_route", ignoreCase = true) || err.contains("not found", ignoreCase = true)) {
+            val isNotFound = (primaryResult.error as? digital.vmstudio.code.core.common.error.VmError.Network)?.statusCode == 404 ||
+                err.contains("404") ||
+                err.contains("rest_no_route", ignoreCase = true) ||
+                err.contains("not found", ignoreCase = true)
+            if (isNotFound) {
                 return executeWordPressLegacyTool(server, toolName, arguments)
             }
         }
