@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
@@ -132,6 +133,7 @@ internal fun ModernComposer(
     val canSend = enabled && (text.isNotBlank() || attachments.isNotEmpty())
     val haptic = LocalHapticFeedback.current
     var showMentionSheet by remember { mutableStateOf(false) }
+    var showSwarmGuide by remember { mutableStateOf(false) }
     var lastClearedText by remember { mutableStateOf<String?>(null) }
 
     // Detect if user is actively typing a mention (e.g. "@", "@web", @"My Proj")
@@ -345,6 +347,26 @@ internal fun ModernComposer(
                     )
                 }
 
+                listOf(
+                    Pair("@architect", Icons.Default.Code),
+                    Pair("@research", Icons.Default.Search),
+                    Pair("@coder", Icons.Default.Code),
+                    Pair("@security", Icons.Default.Source),
+                    Pair("@tester", Icons.Default.AutoAwesome),
+                    Pair("@frontend", Icons.Default.Code),
+                    Pair("@backend", Icons.Default.Terminal),
+                ).filter { (tag, _) -> query.isNotBlank() && tag.removePrefix("@").contains(query, ignoreCase = true) }
+                    .forEach { (tag, icon) ->
+                        MentionChip(
+                            label = tag,
+                            icon = icon,
+                            onClick = {
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt$tag ")
+                            },
+                        )
+                    }
+
                 if (query.isBlank() || "git-diff".contains(query, ignoreCase = true)) {
                     MentionChip(
                         label = "@git-diff",
@@ -456,6 +478,35 @@ internal fun ModernComposer(
                     )
                 }
             }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (text.contains("@swarm", ignoreCase = true)) Color(0xFFFFB74D).copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, if (text.contains("@swarm", ignoreCase = true)) Color(0xFFFFB74D) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showSwarmGuide = true
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = "Agent Swarm Guide",
+                        tint = Color(0xFFFFB74D),
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Text(
+                        text = "Swarm",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (text.contains("@swarm", ignoreCase = true)) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         // Sleek Capsule Input Pill (Gemini / Claude style)
@@ -485,6 +536,7 @@ internal fun ModernComposer(
                     onPermissionModeChange = onPermissionModeChange,
                     onSquadPresetChange = onSquadPresetChange,
                     onOpenConnectors = onOpenConnectors,
+                    onOpenSwarmGuide = { showSwarmGuide = true },
                     onTriggerWebSearch = {
                         val trimmed = text.trim()
                         val updated = if (trimmed.startsWith("@web")) trimmed else "@web $trimmed".trim()
@@ -720,6 +772,16 @@ internal fun ModernComposer(
             onDismiss = { showMentionSheet = false },
         )
     }
+
+    if (showSwarmGuide) {
+        SwarmGuideSheet(
+            onSelectPrompt = { selectedPrompt ->
+                onTextChange(selectedPrompt)
+                showSwarmGuide = false
+            },
+            onDismiss = { showSwarmGuide = false },
+        )
+    }
 }
 
 @Composable
@@ -781,6 +843,7 @@ private fun ComposerPlusMenu(
     onPermissionModeChange: (AgentPermissionMode) -> Unit,
     onSquadPresetChange: (digital.vmstudio.code.core.ai.model.AgentSquadPreset) -> Unit = {},
     onOpenConnectors: (() -> Unit)? = null,
+    onOpenSwarmGuide: (() -> Unit)? = null,
     onTriggerWebSearch: (() -> Unit)? = null,
     onSendInBackground: () -> Unit,
 ) {
@@ -861,6 +924,42 @@ private fun ComposerPlusMenu(
                     onClick = {
                         expanded = false
                         onOpenConnectors()
+                    },
+                )
+            }
+            if (onOpenSwarmGuide != null) {
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text("Agent Swarm Guide")
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFFFFB74D).copy(alpha = 0.2f),
+                                ) {
+                                    Text(
+                                        "PRO",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                        color = Color(0xFFFFB74D),
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Orchestrate parallel specialist agents",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFFFB74D)) },
+                    onClick = {
+                        expanded = false
+                        onOpenSwarmGuide()
                     },
                 )
             }

@@ -59,7 +59,7 @@ private enum class MentionCategory(val title: String) {
     ALL("All"),
     PROJECTS("Projects"),
     GITHUB("GitHub"),
-    SWARM("Swarm & Agents"),
+    SWARM("Swarm"),
     TOOLS("Tools"),
 }
 
@@ -299,7 +299,7 @@ internal fun ProjectMentionSheet(
                 if (showAgents && (query.isBlank() || "swarm".contains(query, ignoreCase = true) || "agent".contains(query, ignoreCase = true))) {
                     item {
                         Text(
-                            text = "AGENTS & SWARMS",
+                            text = "SWARM SPECIALISTS",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = Color(0xFFFFB74D),
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
@@ -310,7 +310,7 @@ internal fun ProjectMentionSheet(
                             icon = Icons.Default.AutoAwesome,
                             title = "swarm",
                             subtitle = "Run parallel agent swarm across all mentioned projects",
-                            badge = "Swarm",
+                            badge = "Coordinator",
                             onClick = {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSelectMention("swarm")
@@ -321,8 +321,8 @@ internal fun ProjectMentionSheet(
                         MentionItemRow(
                             icon = Icons.Default.Code,
                             title = "architect",
-                            subtitle = "High-level system design & specification specialist",
-                            badge = "Agent",
+                            subtitle = "High-level system design & contract specialist",
+                            badge = "Role",
                             onClick = {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSelectMention("architect")
@@ -331,10 +331,58 @@ internal fun ProjectMentionSheet(
                     }
                     item {
                         MentionItemRow(
+                            icon = Icons.Default.Search,
+                            title = "research",
+                            subtitle = "Deep codebase research & symbol definition explorer",
+                            badge = "Role",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("research")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.Code,
+                            title = "coder",
+                            subtitle = "Implementation developer for clean idiomatic code",
+                            badge = "Role",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("coder")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.Source,
+                            title = "security",
+                            subtitle = "Security auditor, vulnerability & secrets scanner",
+                            badge = "Role",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("security")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
+                            icon = Icons.Default.AutoAwesome,
+                            title = "tester",
+                            subtitle = "QA engineer for test coverage, edge cases & validation",
+                            badge = "Role",
+                            onClick = {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                onSelectMention("tester")
+                            },
+                        )
+                    }
+                    item {
+                        MentionItemRow(
                             icon = Icons.Default.Code,
                             title = "frontend",
                             subtitle = "Web UI, Next.js & Jetpack Compose specialist",
-                            badge = "Agent",
+                            badge = "Role",
                             onClick = {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSelectMention("frontend")
@@ -346,7 +394,7 @@ internal fun ProjectMentionSheet(
                             icon = Icons.Default.Terminal,
                             title = "backend",
                             subtitle = "Server APIs, database schema & DevOps specialist",
-                            badge = "Agent",
+                            badge = "Role",
                             onClick = {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSelectMention("backend")
@@ -358,7 +406,7 @@ internal fun ProjectMentionSheet(
                             icon = Icons.Default.Source,
                             title = "reviewer",
                             subtitle = "Automated diff auditor & QA verification specialist",
-                            badge = "Agent",
+                            badge = "Role",
                             onClick = {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSelectMention("reviewer")

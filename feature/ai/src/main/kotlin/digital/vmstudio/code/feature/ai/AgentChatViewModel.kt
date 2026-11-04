@@ -1274,6 +1274,10 @@ class AgentChatViewModel @Inject constructor(
                 val isWebSearchRequested = resolvedPrompt.contains("@web", ignoreCase = true)
                 val requestedRoles = buildList {
                     if (resolvedPrompt.contains("@architect", ignoreCase = true)) add("Architect (System Design)")
+                    if (resolvedPrompt.contains("@research", ignoreCase = true) || resolvedPrompt.contains("@explorer", ignoreCase = true)) add("Researcher (Codebase & Symbols)")
+                    if (resolvedPrompt.contains("@coder", ignoreCase = true) || resolvedPrompt.contains("@developer", ignoreCase = true)) add("Developer (Implementation)")
+                    if (resolvedPrompt.contains("@security", ignoreCase = true) || resolvedPrompt.contains("@auditor", ignoreCase = true)) add("Auditor (Security & Vulnerabilities)")
+                    if (resolvedPrompt.contains("@tester", ignoreCase = true) || resolvedPrompt.contains("@qa", ignoreCase = true)) add("Tester (QA & Edge Cases)")
                     if (resolvedPrompt.contains("@frontend", ignoreCase = true)) add("Frontend (UI/Web/Compose)")
                     if (resolvedPrompt.contains("@backend", ignoreCase = true)) add("Backend (APIs/Databases)")
                     if (resolvedPrompt.contains("@reviewer", ignoreCase = true)) add("Reviewer (Diff Audit/QA)")
