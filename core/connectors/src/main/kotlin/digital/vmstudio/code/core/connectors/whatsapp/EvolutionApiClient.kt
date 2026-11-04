@@ -22,11 +22,20 @@ class EvolutionApiClient @Inject constructor(
 ) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    private fun sanitizeBaseUrl(baseUrl: String): String {
+        val trimmed = baseUrl.trim().removeSuffix("/")
+        return if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+    }
+
     /**
      * Checks if the WhatsApp instance is open and connected to WhatsApp Web.
      */
     suspend fun checkConnection(config: EvolutionConfig): VmResult<Boolean> {
-        val base = config.baseUrl.trimEnd('/')
+        val base = sanitizeBaseUrl(config.baseUrl)
         val url = "$base/instance/connectionState/${config.instance}"
         val request = Request.Builder()
             .url(url)
@@ -60,7 +69,7 @@ class EvolutionApiClient @Inject constructor(
             return VmResult.Failure(VmError.Validation(summary = "Invalid WhatsApp number", reason = "Number must contain digits"))
         }
 
-        val base = config.baseUrl.trimEnd('/')
+        val base = sanitizeBaseUrl(config.baseUrl)
         val url = "$base/message/sendText/${config.instance}"
         val payload = EvolutionSendTextRequest(
             number = cleanNumber,
@@ -100,7 +109,7 @@ class EvolutionApiClient @Inject constructor(
             return VmResult.Failure(VmError.Validation(summary = "Invalid WhatsApp number", reason = "Number must contain digits"))
         }
 
-        val base = config.baseUrl.trimEnd('/')
+        val base = sanitizeBaseUrl(config.baseUrl)
         val url = "$base/message/sendMedia/${config.instance}"
         val payload = EvolutionSendMediaRequest(
             number = cleanNumber,

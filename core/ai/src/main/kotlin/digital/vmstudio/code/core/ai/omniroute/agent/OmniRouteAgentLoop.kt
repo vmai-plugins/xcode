@@ -857,7 +857,21 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private suspend fun googleDriveList(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
-        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        var token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        if (token.isNullOrBlank()) {
+            val prefs = userPreferencesRepository.preferences.first()
+            val credId = prefs.googleDriveTokenCredentialId ?: prefs.googleSheetsTokenCredentialId
+            if (credId != null) {
+                token = when (val res = credentialStore.read(credId)) {
+                    is VmResult.Success -> {
+                        val t = res.value.useAsString { it }
+                        res.value.wipe()
+                        t
+                    }
+                    is VmResult.Failure -> null
+                }
+            }
+        }
         if (token.isNullOrBlank()) {
             return ToolOutcome("Google Drive operation requires an authenticated Google token.", isError = true)
         }
@@ -878,7 +892,21 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private suspend fun googleDriveRead(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
-        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        var token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        if (token.isNullOrBlank()) {
+            val prefs = userPreferencesRepository.preferences.first()
+            val credId = prefs.googleDriveTokenCredentialId ?: prefs.googleSheetsTokenCredentialId
+            if (credId != null) {
+                token = when (val res = credentialStore.read(credId)) {
+                    is VmResult.Success -> {
+                        val t = res.value.useAsString { it }
+                        res.value.wipe()
+                        t
+                    }
+                    is VmResult.Failure -> null
+                }
+            }
+        }
         if (token.isNullOrBlank()) {
             return ToolOutcome("Google Drive operation requires an authenticated Google token.", isError = true)
         }

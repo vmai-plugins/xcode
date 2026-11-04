@@ -41,7 +41,13 @@ class WebFetcher @Inject constructor(
         .build()
 
     suspend fun fetch(rawUrl: String): VmResult<String> = withContext(ioDispatcher) {
-        var url = rawUrl.trim().toHttpUrlOrNull()
+        val trimmed = rawUrl.trim()
+        val withScheme = if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+        var url = withScheme.toHttpUrlOrNull()
             ?: return@withContext refuse("\"$rawUrl\" is not an http or https URL.")
 
         repeat(MAX_REDIRECTS + 1) {
