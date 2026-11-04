@@ -86,6 +86,17 @@ data class CuratedConnector(
 object CuratedConnectorsCatalog {
     val TOP_10: List<CuratedConnector> = listOf(
         CuratedConnector(
+            id = "windows_pc_bridge",
+            name = "Windows / Local PC Bridge",
+            description = "Run commands, read/write files, inspect processes, and control this PC via X-Codes MCP",
+            author = "X-Codes",
+            defaultEndpointUrl = "http://192.168.29.248:8080/mcp",
+            serverType = "HTTP",
+            requiresApiKey = false,
+            apiKeyPlaceholder = "Optional Auth Token (if enabled)",
+            category = "Workstations & PC",
+        ),
+        CuratedConnector(
             id = "wordpress",
             name = "WordPress MCP Bridge",
             description = "Inspect database, manage posts, query WP-CLI and run companion tools via VM Project Hub",
