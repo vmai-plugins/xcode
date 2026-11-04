@@ -354,9 +354,12 @@ class VmProjectHubClient @Inject constructor(
             ?: return@withContext VmResult.Failure(VmError.Authentication("Device is not paired with VM Project Hub. Enter your Hub Pairing Key in Connectors."))
 
         val baseUrl = getEffectiveHubBaseUrl()
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+
         val request = Request.Builder()
             .url("$baseUrl/credentials")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
             .header("X-Hub-Key", hubKey)
             .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
@@ -364,37 +367,56 @@ class VmProjectHubClient @Inject constructor(
             .build()
 
         when (val result = httpClient.execute(request, RetryPolicy(maxAttempts = 2))) {
-            is VmResult.Failure -> result
-            is VmResult.Success -> {
-                val root = runCatching { json.parseToJsonElement(result.value) }.getOrNull() as? JsonObject
-                if (root == null || (root["ok"] as? JsonPrimitive)?.content == "false") {
-                    VmResult.Failure(VmError.Network("Failed to retrieve credentials from Hub"))
+            is VmResult.Failure -> {
+                if (hubKey != masterKey) {
+                    val fallbackRequest = Request.Builder()
+                        .url("$baseUrl/credentials")
+                        .header("X-VMPJ-Key", masterKey)
+                        .header("X-Hub-Key", masterKey)
+                        .header("Authorization", "Bearer $masterKey")
+                        .header("Accept", "application/json")
+                        .get()
+                        .build()
+                    when (val fallbackRes = httpClient.execute(fallbackRequest, RetryPolicy(maxAttempts = 1))) {
+                        is VmResult.Failure -> fallbackRes
+                        is VmResult.Success -> parseCredentialsJson(fallbackRes.value)
+                    }
                 } else {
-                    val creds = HubCredentials(
-                        githubToken = root.str("githubToken") ?: root.str("github_token"),
-                        omnirouteKey = root.str("omnirouteKey") ?: root.str("omniroute_key"),
-                        omnirouteUrl = root.str("omnirouteUrl") ?: root.str("omniroute_url"),
-                        defaultModel = root.str("defaultModel") ?: root.str("default_model"),
-                        modelsUrl = root.str("modelsUrl") ?: root.str("models_url"),
-                        kaggleUsername = root.str("kaggleUsername") ?: root.str("kaggle_username"),
-                        vpsHost = root.str("vpsHost") ?: root.str("vps_host"),
-                        vpsUser = root.str("vpsUser") ?: root.str("vps_user"),
-                        vpsPort = root.int("vpsPort") ?: root.int("vps_port"),
-                        vpsAuthMethod = root.str("vpsAuthMethod") ?: root.str("vps_auth_method"),
-                        vpsPassword = root.str("vpsPassword") ?: root.str("vps_password"),
-                        vpsPrivateKey = root.str("vpsPrivateKey") ?: root.str("vps_private_key"),
-                        vpsName = root.str("vpsName") ?: root.str("vps_name"),
-                        evolutionApiBaseUrl = root.str("evolutionApiBaseUrl") ?: root.str("evolution_api_base_url"),
-                        evolutionApiKey = root.str("evolutionApiKey") ?: root.str("evolution_api_key"),
-                        evolutionApiInstance = root.str("evolutionApiInstance") ?: root.str("evolution_api_instance"),
-                        evolutionApiRecipientNumber = root.str("evolutionApiRecipientNumber") ?: root.str("evolution_recipient"),
-                        evolutionApiNotificationsEnabled = (root["evolutionApiNotificationsEnabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true,
-                        googleDriveToken = root.str("googleDriveToken") ?: root.str("google_drive_token"),
-                        googleDriveEmail = root.str("googleDriveEmail") ?: root.str("google_drive_email"),
-                    )
-                    VmResult.Success(creds)
+                    result
                 }
             }
+            is VmResult.Success -> parseCredentialsJson(result.value)
+        }
+    }
+
+    private fun parseCredentialsJson(jsonString: String): VmResult<HubCredentials> {
+        val root = runCatching { json.parseToJsonElement(jsonString) }.getOrNull() as? JsonObject
+        return if (root == null || (root["ok"] as? JsonPrimitive)?.content == "false") {
+            VmResult.Failure(VmError.Network("Failed to retrieve credentials from Hub"))
+        } else {
+            val creds = HubCredentials(
+                githubToken = root.str("githubToken") ?: root.str("github_token"),
+                omnirouteKey = root.str("omnirouteKey") ?: root.str("omniroute_key"),
+                omnirouteUrl = root.str("omnirouteUrl") ?: root.str("omniroute_url"),
+                defaultModel = root.str("defaultModel") ?: root.str("default_model"),
+                modelsUrl = root.str("modelsUrl") ?: root.str("models_url"),
+                kaggleUsername = root.str("kaggleUsername") ?: root.str("kaggle_username"),
+                vpsHost = root.str("vpsHost") ?: root.str("vps_host"),
+                vpsUser = root.str("vpsUser") ?: root.str("vps_user"),
+                vpsPort = root.int("vpsPort") ?: root.int("vps_port"),
+                vpsAuthMethod = root.str("vpsAuthMethod") ?: root.str("vps_auth_method"),
+                vpsPassword = root.str("vpsPassword") ?: root.str("vps_password"),
+                vpsPrivateKey = root.str("vpsPrivateKey") ?: root.str("vps_private_key"),
+                vpsName = root.str("vpsName") ?: root.str("vps_name"),
+                evolutionApiBaseUrl = root.str("evolutionApiBaseUrl") ?: root.str("evolution_api_base_url"),
+                evolutionApiKey = root.str("evolutionApiKey") ?: root.str("evolution_api_key"),
+                evolutionApiInstance = root.str("evolutionApiInstance") ?: root.str("evolution_api_instance"),
+                evolutionApiRecipientNumber = root.str("evolutionApiRecipientNumber") ?: root.str("evolution_recipient"),
+                evolutionApiNotificationsEnabled = (root["evolutionApiNotificationsEnabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true,
+                googleDriveToken = root.str("googleDriveToken") ?: root.str("google_drive_token"),
+                googleDriveEmail = root.str("googleDriveEmail") ?: root.str("google_drive_email"),
+            )
+            VmResult.Success(creds)
         }
     }
 

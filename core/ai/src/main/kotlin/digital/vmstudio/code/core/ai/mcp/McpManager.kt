@@ -163,16 +163,24 @@ class McpManager @Inject constructor(
         projectPath: String? = null,
     ): McpServerConfig {
         val cleanUrl = siteUrl.trim().removeSuffix("/")
-        val endpoint = if (cleanUrl.contains("/wp-json")) {
-            cleanUrl
-        } else {
-            "$cleanUrl/wp-json/mcp/v1"
+        val endpoint = when {
+            cleanUrl.endsWith("/wp-json/mcp/v1", ignoreCase = true) -> cleanUrl
+            cleanUrl.endsWith("/wp-json/mcp", ignoreCase = true) -> "$cleanUrl/v1"
+            cleanUrl.endsWith("/wp-json", ignoreCase = true) -> "$cleanUrl/mcp/v1"
+            cleanUrl.contains("/wp-json/xcodes/v1", ignoreCase = true) -> {
+                if (cleanUrl.endsWith("/mcp")) cleanUrl else "$cleanUrl/mcp"
+            }
+            cleanUrl.contains("/wp-json") -> cleanUrl
+            else -> "$cleanUrl/wp-json/mcp/v1"
         }
+        val effectiveApiKey = apiKey?.trim()?.takeIf { it.isNotBlank() }
+            ?: digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+
         return McpServerConfig(
             id = UUID.randomUUID().toString(),
             name = name.ifBlank { "WordPress Site" },
             endpointUrl = endpoint,
-            apiKey = apiKey?.trim(),
+            apiKey = effectiveApiKey,
             isEnabled = true,
             serverType = "WORDPRESS",
             projectPath = projectPath?.trim(),

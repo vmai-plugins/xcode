@@ -47,14 +47,24 @@ class McpClient @Inject constructor(
                 }
                 val resultObj = response.result as? JsonObject
                     ?: throw IllegalStateException("Expected object result from tools/list")
-                val toolsArray = resultObj["tools"] as? JsonArray ?: JsonArray(emptyList())
+                val toolsArray = (resultObj["tools"] as? JsonArray)
+                    ?: (resultObj["result"] as? JsonArray)
+                    ?: JsonArray(emptyList())
 
                 toolsArray.mapNotNull { element ->
                     runCatching {
                         val obj = element.jsonObject
-                        val name = (obj["name"] as? JsonPrimitive)?.content ?: return@mapNotNull null
-                        val desc = (obj["description"] as? JsonPrimitive)?.content ?: ""
-                        val schema = obj["inputSchema"] as? JsonObject ?: buildJsonObject { put("type", "object") }
+                        val fnObj = obj["function"] as? JsonObject
+                        val name = (obj["name"] as? JsonPrimitive)?.content
+                            ?: (fnObj?.get("name") as? JsonPrimitive)?.content
+                            ?: return@mapNotNull null
+                        val desc = (obj["description"] as? JsonPrimitive)?.content
+                            ?: (fnObj?.get("description") as? JsonPrimitive)?.content
+                            ?: ""
+                        val schema = (obj["inputSchema"] as? JsonObject)
+                            ?: (obj["parameters"] as? JsonObject)
+                            ?: (fnObj?.get("parameters") as? JsonObject)
+                            ?: buildJsonObject { put("type", "object") }
                         McpToolDefinition(name = name, description = desc, inputSchema = schema)
                     }.getOrNull()
                 }
@@ -93,7 +103,12 @@ class McpClient @Inject constructor(
                         (item?.get("text") as? JsonPrimitive)?.content ?: element.toString()
                     }
                 } else {
-                    response.result?.toString() ?: "(empty response)"
+                    val resultField = resultObj?.get("result")
+                    if (resultField != null) {
+                        (resultField as? JsonPrimitive)?.content ?: resultField.toString()
+                    } else {
+                        response.result?.toString() ?: "(empty response)"
+                    }
                 }
             }
         }
@@ -169,8 +184,25 @@ class McpClient @Inject constructor(
         rpcRequest: McpJsonRpcRequest,
     ): VmResult<McpJsonRpcResponse> {
         val payload = json.encodeToString(McpJsonRpcRequest.serializer(), rpcRequest)
-        val rawEndpoint = server.endpointUrl.trim()
+        val rawEndpoint = server.endpointUrl.trim().removeSuffix("/")
         val normalizedUrl = when {
+            server.serverType.equals("WORDPRESS", ignoreCase = true) -> {
+                val fullUrl = if (rawEndpoint.startsWith("http://", ignoreCase = true) || rawEndpoint.startsWith("https://", ignoreCase = true)) {
+                    rawEndpoint
+                } else {
+                    "https://$rawEndpoint"
+                }
+                when {
+                    fullUrl.endsWith("/wp-json/mcp/v1", ignoreCase = true) -> fullUrl
+                    fullUrl.endsWith("/wp-json/mcp", ignoreCase = true) -> "$fullUrl/v1"
+                    fullUrl.endsWith("/wp-json", ignoreCase = true) -> "$fullUrl/mcp/v1"
+                    fullUrl.contains("/wp-json/xcodes/v1", ignoreCase = true) -> {
+                        if (fullUrl.endsWith("/mcp")) fullUrl else "$fullUrl/mcp"
+                    }
+                    fullUrl.contains("/wp-json") -> fullUrl
+                    else -> "$fullUrl/wp-json/mcp/v1"
+                }
+            }
             rawEndpoint.startsWith("http://", ignoreCase = true) || rawEndpoint.startsWith("https://", ignoreCase = true) -> rawEndpoint
             else -> "https://$rawEndpoint"
         }
@@ -182,13 +214,19 @@ class McpClient @Inject constructor(
                 .header("Accept", "application/json, text/event-stream")
                 .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
 
+            val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
             if (!server.apiKey.isNullOrBlank()) {
                 val key = server.apiKey.trim().replace("\r", "").replace("\n", "")
                 val authHeader = if (key.startsWith("Bearer ", ignoreCase = true)) key else "Bearer $key"
                 builder.header("Authorization", authHeader)
                 if (server.serverType.equals("WORDPRESS", ignoreCase = true)) {
                     builder.header("X-VMPJ-Key", key)
+                    builder.header("X-VMPJ-Companion-Key", masterKey)
                 }
+            } else if (server.serverType.equals("WORDPRESS", ignoreCase = true)) {
+                builder.header("Authorization", "Bearer $masterKey")
+                builder.header("X-VMPJ-Key", masterKey)
+                builder.header("X-VMPJ-Companion-Key", masterKey)
             }
 
             if (!server.projectPath.isNullOrBlank()) {
@@ -211,7 +249,17 @@ class McpClient @Inject constructor(
         return httpClient.execute(request, RetryPolicy(maxAttempts = 2))
             .flatMap { body ->
                 vmCatching {
-                    json.decodeFromString(McpJsonRpcResponse.serializer(), body)
+                    val parsed = runCatching { json.decodeFromString(McpJsonRpcResponse.serializer(), body) }.getOrNull()
+                    if (parsed != null && (parsed.result != null || parsed.error != null)) {
+                        parsed
+                    } else {
+                        val root = json.parseToJsonElement(body)
+                        McpJsonRpcResponse(
+                            jsonrpc = "2.0",
+                            id = rpcRequest.id,
+                            result = root,
+                        )
+                    }
                 }
             }
     }
