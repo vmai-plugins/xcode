@@ -1052,7 +1052,10 @@ class OmniRouteAgentLoop @Inject constructor(
             !trimmed.startsWith("http://") && !trimmed.startsWith("https://") -> "https://$trimmed"
             else -> trimmed
         }
-        val root = withScheme.substringBefore("/wp-json/").removeSuffix("/")
+        val root = withScheme
+            .substringBefore("/wp-admin")
+            .substringBefore("/wp-json")
+            .removeSuffix("/")
         return "$root/wp-json/xcodes/v1"
     }
 

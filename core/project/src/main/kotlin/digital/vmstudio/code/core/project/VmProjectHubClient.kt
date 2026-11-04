@@ -174,7 +174,10 @@ class VmProjectHubClient @Inject constructor(
         } else {
             DEFAULT_HUB_BASE_URL
         }
-        val root = base.substringBefore("/wp-json/").removeSuffix("/")
+        val root = base
+            .substringBefore("/wp-admin")
+            .substringBefore("/wp-json")
+            .removeSuffix("/")
         return "$root/wp-json/xcodes/v1"
     }
 

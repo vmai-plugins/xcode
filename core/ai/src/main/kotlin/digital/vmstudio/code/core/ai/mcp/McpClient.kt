@@ -223,7 +223,7 @@ class McpClient @Inject constructor(
         } else {
             "https://$raw"
         }
-        return withScheme.substringBefore("/wp-json")
+        return withScheme.substringBefore("/wp-admin").substringBefore("/wp-json").removeSuffix("/")
     }
 
     /**
@@ -304,15 +304,15 @@ class McpClient @Inject constructor(
                 } else {
                     "https://$rawEndpoint"
                 }
+                val cleanRoot = fullUrl.substringBefore("/wp-admin").substringBefore("/wp-json").removeSuffix("/")
                 when {
                     fullUrl.endsWith("/wp-json/mcp/v1", ignoreCase = true) -> fullUrl
                     fullUrl.endsWith("/wp-json/mcp", ignoreCase = true) -> "$fullUrl/v1"
-                    fullUrl.endsWith("/wp-json", ignoreCase = true) -> "$fullUrl/mcp/v1"
                     fullUrl.contains("/wp-json/xcodes/v1", ignoreCase = true) -> {
-                        if (fullUrl.endsWith("/mcp")) fullUrl else "$fullUrl/mcp"
+                        if (fullUrl.endsWith("/mcp") || fullUrl.endsWith("/mcp/tools")) fullUrl else "$fullUrl/mcp"
                     }
-                    fullUrl.contains("/wp-json") -> fullUrl
-                    else -> "$fullUrl/wp-json/mcp/v1"
+                    fullUrl.contains("/wp-json/mcp", ignoreCase = true) -> fullUrl
+                    else -> "$cleanRoot/wp-json/xcodes/v1/mcp"
                 }
             }
             rawEndpoint.startsWith("http://", ignoreCase = true) || rawEndpoint.startsWith("https://", ignoreCase = true) -> rawEndpoint

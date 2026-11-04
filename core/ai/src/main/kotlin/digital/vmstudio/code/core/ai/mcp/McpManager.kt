@@ -162,18 +162,29 @@ class McpManager @Inject constructor(
         apiKey: String? = null,
         projectPath: String? = null,
     ): McpServerConfig {
-        val cleanUrl = siteUrl.trim().removeSuffix("/")
-        val hostName = cleanUrl.removePrefix("https://").removePrefix("http://").substringBefore("/").substringBefore(":")
+        val trimmed = siteUrl.trim().removeSuffix("/")
+        val withScheme = if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+        val cleanRoot = withScheme
+            .substringBefore("/wp-admin")
+            .substringBefore("/wp-json")
+            .removeSuffix("/")
+
+        val hostName = cleanRoot.removePrefix("https://").removePrefix("http://")
+            .substringBefore("/").substringBefore(":")
         val effectiveName = if (name.isNotBlank() && name != "WordPress Site") name else if (hostName.isNotBlank()) hostName else "WordPress Site"
+
         val endpoint = when {
-            cleanUrl.endsWith("/wp-json/mcp/v1", ignoreCase = true) -> cleanUrl
-            cleanUrl.endsWith("/wp-json/mcp", ignoreCase = true) -> "$cleanUrl/v1"
-            cleanUrl.endsWith("/wp-json", ignoreCase = true) -> "$cleanUrl/mcp/v1"
-            cleanUrl.contains("/wp-json/xcodes/v1", ignoreCase = true) -> {
-                if (cleanUrl.endsWith("/mcp")) cleanUrl else "$cleanUrl/mcp"
+            trimmed.endsWith("/wp-json/mcp/v1", ignoreCase = true) -> trimmed
+            trimmed.endsWith("/wp-json/mcp", ignoreCase = true) -> "$trimmed/v1"
+            trimmed.contains("/wp-json/xcodes/v1", ignoreCase = true) -> {
+                if (trimmed.endsWith("/mcp") || trimmed.endsWith("/mcp/tools")) trimmed else "$trimmed/mcp"
             }
-            cleanUrl.contains("/wp-json") -> cleanUrl
-            else -> "$cleanUrl/wp-json/mcp/v1"
+            trimmed.contains("/wp-json/mcp", ignoreCase = true) -> trimmed
+            else -> "$cleanRoot/wp-json/xcodes/v1/mcp"
         }
         val effectiveApiKey = apiKey?.trim()?.takeIf { it.isNotBlank() }
             ?: digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY

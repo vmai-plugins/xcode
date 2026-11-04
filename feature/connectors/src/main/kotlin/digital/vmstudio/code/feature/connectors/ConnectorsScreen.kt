@@ -135,6 +135,9 @@ fun ConnectorsScreen(
     var hubExpanded by remember { mutableStateOf(false) }
     var hubKeyDraft by remember { mutableStateOf("") }
     var hubKeyVisible by remember { mutableStateOf(false) }
+    var hubBaseUrlDraft by remember(state.hubBaseUrl) {
+        mutableStateOf(if (state.hubBaseUrl.isNotBlank()) state.hubBaseUrl else "https://vmstudio.digital")
+    }
 
     var aiExpanded by remember { mutableStateOf(false) }
     var aiKeyDraft by remember { mutableStateOf("") }
@@ -588,13 +591,47 @@ fun ConnectorsScreen(
                             )
                             Text(
                                 text = if (state.hasHubKey) {
-                                    "Your device is paired with vmstudio.digital. Single API key provisioning synchronizes GitHub, AI, VPS, and Drive."
+                                    val domain = state.hubBaseUrl.removePrefix("https://").removePrefix("http://").substringBefore("/")
+                                    "Your device is paired with $domain. Single API key provisioning synchronizes GitHub, AI, VPS, and Drive."
                                 } else {
-                                    "Enter your App Hub API Key to automatically connect and provision all services from vmstudio.digital."
+                                    "Enter your App Hub API Key to automatically connect and provision all services from your Project Hub."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+
+                            OutlinedTextField(
+                                value = hubBaseUrlDraft,
+                                onValueChange = { hubBaseUrlDraft = it },
+                                label = { Text("Hub Server Base URL") },
+                                placeholder = { Text("https://vmstudio.digital or https://mathnotes.courses") },
+                                singleLine = true,
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        clipboardManager.getText()?.text?.let { hubBaseUrlDraft = it.trim() }
+                                    }) {
+                                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste URL")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            // Quick Domain Presets
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                ConnectorFilterChip(
+                                    selected = hubBaseUrlDraft.contains("vmstudio.digital", ignoreCase = true),
+                                    onClick = { hubBaseUrlDraft = "https://vmstudio.digital" },
+                                    label = "vmstudio.digital",
+                                )
+                                ConnectorFilterChip(
+                                    selected = hubBaseUrlDraft.contains("mathnotes.courses", ignoreCase = true),
+                                    onClick = { hubBaseUrlDraft = "https://mathnotes.courses" },
+                                    label = "mathnotes.courses",
+                                )
+                            }
 
                             OutlinedTextField(
                                 value = hubKeyDraft,
@@ -627,7 +664,7 @@ fun ConnectorsScreen(
                             ) {
                                 VmButton(
                                     text = if (state.isSyncingHub) "Verifying…" else if (state.hasHubKey) "Update & Sync" else "Pair Device",
-                                    onClick = { viewModel.pairHubKey(hubKeyDraft) },
+                                    onClick = { viewModel.pairHubKey(hubKeyDraft, hubBaseUrlDraft) },
                                     enabled = hubKeyDraft.isNotBlank() && !state.isSyncingHub,
                                     style = VmButtonStyle.Primary,
                                     modifier = Modifier.weight(1f),
@@ -1476,9 +1513,33 @@ fun ConnectorsScreen(
                                             value = wpUrlDraft,
                                             onValueChange = { wpUrlDraft = it },
                                             label = { Text("WordPress Site URL (https://my-blog.com)") },
+                                            placeholder = { Text("https://mathnotes.courses or https://vmstudio.digital") },
                                             singleLine = true,
+                                            trailingIcon = {
+                                                IconButton(onClick = {
+                                                    clipboardManager.getText()?.text?.let { wpUrlDraft = it.trim() }
+                                                }) {
+                                                    Icon(Icons.Default.ContentPaste, contentDescription = "Paste URL")
+                                                }
+                                            },
                                             modifier = Modifier.fillMaxWidth(),
                                         )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            ConnectorFilterChip(
+                                                selected = wpUrlDraft.contains("mathnotes.courses", ignoreCase = true),
+                                                onClick = { wpUrlDraft = "https://mathnotes.courses" },
+                                                label = "mathnotes.courses",
+                                            )
+                                            ConnectorFilterChip(
+                                                selected = wpUrlDraft.contains("vmstudio.digital", ignoreCase = true),
+                                                onClick = { wpUrlDraft = "https://vmstudio.digital" },
+                                                label = "vmstudio.digital",
+                                            )
+                                        }
 
                                         OutlinedTextField(
                                             value = wpKeyDraft,
@@ -2192,8 +2253,15 @@ private fun ModernConnectorCard(
             statusMessage?.let { msg ->
                 val isError = msg.contains("fail", ignoreCase = true) ||
                     msg.contains("error", ignoreCase = true) ||
+                    msg.contains("401") ||
                     msg.contains("403") ||
                     msg.contains("404") ||
+                    msg.contains("500") ||
+                    msg.contains("unauthorized", ignoreCase = true) ||
+                    msg.contains("forbidden", ignoreCase = true) ||
+                    msg.contains("denied", ignoreCase = true) ||
+                    msg.contains("invalid", ignoreCase = true) ||
+                    msg.contains("exception", ignoreCase = true) ||
                     msg.contains("reject", ignoreCase = true) ||
                     msg.contains("refused", ignoreCase = true) ||
                     msg.contains("could not", ignoreCase = true)
