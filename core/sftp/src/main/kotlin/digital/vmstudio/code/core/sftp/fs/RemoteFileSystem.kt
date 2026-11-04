@@ -118,6 +118,7 @@ interface RemoteFileSystem {
                 serverId == "device" ||
                 serverId == "github" ||
                 serverId == "vmhub" ||
+                serverId == "drive" ||
                 serverId.isBlank()
     }
 }

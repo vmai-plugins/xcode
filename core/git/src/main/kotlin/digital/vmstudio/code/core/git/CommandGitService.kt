@@ -134,9 +134,9 @@ class CommandGitService @Inject constructor(
         repoPath: String,
         command: String,
     ): GitResult<SshCommandResult> {
-        if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub") {
+        if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId)) {
             return GitResult.Failure(
-                GitError.CommandFailed(command, -1, "On-device phone storage uses direct file access. Connect a VPS or GitHub account to sync Git repository history."),
+                GitError.CommandFailed(command, -1, "On-device and cloud storage use direct file access. Connect a VPS or GitHub account to sync Git repository history."),
             )
         }
         val fullCommand = "cd ${shellQuotePath(repoPath)} && export GIT_TERMINAL_PROMPT=0 && $command"

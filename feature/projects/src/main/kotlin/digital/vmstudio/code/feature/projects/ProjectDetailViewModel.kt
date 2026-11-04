@@ -494,6 +494,9 @@ class ProjectDetailViewModel @Inject constructor(
                 )
             } finally {
                 isDownloadingApk.value = false
+                val tempDir = File(context.cacheDir, "whatsapp_apks")
+                val localApkFile = File(tempDir, safeName)
+                runCatching { localApkFile.delete() }
             }
         }
     }

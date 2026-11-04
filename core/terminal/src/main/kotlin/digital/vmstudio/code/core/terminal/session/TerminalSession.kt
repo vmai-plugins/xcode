@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Lifecycle of one terminal tab. */
@@ -192,8 +193,7 @@ class TerminalSession internal constructor(
         // is not, and users expect typing to return them to the prompt.
         _scrollOffset.value = 0
         scope.launch(readerDispatcher) {
-            writeMutex.lock()
-            try {
+            writeMutex.withLock {
                 runCatching {
                     runInterruptible {
                         channel.output.write(text.toByteArray(Charsets.UTF_8))
@@ -213,8 +213,6 @@ class TerminalSession internal constructor(
                         )
                     }
                 }
-            } finally {
-                writeMutex.unlock()
             }
         }
     }

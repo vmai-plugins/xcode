@@ -759,7 +759,12 @@ class OmniRouteAgentLoop @Inject constructor(
         }
 
         if (finalResult.isBlank()) {
-            finalResult = "Subagent [$role] completed execution."
+            val lastToolResult = subagentHistory.filterIsInstance<OmniRouteMessage.ToolResult>().lastOrNull()?.content
+            finalResult = if (!lastToolResult.isNullOrBlank()) {
+                "Subagent [$role] reached maximum turns. Latest output:\n" + lastToolResult.take(1000)
+            } else {
+                "Subagent [$role] completed execution."
+            }
         }
 
         emit(AgentEvent.SubagentCompleted(subagentId, role, finalResult.take(300), isError))

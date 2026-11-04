@@ -279,20 +279,35 @@ class SftpRemoteFileSystem @Inject constructor(
                         offset += chunk
                     }
                 }
+                val backupPath = "$normalised.vm_bak.${System.currentTimeMillis()}"
+                var hasBackup = false
                 try {
-                    sftp.rm(normalised)
-                } catch (_: Exception) {
-                    // Target file may not exist yet
+                    try {
+                        sftp.rename(tempPath, normalised)
+                    } catch (_: Exception) {
+                        // Fallback for SFTP servers rejecting overwrite: move existing to backup first
+                        try {
+                            sftp.rename(normalised, backupPath)
+                            hasBackup = true
+                        } catch (_: Exception) {
+                            // Target file may not exist yet
+                        }
+                        sftp.rename(tempPath, normalised)
+                        if (hasBackup) {
+                            try { sftp.rm(backupPath) } catch (_: Exception) {}
+                        }
+                    }
+                } catch (t: Throwable) {
+                    if (hasBackup) {
+                        try { sftp.rename(backupPath, normalised) } catch (_: Exception) {}
+                    }
+                    try {
+                        sftp.rm(tempPath)
+                    } catch (cleanupEx: Exception) {
+                        VmLog.w(LogCategory.SFTP, TAG, "Failed to clean up temp file $tempPath: ${cleanupEx.message}")
+                    }
+                    throw t
                 }
-                sftp.rename(tempPath, normalised)
-            } catch (t: Throwable) {
-                try {
-                    sftp.rm(tempPath)
-                } catch (cleanupEx: Exception) {
-                    VmLog.w(LogCategory.SFTP, TAG, "Failed to clean up temp file $tempPath: ${cleanupEx.message}")
-                }
-                throw t
-            }
             VmLog.i(LogCategory.SFTP, TAG, "Wrote ${bytes.size} bytes to $path")
         }
     }
