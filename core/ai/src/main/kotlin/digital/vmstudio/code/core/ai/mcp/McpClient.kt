@@ -218,12 +218,24 @@ class McpClient @Inject constructor(
 
     private fun extractSiteRoot(url: String): String {
         val raw = url.trim().removeSuffix("/")
+        val isLocalHost = raw.startsWith("localhost", ignoreCase = true) ||
+            raw.startsWith("127.0.0.1") ||
+            raw.startsWith("10.0.2.2") ||
+            raw.startsWith("192.168.") ||
+            raw.startsWith("10.")
         val withScheme = if (raw.startsWith("http://", ignoreCase = true) || raw.startsWith("https://", ignoreCase = true)) {
             raw
+        } else if (isLocalHost) {
+            "http://$raw"
         } else {
             "https://$raw"
         }
-        return withScheme.substringBefore("/wp-admin").substringBefore("/wp-json").removeSuffix("/")
+        return withScheme
+            .substringBefore("?")
+            .substringBefore("#")
+            .substringBefore("/wp-admin")
+            .substringBefore("/wp-json")
+            .removeSuffix("/")
     }
 
     /**
@@ -297,14 +309,26 @@ class McpClient @Inject constructor(
     ): VmResult<McpJsonRpcResponse> {
         val payload = json.encodeToString(McpJsonRpcRequest.serializer(), rpcRequest)
         val rawEndpoint = server.endpointUrl.trim().removeSuffix("/")
+        val isLocalHost = rawEndpoint.startsWith("localhost", ignoreCase = true) ||
+            rawEndpoint.startsWith("127.0.0.1") ||
+            rawEndpoint.startsWith("10.0.2.2") ||
+            rawEndpoint.startsWith("192.168.") ||
+            rawEndpoint.startsWith("10.")
         val normalizedUrl = when {
             server.serverType.equals("WORDPRESS", ignoreCase = true) -> {
                 val fullUrl = if (rawEndpoint.startsWith("http://", ignoreCase = true) || rawEndpoint.startsWith("https://", ignoreCase = true)) {
                     rawEndpoint
+                } else if (isLocalHost) {
+                    "http://$rawEndpoint"
                 } else {
                     "https://$rawEndpoint"
                 }
-                val cleanRoot = fullUrl.substringBefore("/wp-admin").substringBefore("/wp-json").removeSuffix("/")
+                val cleanRoot = fullUrl
+                    .substringBefore("?")
+                    .substringBefore("#")
+                    .substringBefore("/wp-admin")
+                    .substringBefore("/wp-json")
+                    .removeSuffix("/")
                 when {
                     fullUrl.endsWith("/wp-json/mcp/v1", ignoreCase = true) -> fullUrl
                     fullUrl.endsWith("/wp-json/mcp", ignoreCase = true) -> "$fullUrl/v1"
@@ -316,6 +340,7 @@ class McpClient @Inject constructor(
                 }
             }
             rawEndpoint.startsWith("http://", ignoreCase = true) || rawEndpoint.startsWith("https://", ignoreCase = true) -> rawEndpoint
+            isLocalHost -> "http://$rawEndpoint"
             else -> "https://$rawEndpoint"
         }
 

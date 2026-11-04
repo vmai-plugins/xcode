@@ -97,16 +97,31 @@ class McpManager @Inject constructor(
         }
 
         val targetServer = if (!serverNameOrId.isNullOrBlank()) {
-            enabled.firstOrNull { it.id == serverNameOrId || it.name.equals(serverNameOrId, ignoreCase = true) }
-                ?: return VmResult.Failure(
-                    VmError.NotFound(
-                        summary = "MCP server not found",
-                        reason = "Could not find an active MCP server matching \"$serverNameOrId\".",
-                        suggestedAction = "Check your configured MCP servers in Settings > Connectors.",
-                    ),
-                )
-        } else {
+            val query = serverNameOrId.trim()
+            enabled.firstOrNull {
+                it.id == query ||
+                    it.name.equals(query, ignoreCase = true) ||
+                    it.name.contains(query, ignoreCase = true) ||
+                    query.contains(it.name, ignoreCase = true) ||
+                    it.endpointUrl.contains(query, ignoreCase = true)
+            } ?: return VmResult.Failure(
+                VmError.NotFound(
+                    summary = "MCP server not found",
+                    reason = "Could not find an active MCP server matching \"$serverNameOrId\". Available servers: ${enabled.joinToString { it.name }}",
+                    suggestedAction = "Check your configured MCP servers in Settings > Connectors.",
+                ),
+            )
+        } else if (enabled.size == 1) {
             enabled.first()
+        } else {
+            // If multiple servers are enabled and no server was specified, find which server advertises this tool
+            val matching = enabled.firstOrNull { server ->
+                when (val toolsResult = mcpClient.listTools(server)) {
+                    is VmResult.Success -> toolsResult.value.any { it.name.equals(toolName, ignoreCase = true) }
+                    is VmResult.Failure -> false
+                }
+            }
+            matching ?: enabled.first()
         }
 
         return mcpClient.callTool(targetServer, toolName, arguments)
@@ -163,12 +178,21 @@ class McpManager @Inject constructor(
         projectPath: String? = null,
     ): McpServerConfig {
         val trimmed = siteUrl.trim().removeSuffix("/")
+        val isLocalHost = trimmed.startsWith("localhost", ignoreCase = true) ||
+            trimmed.startsWith("127.0.0.1") ||
+            trimmed.startsWith("10.0.2.2") ||
+            trimmed.startsWith("192.168.") ||
+            trimmed.startsWith("10.")
         val withScheme = if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
             trimmed
+        } else if (isLocalHost) {
+            "http://$trimmed"
         } else {
             "https://$trimmed"
         }
         val cleanRoot = withScheme
+            .substringBefore("?")
+            .substringBefore("#")
             .substringBefore("/wp-admin")
             .substringBefore("/wp-json")
             .removeSuffix("/")

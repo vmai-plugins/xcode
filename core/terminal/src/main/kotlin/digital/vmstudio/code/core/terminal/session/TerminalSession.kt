@@ -154,12 +154,18 @@ class TerminalSession internal constructor(
                 }
                 // Always publish the tail, or the last line before the shell exited
                 // would never reach the screen.
+                trailingPublish?.cancel()
+                trailingPublish = null
                 withContext(emulatorDispatcher) { publishSnapshot() }
                 _state.value = TerminalSessionState.Closed
                 VmLog.i(LogCategory.TERMINAL, TAG, "Shell session $id ended")
             } catch (cancellation: CancellationException) {
+                trailingPublish?.cancel()
+                trailingPublish = null
                 throw cancellation
             } catch (throwable: Throwable) {
+                trailingPublish?.cancel()
+                trailingPublish = null
                 withContext(emulatorDispatcher) { publishSnapshot() }
                 _state.value = TerminalSessionState.Failed(
                     VmError.Ssh(

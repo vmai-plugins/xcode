@@ -313,8 +313,13 @@ class VmProjectHubClient @Inject constructor(
 
         val baseUrl = getEffectiveHubBaseUrl()
         val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val encKey = java.net.URLEncoder.encode(hubKey, "UTF-8")
+        val encMaster = java.net.URLEncoder.encode(masterKey, "UTF-8")
+        val sep = if (baseUrl.contains("?")) "&" else "?"
+        val authenticatedUrl = "$baseUrl/projects${sep}key=$encKey&companion_key=$encMaster"
+
         val request = Request.Builder()
-            .url("$baseUrl/projects")
+            .url(authenticatedUrl)
             .header("X-VMPJ-Key", hubKey)
             .header("X-VMPJ-Companion-Key", masterKey)
             .header("X-Hub-Key", hubKey)
@@ -327,7 +332,7 @@ class VmProjectHubClient @Inject constructor(
             is VmResult.Failure -> {
                 if (hubKey != masterKey) {
                     val fallbackReq = Request.Builder()
-                        .url("$baseUrl/projects")
+                        .url("$baseUrl/projects${sep}key=$encMaster&companion_key=$encMaster")
                         .header("X-VMPJ-Key", masterKey)
                         .header("X-VMPJ-Companion-Key", masterKey)
                         .header("X-Hub-Key", masterKey)
@@ -358,8 +363,13 @@ class VmProjectHubClient @Inject constructor(
 
         val baseUrl = getEffectiveHubBaseUrl()
         val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val encKey = java.net.URLEncoder.encode(hubKey, "UTF-8")
+        val encMaster = java.net.URLEncoder.encode(masterKey, "UTF-8")
+        val sep = if (baseUrl.contains("?")) "&" else "?"
+        val authenticatedUrl = "$baseUrl/tasks${sep}key=$encKey&companion_key=$encMaster"
+
         val request = Request.Builder()
-            .url("$baseUrl/tasks")
+            .url(authenticatedUrl)
             .header("X-VMPJ-Key", hubKey)
             .header("X-VMPJ-Companion-Key", masterKey)
             .header("X-Hub-Key", hubKey)
@@ -372,7 +382,7 @@ class VmProjectHubClient @Inject constructor(
             is VmResult.Failure -> {
                 if (hubKey != masterKey) {
                     val fallbackReq = Request.Builder()
-                        .url("$baseUrl/tasks")
+                        .url("$baseUrl/tasks${sep}key=$encMaster&companion_key=$encMaster")
                         .header("X-VMPJ-Key", masterKey)
                         .header("X-VMPJ-Companion-Key", masterKey)
                         .header("X-Hub-Key", masterKey)
@@ -398,9 +408,13 @@ class VmProjectHubClient @Inject constructor(
 
         val baseUrl = getEffectiveHubBaseUrl()
         val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val encKey = java.net.URLEncoder.encode(hubKey, "UTF-8")
+        val encMaster = java.net.URLEncoder.encode(masterKey, "UTF-8")
+        val sep = if (baseUrl.contains("?")) "&" else "?"
+        val authenticatedUrl = "$baseUrl/credentials${sep}key=$encKey&companion_key=$encMaster"
 
         val request = Request.Builder()
-            .url("$baseUrl/credentials")
+            .url(authenticatedUrl)
             .header("X-VMPJ-Key", hubKey)
             .header("X-VMPJ-Companion-Key", masterKey)
             .header("X-Hub-Key", hubKey)
@@ -413,7 +427,7 @@ class VmProjectHubClient @Inject constructor(
             is VmResult.Failure -> {
                 if (hubKey != masterKey) {
                     val fallbackRequest = Request.Builder()
-                        .url("$baseUrl/credentials")
+                        .url("$baseUrl/credentials${sep}key=$encMaster&companion_key=$encMaster")
                         .header("X-VMPJ-Key", masterKey)
                         .header("X-VMPJ-Companion-Key", masterKey)
                         .header("X-Hub-Key", masterKey)

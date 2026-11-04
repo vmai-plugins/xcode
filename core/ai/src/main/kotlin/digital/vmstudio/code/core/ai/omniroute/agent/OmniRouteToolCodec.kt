@@ -173,7 +173,13 @@ object OmniRouteToolCodec {
 
         is OmniRouteMessage.Assistant -> buildJsonObject {
             put("role", "assistant")
-            put("content", text ?: "")
+            if (text != null) {
+                put("content", text)
+            } else if (toolCalls.isEmpty()) {
+                put("content", "")
+            } else {
+                put("content", JsonNull)
+            }
             if (toolCalls.isNotEmpty()) {
                 putJsonArray("tool_calls") {
                     toolCalls.forEach { call ->
