@@ -134,7 +134,7 @@ class CommandGitService @Inject constructor(
         repoPath: String,
         command: String,
     ): GitResult<SshCommandResult> {
-        if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId)) {
+        if (serverId.isBlank() || serverId == "local" || serverId == "device" || serverId == "github" || serverId == "vmhub" || serverId == "drive") {
             return GitResult.Failure(
                 GitError.CommandFailed(command, -1, "On-device and cloud storage use direct file access. Connect a VPS or GitHub account to sync Git repository history."),
             )

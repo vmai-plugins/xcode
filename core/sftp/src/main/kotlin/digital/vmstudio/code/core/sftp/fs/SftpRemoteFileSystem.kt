@@ -269,7 +269,9 @@ class SftpRemoteFileSystem @Inject constructor(
             }
             val bytes = content.toByteArray(Charsets.UTF_8)
             val tempPath = "$normalised.vm_tmp.${System.currentTimeMillis()}"
+            val backupPath = "$normalised.vm_bak.${System.currentTimeMillis()}"
             val modes = setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
+            var hasBackup = false
             try {
                 sftp.open(tempPath, modes).use { remote ->
                     var offset = 0
@@ -279,35 +281,32 @@ class SftpRemoteFileSystem @Inject constructor(
                         offset += chunk
                     }
                 }
-                val backupPath = "$normalised.vm_bak.${System.currentTimeMillis()}"
-                var hasBackup = false
                 try {
+                    sftp.rename(tempPath, normalised)
+                } catch (_: Exception) {
+                    // Fallback for SFTP servers rejecting overwrite: move existing to backup first
                     try {
-                        sftp.rename(tempPath, normalised)
+                        sftp.rename(normalised, backupPath)
+                        hasBackup = true
                     } catch (_: Exception) {
-                        // Fallback for SFTP servers rejecting overwrite: move existing to backup first
-                        try {
-                            sftp.rename(normalised, backupPath)
-                            hasBackup = true
-                        } catch (_: Exception) {
-                            // Target file may not exist yet
-                        }
-                        sftp.rename(tempPath, normalised)
-                        if (hasBackup) {
-                            try { sftp.rm(backupPath) } catch (_: Exception) {}
-                        }
+                        // Target file may not exist yet
                     }
-                } catch (t: Throwable) {
+                    sftp.rename(tempPath, normalised)
                     if (hasBackup) {
-                        try { sftp.rename(backupPath, normalised) } catch (_: Exception) {}
+                        try { sftp.rm(backupPath) } catch (_: Exception) {}
                     }
-                    try {
-                        sftp.rm(tempPath)
-                    } catch (cleanupEx: Exception) {
-                        VmLog.w(LogCategory.SFTP, TAG, "Failed to clean up temp file $tempPath: ${cleanupEx.message}")
-                    }
-                    throw t
                 }
+            } catch (t: Throwable) {
+                if (hasBackup) {
+                    try { sftp.rename(backupPath, normalised) } catch (_: Exception) {}
+                }
+                try {
+                    sftp.rm(tempPath)
+                } catch (cleanupEx: Exception) {
+                    VmLog.w(LogCategory.SFTP, TAG, "Failed to clean up temp file $tempPath: ${cleanupEx.message}")
+                }
+                throw t
+            }
             VmLog.i(LogCategory.SFTP, TAG, "Wrote ${bytes.size} bytes to $path")
         }
     }
