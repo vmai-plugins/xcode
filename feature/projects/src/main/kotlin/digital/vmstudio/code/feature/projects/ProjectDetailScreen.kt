@@ -184,8 +184,10 @@ fun ProjectDetailScreen(
                     }
                 } else {
                     item(key = "quick-build") {
+                        val isGithub = project.remotePath.startsWith("/github/")
                         QuickBuildCard(
                             isBuilding = state.isBuildingApk,
+                            isGithubRepo = isGithub,
                             statusMessage = state.buildStatusMessage,
                             onBuild = viewModel::buildAndroidApk,
                             onScan = viewModel::scanApkArtifacts,
@@ -492,6 +494,7 @@ private fun ProjectActionsRow(
 @Composable
 private fun QuickBuildCard(
     isBuilding: Boolean,
+    isGithubRepo: Boolean = false,
     statusMessage: String?,
     onBuild: () -> Unit,
     onScan: () -> Unit,
@@ -518,7 +521,7 @@ private fun QuickBuildCard(
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        text = "Build & Deploy Actions",
+                        text = if (isGithubRepo) "Cloud Actions APK Build" else "Build & Deploy Actions",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
@@ -541,7 +544,11 @@ private fun QuickBuildCard(
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 VmButton(
-                    text = if (isBuilding) "Building..." else "1-Tap Build APK",
+                    text = when {
+                        isBuilding -> "Building..."
+                        isGithubRepo -> "Cloud Build APK (Actions)"
+                        else -> "1-Tap Build APK"
+                    },
                     onClick = onBuild,
                     loading = isBuilding,
                     enabled = !isBuilding,

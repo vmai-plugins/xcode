@@ -31,9 +31,16 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
@@ -50,6 +57,7 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -60,6 +68,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -88,6 +98,8 @@ import digital.vmstudio.code.core.ui.component.VmButton
 import digital.vmstudio.code.core.ui.component.VmButtonStyle
 import digital.vmstudio.code.core.ui.component.VmStatus
 import digital.vmstudio.code.core.ui.theme.VmTheme
+import digital.vmstudio.code.core.ai.mcp.CuratedConnector
+import digital.vmstudio.code.core.ai.mcp.CuratedConnectorsCatalog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,6 +146,24 @@ fun ConnectorsScreen(
     var evolutionApiKeyVisible by remember { mutableStateOf(false) }
     var evolutionRecipientDraft by remember(state.evolutionApiRecipientNumber) { mutableStateOf(state.evolutionApiRecipientNumber) }
     var evolutionNotificationsDraft by remember(state.evolutionApiNotificationsEnabled) { mutableStateOf(state.evolutionApiNotificationsEnabled) }
+
+    var mcpExpanded by remember { mutableStateOf(false) }
+    var mcpNameDraft by remember { mutableStateOf("") }
+    var mcpUrlDraft by remember { mutableStateOf("") }
+    var mcpApiKeyDraft by remember { mutableStateOf("") }
+    var mcpApiKeyVisible by remember { mutableStateOf(false) }
+    var mcpTypeDraft by remember { mutableStateOf("HTTP") }
+    var mcpProjectPathDraft by remember { mutableStateOf("") }
+    var mcpIsAddingCustom by remember { mutableStateOf(false) }
+    var mcpIsAddingWp by remember { mutableStateOf(false) }
+    var wpUrlDraft by remember { mutableStateOf("") }
+    var wpKeyDraft by remember { mutableStateOf("") }
+    var wpKeyVisible by remember { mutableStateOf(false) }
+    var wpProjectPathDraft by remember { mutableStateOf("") }
+    var curatedDialogConnector by remember { mutableStateOf<CuratedConnector?>(null) }
+    var curatedApiKeyDraft by remember { mutableStateOf("") }
+    var curatedEndpointDraft by remember { mutableStateOf("") }
+    var curatedApiKeyVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.savedDriveToken) {
         state.savedDriveToken?.let { if (driveTokenDraft.isBlank()) driveTokenDraft = it }
@@ -232,6 +262,11 @@ fun ConnectorsScreen(
                         label = "WhatsApp (Evolution)",
                         selected = state.selectedFilter == ConnectorFilter.WHATSAPP,
                         onClick = { viewModel.selectFilter(ConnectorFilter.WHATSAPP) },
+                    )
+                    ConnectorFilterChip(
+                        label = "Model Context Protocol (MCP)",
+                        selected = state.selectedFilter == ConnectorFilter.MCP,
+                        onClick = { viewModel.selectFilter(ConnectorFilter.MCP) },
                     )
                 }
             }
@@ -1335,6 +1370,470 @@ fun ConnectorsScreen(
                     }
                 }
             }
+
+            // 8. Model Context Protocol (MCP) (Universal Apps, WordPress, Databases & Project Tools)
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.MCP) {
+                item(key = "card-mcp") {
+                    val activeMcpCount = state.mcpServers.count { it.isEnabled }
+                    ModernConnectorCard(
+                        icon = Icons.Default.Extension,
+                        iconTint = Color(0xFFFF5722),
+                        title = "Model Context Protocol (MCP)",
+                        category = "Universal App, WordPress & Project Tools",
+                        status = if (activeMcpCount > 0) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = when {
+                            state.isTestingMcp -> "Testing…"
+                            state.mcpServers.isNotEmpty() -> "$activeMcpCount active server${if (activeMcpCount > 1) "s" else ""}"
+                            else -> "Ready to Connect"
+                        },
+                        description = "Connect any app, WordPress site, database, or API via Model Context Protocol (MCP). The AI agent discovers advertised tools and executes actions or writes code in your project.",
+                        tags = listOf("JSON-RPC 2.0", "WordPress MCP", "tools/list", "tools/call", "Project-Scoped"),
+                        isExpanded = mcpExpanded,
+                        onToggleExpand = { mcpExpanded = !mcpExpanded },
+                        statusMessage = state.mcpStatusMessage,
+                        primaryActionText = if (mcpExpanded) "Collapse" else "Configure MCP",
+                        onPrimaryAction = { mcpExpanded = !mcpExpanded },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            Text(
+                                "Connected MCP Servers & Bridges",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Configure Model Context Protocol endpoints. Once connected, OmniRoute AI can list tools and execute remote actions or inspect resources directly in your workspace.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            // Quick Add Presets Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        mcpIsAddingWp = !mcpIsAddingWp
+                                        if (mcpIsAddingWp) mcpIsAddingCustom = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("WordPress MCP", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        mcpIsAddingCustom = !mcpIsAddingCustom
+                                        if (mcpIsAddingCustom) mcpIsAddingWp = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Custom MCP Server", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+
+                            // WordPress MCP Preset Form
+                            AnimatedVisibility(
+                                visible = mcpIsAddingWp,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically(),
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    border = BorderStroke(1.dp, Color(0xFF21759B).copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(
+                                            "Connect WordPress Site via MCP",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF21759B),
+                                        )
+                                        Text(
+                                            "Point to your WordPress URL. If you have an MCP plugin or VM companion installed, X-Codes will automatically bind its tools to your project.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+
+                                        OutlinedTextField(
+                                            value = wpUrlDraft,
+                                            onValueChange = { wpUrlDraft = it },
+                                            label = { Text("WordPress Site URL (https://my-blog.com)") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        OutlinedTextField(
+                                            value = wpKeyDraft,
+                                            onValueChange = { wpKeyDraft = it },
+                                            label = { Text("API Key / Application Password (optional)") },
+                                            singleLine = true,
+                                            visualTransformation = if (wpKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                            trailingIcon = {
+                                                IconButton(onClick = { wpKeyVisible = !wpKeyVisible }) {
+                                                    Icon(
+                                                        imageVector = if (wpKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                        contentDescription = null,
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        OutlinedTextField(
+                                            value = wpProjectPathDraft,
+                                            onValueChange = { wpProjectPathDraft = it },
+                                            label = { Text("Target Project Path (optional, e.g. wp-content/themes)") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        VmButton(
+                                            text = "Save & Connect WordPress MCP",
+                                            onClick = {
+                                                if (wpUrlDraft.isNotBlank()) {
+                                                    viewModel.addWordPressMcpPreset(
+                                                        siteUrl = wpUrlDraft,
+                                                        apiKey = wpKeyDraft.ifBlank { null },
+                                                        projectPath = wpProjectPathDraft.ifBlank { null },
+                                                    )
+                                                    wpUrlDraft = ""
+                                                    wpKeyDraft = ""
+                                                    wpProjectPathDraft = ""
+                                                    mcpIsAddingWp = false
+                                                }
+                                            },
+                                            enabled = wpUrlDraft.isNotBlank() && !state.isTestingMcp,
+                                            style = VmButtonStyle.Primary,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Custom MCP Server Form
+                            AnimatedVisibility(
+                                visible = mcpIsAddingCustom,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically(),
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    border = BorderStroke(1.dp, Color(0xFFFF5722).copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(
+                                            "Add Custom Model Context Protocol Server",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFFF5722),
+                                        )
+
+                                        OutlinedTextField(
+                                            value = mcpNameDraft,
+                                            onValueChange = { mcpNameDraft = it },
+                                            label = { Text("Server Name (e.g. Production Database)") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        OutlinedTextField(
+                                            value = mcpUrlDraft,
+                                            onValueChange = { mcpUrlDraft = it },
+                                            label = { Text("MCP Endpoint URL (JSON-RPC or SSE endpoint)") },
+                                            placeholder = { Text("https://mcp.example.com/api") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        OutlinedTextField(
+                                            value = mcpApiKeyDraft,
+                                            onValueChange = { mcpApiKeyDraft = it },
+                                            label = { Text("Bearer Token / API Key (optional)") },
+                                            singleLine = true,
+                                            visualTransformation = if (mcpApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                            trailingIcon = {
+                                                IconButton(onClick = { mcpApiKeyVisible = !mcpApiKeyVisible }) {
+                                                    Icon(
+                                                        imageVector = if (mcpApiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                        contentDescription = null,
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        OutlinedTextField(
+                                            value = mcpProjectPathDraft,
+                                            onValueChange = { mcpProjectPathDraft = it },
+                                            label = { Text("Scope to Project Path (optional)") },
+                                            placeholder = { Text("Leave blank for all projects") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+
+                                        VmButton(
+                                            text = "Save MCP Server",
+                                            onClick = {
+                                                if (mcpNameDraft.isNotBlank() && mcpUrlDraft.isNotBlank()) {
+                                                    viewModel.saveMcpServer(
+                                                        name = mcpNameDraft,
+                                                        endpointUrl = mcpUrlDraft,
+                                                        apiKey = mcpApiKeyDraft.ifBlank { null },
+                                                        serverType = mcpTypeDraft,
+                                                        projectPath = mcpProjectPathDraft.ifBlank { null },
+                                                    )
+                                                    mcpNameDraft = ""
+                                                    mcpUrlDraft = ""
+                                                    mcpApiKeyDraft = ""
+                                                    mcpProjectPathDraft = ""
+                                                    mcpIsAddingCustom = false
+                                                }
+                                            },
+                                            enabled = mcpNameDraft.isNotBlank() && mcpUrlDraft.isNotBlank() && !state.isTestingMcp,
+                                            style = VmButtonStyle.Primary,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            )
+
+                            // Top Curated Connectors (Claude-Style Catalog)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Text(
+                                        text = "Top connectors",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    ) {
+                                        Text(
+                                            text = "${CuratedConnectorsCatalog.TOP_10.size}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Model Context Protocol",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                CuratedConnectorsCatalog.TOP_10.forEach { connector ->
+                                    val isConnected = state.mcpServers.any { server ->
+                                        server.name.contains(connector.name, ignoreCase = true) ||
+                                            (connector.defaultEndpointUrl.isNotBlank() &&
+                                                server.endpointUrl.contains(connector.defaultEndpointUrl.trimEnd('/'), ignoreCase = true))
+                                    }
+                                    CuratedConnectorItem(
+                                        connector = connector,
+                                        isConnected = isConnected,
+                                        onConnect = {
+                                            if (connector.requiresApiKey) {
+                                                curatedDialogConnector = connector
+                                                curatedApiKeyDraft = ""
+                                                curatedEndpointDraft = connector.defaultEndpointUrl
+                                            } else {
+                                                viewModel.addCuratedConnector(connector)
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            )
+
+                            // Configured Servers List
+                            if (state.mcpServers.isEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        "No MCP servers configured yet. Add your WordPress site or a custom MCP server above to enable remote tools.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(12.dp),
+                                    )
+                                }
+                            } else {
+                                state.mcpServers.forEach { server ->
+                                    val discovered = state.mcpDiscoveredTools[server.id]
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (server.isEnabled) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.weight(1f),
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (server.serverType == "WORDPRESS") Icons.Default.Language else Icons.Default.Extension,
+                                                        contentDescription = null,
+                                                        tint = if (server.isEnabled) Color(0xFFFF5722) else MaterialTheme.colorScheme.outline,
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
+                                                    Text(
+                                                        text = server.name,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                    )
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                    ) {
+                                                        Text(
+                                                            text = server.serverType,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        )
+                                                    }
+                                                }
+
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Switch(
+                                                        checked = server.isEnabled,
+                                                        onCheckedChange = { viewModel.toggleMcpServer(server.id, it) },
+                                                        colors = SwitchDefaults.colors(
+                                                            checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                                        ),
+                                                    )
+                                                    IconButton(onClick = { viewModel.deleteMcpServer(server.id) }) {
+                                                        Icon(
+                                                            Icons.Default.Delete,
+                                                            contentDescription = "Delete MCP Server",
+                                                            tint = MaterialTheme.colorScheme.error,
+                                                            modifier = Modifier.size(18.dp),
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            Text(
+                                                text = server.endpointUrl,
+                                                style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+
+                                            server.projectPath?.let { p ->
+                                                Text(
+                                                    text = "Project Scope: $p",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.secondary,
+                                                )
+                                            }
+
+                                            if (!discovered.isNullOrEmpty()) {
+                                                Text(
+                                                    text = "${discovered.size} advertised tools:",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .horizontalScroll(rememberScrollState()),
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                ) {
+                                                    discovered.forEach { tool ->
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                        ) {
+                                                            Text(
+                                                                text = tool.name,
+                                                                style = VmTheme.code.mono.copy(fontSize = 10.sp),
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.End,
+                                            ) {
+                                                TextButton(
+                                                    onClick = { viewModel.testMcpServer(server) },
+                                                    enabled = !state.isTestingMcp,
+                                                ) {
+                                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text("Test & Discover Tools", style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1438,6 +1937,81 @@ fun ConnectorsScreen(
                     TextButton(onClick = { viewModel.dismissDrivePreview() }) {
                         Text("Close")
                     }
+                }
+            },
+        )
+    }
+
+    // Curated Connector Setup Dialog
+    curatedDialogConnector?.let { connector ->
+        AlertDialog(
+            onDismissRequest = { curatedDialogConnector = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Extension,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            },
+            title = {
+                Text(
+                    text = "Connect ${connector.name}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = connector.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = curatedEndpointDraft,
+                        onValueChange = { curatedEndpointDraft = it },
+                        label = { Text("MCP Endpoint / Gateway URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = curatedApiKeyDraft,
+                        onValueChange = { curatedApiKeyDraft = it },
+                        label = { Text(connector.apiKeyPlaceholder) },
+                        singleLine = true,
+                        visualTransformation = if (curatedApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { curatedApiKeyVisible = !curatedApiKeyVisible }) {
+                                Icon(
+                                    imageVector = if (curatedApiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.addCuratedConnector(
+                            curated = connector,
+                            apiKey = curatedApiKeyDraft.ifBlank { null },
+                            customEndpointUrl = curatedEndpointDraft.ifBlank { connector.defaultEndpointUrl },
+                        )
+                        curatedDialogConnector = null
+                    },
+                ) {
+                    Text("Connect")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { curatedDialogConnector = null }) {
+                    Text("Cancel")
                 }
             },
         )
@@ -1708,6 +2282,152 @@ private fun ModernConnectorCard(
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
                     expandedContent()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CuratedConnectorItem(
+    connector: CuratedConnector,
+    isConnected: Boolean,
+    onConnect: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(
+            1.dp,
+            if (isConnected) Color(0xFF4CAF50).copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = when (connector.id) {
+                    "google_drive" -> Color(0xFF34A853).copy(alpha = 0.15f)
+                    "gmail" -> Color(0xFFEA4335).copy(alpha = 0.15f)
+                    "google_calendar" -> Color(0xFF4285F4).copy(alpha = 0.15f)
+                    "microsoft_365" -> Color(0xFF0078D4).copy(alpha = 0.15f)
+                    "slack" -> Color(0xFF4A154B).copy(alpha = 0.15f)
+                    "canva" -> Color(0xFF00C4CC).copy(alpha = 0.15f)
+                    "notion" -> Color(0xFF808080).copy(alpha = 0.15f)
+                    "google_sheets" -> Color(0xFF0F9D58).copy(alpha = 0.15f)
+                    "atlassian_mcp" -> Color(0xFF0052CC).copy(alpha = 0.15f)
+                    "figma" -> Color(0xFFF24E1E).copy(alpha = 0.15f)
+                    "wordpress" -> Color(0xFF21759B).copy(alpha = 0.15f)
+                    else -> MaterialTheme.colorScheme.primaryContainer
+                },
+                modifier = Modifier.size(40.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = when (connector.id) {
+                            "google_drive" -> Icons.Default.Cloud
+                            "gmail" -> Icons.AutoMirrored.Filled.Send
+                            "google_calendar" -> Icons.Default.Refresh
+                            "microsoft_365" -> Icons.Default.Storage
+                            "slack" -> Icons.AutoMirrored.Filled.Chat
+                            "canva" -> Icons.Default.Extension
+                            "notion" -> Icons.Default.Description
+                            "google_sheets" -> Icons.Default.TableChart
+                            "atlassian_mcp" -> Icons.Default.Code
+                            "figma" -> Icons.Default.Extension
+                            "wordpress" -> Icons.Default.Language
+                            else -> Icons.Default.Extension
+                        },
+                        contentDescription = connector.name,
+                        tint = when (connector.id) {
+                            "google_drive" -> Color(0xFF34A853)
+                            "gmail" -> Color(0xFFEA4335)
+                            "google_calendar" -> Color(0xFF4285F4)
+                            "microsoft_365" -> Color(0xFF0078D4)
+                            "slack" -> Color(0xFFE01E5A)
+                            "canva" -> Color(0xFF00C4CC)
+                            "notion" -> MaterialTheme.colorScheme.onSurface
+                            "google_sheets" -> Color(0xFF0F9D58)
+                            "atlassian_mcp" -> Color(0xFF0052CC)
+                            "figma" -> Color(0xFFF24E1E)
+                            "wordpress" -> Color(0xFF21759B)
+                            else -> MaterialTheme.colorScheme.primary
+                        },
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = connector.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Verified connector",
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+                Text(
+                    text = connector.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
+                Text(
+                    text = "by ${connector.author}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+
+            if (isConnected) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF4CAF50).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.4f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Active",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = "Active",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4CAF50),
+                        )
+                    }
+                }
+            } else {
+                OutlinedButton(
+                    onClick = onConnect,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Add", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

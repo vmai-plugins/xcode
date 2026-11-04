@@ -161,10 +161,10 @@ class VmProjectHubClient @Inject constructor(
                     credential.value.wipe()
                     if (token.isNotBlank()) return token
                 }
-                is VmResult.Failure -> return null
+                is VmResult.Failure -> Unit
             }
         }
-        return configuredKey
+        return configuredKey ?: digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
     }
 
     suspend fun getEffectiveHubBaseUrl(): String {

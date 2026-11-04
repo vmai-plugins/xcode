@@ -199,8 +199,19 @@ class TerminalSession internal constructor(
                         channel.output.write(text.toByteArray(Charsets.UTF_8))
                         channel.output.flush()
                     }
-                }.onFailure {
-                    VmLog.w(LogCategory.TERMINAL, TAG, "Write to session $id failed", it)
+                }.onFailure { throwable ->
+                    VmLog.w(LogCategory.TERMINAL, TAG, "Write to session $id failed", throwable)
+                    if (!channel.isOpen || throwable is IOException) {
+                        _state.value = TerminalSessionState.Failed(
+                            VmError.Ssh(
+                                summary = "Terminal disconnected",
+                                reason = throwable.message ?: "Broken SSH channel",
+                                suggestedAction = "Reconnect to continue working on this server.",
+                                retryable = true,
+                                cause = throwable,
+                            ),
+                        )
+                    }
                 }
             } finally {
                 writeMutex.unlock()

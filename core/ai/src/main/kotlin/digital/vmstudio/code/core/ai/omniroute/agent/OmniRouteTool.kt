@@ -93,6 +93,34 @@ enum class OmniRouteTool(val toolName: String, val description: String) {
         "wordpress_file_write",
         "Create or overwrite a file on a remote WordPress site (themes, plugins, templates) via HTTPS REST API.",
     ),
+    MCP_CALL(
+        "mcp_call",
+        "Execute an action/tool on a connected Model Context Protocol (MCP) server (e.g. WordPress, external API, custom app, database). Requires tool_name and arguments.",
+    ),
+    MCP_LIST_TOOLS(
+        "mcp_list_tools",
+        "List all tools and capabilities advertised by connected Model Context Protocol (MCP) servers.",
+    ),
+    MCP_RESOURCE_READ(
+        "mcp_resource_read",
+        "Read content from a Model Context Protocol (MCP) resource URI (e.g. database schema, project spec, API docs). Requires uri.",
+    ),
+    PLAY_STORE_STATUS(
+        "play_store_status",
+        "Check Google Play Console release tracks (Internal, Alpha, Beta, Production), active rollout status, and version codes for Android apps.",
+    ),
+    KAGGLE_STATUS(
+        "kaggle_status",
+        "Check Kaggle Cloud compute connection, GPU/TPU compute quota, and account status.",
+    ),
+    KAGGLE_DISPATCH(
+        "kaggle_dispatch",
+        "Dispatch a batch AI training or compute script/notebook to Kaggle Cloud GPU/TPU.",
+    ),
+    HUB_SYSTEM_STATUS(
+        "hub_system_status",
+        "Query VM Project Hub companion server diagnostics, connected microservices, and active cloud infrastructure.",
+    ),
     ;
 
     companion object {
@@ -349,6 +377,89 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
             add("path")
             add("content")
         }
+    }
+    OmniRouteTool.MCP_CALL -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("tool_name") {
+                put("type", "string")
+                put("description", "The name of the MCP tool to execute on the MCP server.")
+            }
+            putJsonObject("server_name") {
+                put("type", "string")
+                put("description", "Optional name or ID of the target MCP server if multiple are configured.")
+            }
+            putJsonObject("arguments") {
+                put("type", "object")
+                put("description", "JSON object containing parameters expected by the MCP tool.")
+            }
+        }
+        putJsonArray("required") { add("tool_name") }
+    }
+    OmniRouteTool.MCP_LIST_TOOLS -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("server_name") {
+                put("type", "string")
+                put("description", "Optional MCP server name to query.")
+            }
+        }
+        putJsonArray("required") { }
+    }
+    OmniRouteTool.MCP_RESOURCE_READ -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("uri") {
+                put("type", "string")
+                put("description", "The resource URI to read from the MCP server.")
+            }
+            putJsonObject("server_name") {
+                put("type", "string")
+                put("description", "Optional target MCP server name or ID.")
+            }
+        }
+        putJsonArray("required") { add("uri") }
+    }
+    OmniRouteTool.PLAY_STORE_STATUS -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("package_name") {
+                put("type", "string")
+                put("description", "Android application package name (e.g. digital.vmstudio.code or live.onlinepuja.astro). Defaults to project package.")
+            }
+        }
+        putJsonArray("required") { }
+    }
+    OmniRouteTool.KAGGLE_STATUS -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") { }
+        putJsonArray("required") { }
+    }
+    OmniRouteTool.KAGGLE_DISPATCH -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") {
+            putJsonObject("title") {
+                put("type", "string")
+                put("description", "Title or slug for the Kaggle GPU kernel job.")
+            }
+            putJsonObject("code") {
+                put("type", "string")
+                put("description", "Python code or notebook commands to execute on Kaggle Cloud GPU.")
+            }
+            putJsonObject("gpu") {
+                put("type", "boolean")
+                put("description", "Whether to enable NVIDIA GPU accelerator (defaults to true).")
+            }
+        }
+        putJsonArray("required") {
+            add("title")
+            add("code")
+        }
+    }
+    OmniRouteTool.HUB_SYSTEM_STATUS -> buildJsonObject {
+        put("type", "object")
+        putJsonObject("properties") { }
+        putJsonArray("required") { }
     }
 }
 

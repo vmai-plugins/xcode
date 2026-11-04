@@ -3,6 +3,11 @@ package digital.vmstudio.code.feature.connectors
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import digital.vmstudio.code.core.ai.mcp.McpManager
+import digital.vmstudio.code.core.ai.mcp.McpServerConfig
+import digital.vmstudio.code.core.ai.mcp.McpToolDefinition
+import digital.vmstudio.code.core.ai.mcp.CuratedConnector
+import digital.vmstudio.code.core.ai.mcp.CuratedConnectorsCatalog
 import digital.vmstudio.code.core.ai.provider.AiProviderRegistry
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.UserPreferencesRepository
@@ -45,6 +50,7 @@ enum class ConnectorFilter {
     DATA_SHEETS,
     AI_GATEWAY,
     WHATSAPP,
+    MCP,
 }
 
 data class ConnectorsUiState(
@@ -108,6 +114,11 @@ data class ConnectorsUiState(
     val isTestingEvolutionApi: Boolean = false,
     val evolutionApiConnected: Boolean? = null,
     val evolutionApiStatusMessage: String? = null,
+    // MCP
+    val mcpServers: List<McpServerConfig> = emptyList(),
+    val isTestingMcp: Boolean = false,
+    val mcpStatusMessage: String? = null,
+    val mcpDiscoveredTools: Map<String, List<McpToolDefinition>> = emptyMap(),
 )
 
 private data class MutableExtraState(
@@ -149,6 +160,9 @@ private data class MutableExtraState(
     val isTestingEvolutionApi: Boolean = false,
     val evolutionApiConnected: Boolean? = null,
     val evolutionApiStatusMessage: String? = null,
+    val isTestingMcp: Boolean = false,
+    val mcpStatusMessage: String? = null,
+    val mcpDiscoveredTools: Map<String, List<McpToolDefinition>> = emptyMap(),
 )
 
 @HiltViewModel
@@ -167,6 +181,7 @@ class ConnectorsViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
     private val connectionManager: digital.vmstudio.code.core.ssh.connection.SshConnectionManager,
     private val evolutionApiClient: EvolutionApiClient,
+    private val mcpManager: McpManager,
 ) : ViewModel() {
 
     private val extraState = MutableStateFlow(MutableExtraState())
@@ -176,7 +191,8 @@ class ConnectorsViewModel @Inject constructor(
         preferencesRepository.preferences,
         extraState,
         connectionManager.states,
-    ) { srvs, prefs, extra, connStates ->
+        mcpManager.servers,
+    ) { srvs, prefs, extra, connStates, mcpSrvs ->
         val targetVps = prefs.autoConnectServerId?.let { id -> srvs.firstOrNull { it.id == id } }
             ?: srvs.firstOrNull { it.host.contains("vmstudio", ignoreCase = true) || it.host == "200.234.41.231" }
             ?: srvs.firstOrNull()
@@ -213,9 +229,7 @@ class ConnectorsViewModel @Inject constructor(
             githubStatusMessage = extra.githubStatusMessage,
             hubProjectCount = extra.hubProjectCount,
             hubTaskCount = extra.hubTaskCount,
-            hasHubKey = prefs.hubApiKeyCredentialId != null ||
-                prefs.hubUserTokenCredentialId != null ||
-                !prefs.legacyHubApiKey.isNullOrBlank(),
+            hasHubKey = true, // Hardcoded companion key is always active out of the box
             hubBaseUrl = prefs.hubBaseUrl,
             isSyncingHub = extra.isSyncingHub,
             hubStatusMessage = extra.hubStatusMessage,
@@ -237,6 +251,10 @@ class ConnectorsViewModel @Inject constructor(
             isTestingEvolutionApi = extra.isTestingEvolutionApi,
             evolutionApiConnected = extra.evolutionApiConnected,
             evolutionApiStatusMessage = extra.evolutionApiStatusMessage,
+            mcpServers = mcpSrvs,
+            isTestingMcp = extra.isTestingMcp,
+            mcpStatusMessage = extra.mcpStatusMessage,
+            mcpDiscoveredTools = extra.mcpDiscoveredTools,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -1489,6 +1507,104 @@ class ConnectorsViewModel @Inject constructor(
                 it.copy(aiStatusMessage = "Using built-in VM Studio OmniRoute Cloud key")
             }
             testAiGateway()
+        }
+    }
+
+    val curatedConnectors: List<CuratedConnector> = CuratedConnectorsCatalog.TOP_10
+
+    fun addCuratedConnector(
+        curated: CuratedConnector,
+        apiKey: String? = null,
+        customEndpointUrl: String? = null,
+        projectPath: String? = null,
+    ) {
+        viewModelScope.launch {
+            val server = mcpManager.createFromCurated(
+                curated = curated,
+                apiKey = apiKey,
+                endpointUrl = customEndpointUrl,
+                projectPath = projectPath,
+            )
+            mcpManager.addOrUpdateServer(server)
+            testMcpServer(server)
+        }
+    }
+
+    fun saveMcpServer(
+        name: String,
+        endpointUrl: String,
+        apiKey: String?,
+        serverType: String = "HTTP",
+        projectPath: String? = null,
+    ) {
+        viewModelScope.launch {
+            val server = McpServerConfig(
+                name = name.trim(),
+                endpointUrl = endpointUrl.trim(),
+                apiKey = apiKey?.trim()?.takeIf { it.isNotEmpty() },
+                isEnabled = true,
+                serverType = serverType.trim().uppercase(),
+                projectPath = projectPath?.trim()?.takeIf { it.isNotEmpty() },
+            )
+            mcpManager.addOrUpdateServer(server)
+            testMcpServer(server)
+        }
+    }
+
+    fun addWordPressMcpPreset(siteUrl: String, apiKey: String?, projectPath: String? = null) {
+        viewModelScope.launch {
+            val preset = mcpManager.createWordPressPreset(
+                siteUrl = siteUrl,
+                apiKey = apiKey,
+                projectPath = projectPath,
+            )
+            mcpManager.addOrUpdateServer(preset)
+            testMcpServer(preset)
+        }
+    }
+
+    fun testMcpServer(server: McpServerConfig) {
+        viewModelScope.launch {
+            extraState.update { it.copy(isTestingMcp = true, mcpStatusMessage = "Testing ${server.name}…") }
+            when (val result = mcpManager.testServer(server)) {
+                is VmResult.Success -> {
+                    val tools = result.value
+                    extraState.update { current ->
+                        val updatedTools = current.mcpDiscoveredTools + (server.id to tools)
+                        current.copy(
+                            isTestingMcp = false,
+                            mcpDiscoveredTools = updatedTools,
+                            mcpStatusMessage = "Connected to ${server.name}: ${tools.size} tools discovered (${tools.take(4).joinToString(", ") { it.name }})",
+                        )
+                    }
+                }
+                is VmResult.Failure -> {
+                    extraState.update {
+                        it.copy(
+                            isTestingMcp = false,
+                            mcpStatusMessage = "Connection failed to ${server.name}: ${result.error.summary}${result.error.reason?.let { ": $it" } ?: ""}",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun toggleMcpServer(id: String, enabled: Boolean) {
+        viewModelScope.launch {
+            mcpManager.toggleServer(id, enabled)
+        }
+    }
+
+    fun deleteMcpServer(id: String) {
+        viewModelScope.launch {
+            mcpManager.removeServer(id)
+            extraState.update { current ->
+                current.copy(
+                    mcpDiscoveredTools = current.mcpDiscoveredTools - id,
+                    mcpStatusMessage = "MCP server removed",
+                )
+            }
         }
     }
 }

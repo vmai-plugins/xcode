@@ -17,6 +17,7 @@ enum class LogCategory {
     TERMINAL,
     EDITOR,
     TRANSFER,
+    VOICE,
 }
 
 enum class LogLevel(val priority: Int) {

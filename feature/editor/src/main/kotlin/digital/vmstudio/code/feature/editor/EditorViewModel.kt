@@ -133,6 +133,8 @@ class EditorViewModel @Inject constructor(
 
     private fun publishSnapshot() {
         snapshot.value = currentEditor?.snapshot()
+        // Re-emit tabs so that uiState's openTabs recalculates every tab's isDirty flag immediately
+        tabs.value = tabs.value.toMap()
     }
 
     init {

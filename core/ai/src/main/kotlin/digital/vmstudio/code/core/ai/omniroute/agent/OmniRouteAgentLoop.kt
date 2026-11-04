@@ -68,6 +68,8 @@ class OmniRouteAgentLoop @Inject constructor(
     private val gitHubRepositoryClient: GitHubRepositoryClient,
     private val userPreferencesRepository: digital.vmstudio.code.core.common.preferences.UserPreferencesRepository,
     private val hubCredentialManager: HubCredentialManager,
+    private val mcpManager: digital.vmstudio.code.core.ai.mcp.McpManager,
+    private val credentialStore: digital.vmstudio.code.core.security.store.SecureCredentialStore,
 ) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -381,10 +383,17 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         add(OmniRouteTool.WORDPRESS_FILE_LIST)
         add(OmniRouteTool.WORDPRESS_FILE_READ)
+        add(OmniRouteTool.PLAY_STORE_STATUS)
+        add(OmniRouteTool.KAGGLE_STATUS)
+        add(OmniRouteTool.HUB_SYSTEM_STATUS)
+        add(OmniRouteTool.MCP_LIST_TOOLS)
+        add(OmniRouteTool.MCP_RESOURCE_READ)
         if (config.permissionMode != AgentPermissionMode.PLAN) {
             add(OmniRouteTool.WRITE_FILE)
             add(OmniRouteTool.EDIT_FILE)
             add(OmniRouteTool.WORDPRESS_FILE_WRITE)
+            add(OmniRouteTool.KAGGLE_DISPATCH)
+            add(OmniRouteTool.MCP_CALL)
             if (!config.restricted && !isLocalWorkspace && !isGitHubWorkspace) {
                 add(OmniRouteTool.RUN_COMMAND)
                 add(OmniRouteTool.RUN_BUILD)
@@ -528,6 +537,8 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: argument(argsObj, "directory")
             ?: argument(argsObj, "tasks")
             ?: argument(argsObj, "role")
+            ?: argument(argsObj, "tool_name")
+            ?: argument(argsObj, "uri")
         // Resolved to an absolute path, not the raw model argument:
         // a model editing a repo-root file may well call this with
         // just "README.md", and DiffReviewViewModel derives the
@@ -546,29 +557,44 @@ class OmniRouteAgentLoop @Inject constructor(
             ),
         )
 
-        val outcome = when (tool) {
-            OmniRouteTool.INVOKE_SUBAGENT -> {
-                invokeSubagent(
-                    call = call,
-                    target = target,
-                    serverId = config.serverId,
-                    workingDirectory = config.workingDirectory,
-                    autonomyLevel = autonomyLevel,
-                    permissionMode = config.permissionMode,
-                    allowedTools = allowedTools,
-                    commandCount = commandCount,
-                    maxCommands = maxCommands,
-                    projectRules = projectRules,
-                )
-            }
-            OmniRouteTool.RUN_COMMAND, OmniRouteTool.RUN_BUILD -> {
-                if (commandCount.get() >= maxCommands) {
-                    ToolOutcome(
-                        "Command limit reached: maximum $maxCommands commands per run allowed. Command skipped.",
-                        isError = true,
+        val outcome = try {
+            when (tool) {
+                OmniRouteTool.INVOKE_SUBAGENT -> {
+                    invokeSubagent(
+                        call = call,
+                        target = target,
+                        serverId = config.serverId,
+                        workingDirectory = config.workingDirectory,
+                        autonomyLevel = autonomyLevel,
+                        permissionMode = config.permissionMode,
+                        allowedTools = allowedTools,
+                        commandCount = commandCount,
+                        maxCommands = maxCommands,
+                        projectRules = projectRules,
                     )
-                } else {
-                    commandCount.incrementAndGet()
+                }
+                OmniRouteTool.RUN_COMMAND, OmniRouteTool.RUN_BUILD -> {
+                    if (commandCount.get() >= maxCommands) {
+                        ToolOutcome(
+                            "Command limit reached: maximum $maxCommands commands per run allowed. Command skipped.",
+                            isError = true,
+                        )
+                    } else {
+                        commandCount.incrementAndGet()
+                        dispatch(
+                            tool = tool,
+                            call = call,
+                            serverId = config.serverId,
+                            workingDirectory = config.workingDirectory,
+                            autonomyLevel = autonomyLevel,
+                            permissionMode = config.permissionMode,
+                            allowedTools = allowedTools,
+                            driveToken = config.googleDriveToken,
+                            sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
+                        )
+                    }
+                }
+                else -> {
                     dispatch(
                         tool = tool,
                         call = call,
@@ -582,19 +608,10 @@ class OmniRouteAgentLoop @Inject constructor(
                     )
                 }
             }
-            else -> {
-                dispatch(
-                    tool = tool,
-                    call = call,
-                    serverId = config.serverId,
-                    workingDirectory = config.workingDirectory,
-                    autonomyLevel = autonomyLevel,
-                    permissionMode = config.permissionMode,
-                    allowedTools = allowedTools,
-                    driveToken = config.googleDriveToken,
-                    sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
-                )
-            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (t: Throwable) {
+            ToolOutcome("Error executing tool \"${tool?.toolName ?: call.name}\": ${t.message ?: t.javaClass.simpleName}", isError = true)
         }
 
         emit(
@@ -814,6 +831,13 @@ class OmniRouteAgentLoop @Inject constructor(
             OmniRouteTool.WORDPRESS_FILE_LIST -> wordpressFileList(call)
             OmniRouteTool.WORDPRESS_FILE_READ -> wordpressFileRead(call)
             OmniRouteTool.WORDPRESS_FILE_WRITE -> wordpressFileWrite(call)
+            OmniRouteTool.PLAY_STORE_STATUS -> playStoreStatus(call)
+            OmniRouteTool.KAGGLE_STATUS -> kaggleStatus(call)
+            OmniRouteTool.KAGGLE_DISPATCH -> kaggleDispatch(call)
+            OmniRouteTool.HUB_SYSTEM_STATUS -> hubSystemStatus(call)
+            OmniRouteTool.MCP_CALL -> mcpCall(call, workingDirectory)
+            OmniRouteTool.MCP_LIST_TOOLS -> mcpListTools(call, workingDirectory)
+            OmniRouteTool.MCP_RESOURCE_READ -> mcpResourceRead(call, workingDirectory)
             OmniRouteTool.INVOKE_SUBAGENT -> ToolOutcome("invoke_subagent is executed directly by the agent loop.", isError = false)
         }
     }
@@ -853,8 +877,9 @@ class OmniRouteAgentLoop @Inject constructor(
         if (token.isNullOrBlank()) {
             return ToolOutcome("Google Drive operation requires an authenticated Google token.", isError = true)
         }
-        val fileId = argument(call.argumentsJson, "file_id")
+        val rawFileId = argument(call.argumentsJson, "file_id")
             ?: return ToolOutcome("Missing required argument \"file_id\".", isError = true)
+        val fileId = extractGoogleId(rawFileId)
         val mimeType = argument(call.argumentsJson, "mime_type").orEmpty()
         val encodedFileId = java.net.URLEncoder.encode(fileId, "UTF-8")
 
@@ -885,8 +910,9 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private suspend fun googleSheetRead(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
-        val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
+        val rawSpreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
             ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
+        val spreadsheetId = extractGoogleId(rawSpreadsheetId)
         val range = argument(call.argumentsJson, "range")
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
         val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
@@ -913,8 +939,9 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private suspend fun googleSheetAppend(call: OmniRouteToolCall, driveToken: String?): ToolOutcome {
-        val spreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
+        val rawSpreadsheetId = argument(call.argumentsJson, "spreadsheet_id")
             ?: return ToolOutcome("Missing required argument \"spreadsheet_id\".", isError = true)
+        val spreadsheetId = extractGoogleId(rawSpreadsheetId)
         val range = argument(call.argumentsJson, "range")
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
         val values = argument(call.argumentsJson, "values")
@@ -956,17 +983,43 @@ class OmniRouteAgentLoop @Inject constructor(
     }
 
     private suspend fun wordpressHubKey(): VmResult<String?> {
-        return when (val result = hubCredentialManager.read()) {
+        when (val result = hubCredentialManager.read()) {
             is VmResult.Success -> {
-                val secret = result.value ?: return VmResult.Success(null)
-                try {
-                    VmResult.Success(secret.useAsString { it.trim().takeIf { value -> value.isNotBlank() } })
-                } finally {
-                    secret.wipe()
+                val secret = result.value
+                if (secret != null) {
+                    try {
+                        val key = secret.useAsString { it.trim().takeIf { value -> value.isNotBlank() } }
+                        if (key != null) return VmResult.Success(key)
+                    } finally {
+                        secret.wipe()
+                    }
                 }
             }
-            is VmResult.Failure -> result
+            is VmResult.Failure -> { /* continue to check preferences token */ }
         }
+        val prefs = userPreferencesRepository.preferences.first()
+        val sessionCredId = prefs.hubUserTokenCredentialId
+        if (sessionCredId != null) {
+            when (val cred = credentialStore.read(sessionCredId)) {
+                is VmResult.Success -> {
+                    val token = cred.value.useAsString { it.trim() }
+                    cred.value.wipe()
+                    if (token.isNotBlank()) return VmResult.Success(token)
+                }
+                is VmResult.Failure -> { /* ignore */ }
+            }
+        }
+        return VmResult.Success(digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY)
+    }
+
+    private fun normalizeWordPressApiBase(rawUrl: String): String {
+        val trimmed = rawUrl.trim().removeSuffix("/")
+        val withScheme = when {
+            trimmed.isBlank() -> "https://vmstudio.digital"
+            !trimmed.startsWith("http://") && !trimmed.startsWith("https://") -> "https://$trimmed"
+            else -> trimmed
+        }
+        return if (!withScheme.contains("/wp-json/xcodes/v1")) "$withScheme/wp-json/xcodes/v1" else withScheme
     }
 
     private suspend fun wordpressFileList(call: OmniRouteToolCall): ToolOutcome {
@@ -979,8 +1032,7 @@ class OmniRouteAgentLoop @Inject constructor(
         if (hubKey.isBlank()) {
             return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         }
-        val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
-        val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
+        val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
         val encodedPath = java.net.URLEncoder.encode(relPath.removePrefix("wp://"), "UTF-8")
         val request = Request.Builder()
             .url("$apiBase/fs/list?path=$encodedPath")
@@ -1005,8 +1057,7 @@ class OmniRouteAgentLoop @Inject constructor(
         if (hubKey.isBlank()) {
             return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         }
-        val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
-        val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
+        val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
         val encodedPath = java.net.URLEncoder.encode(relPath.removePrefix("wp://"), "UTF-8")
         val request = Request.Builder()
             .url("$apiBase/fs/read?path=$encodedPath")
@@ -1042,8 +1093,7 @@ class OmniRouteAgentLoop @Inject constructor(
         if (hubKey.isBlank()) {
             return ToolOutcome("WordPress REST bridge requires a Hub API key. Configure it in Settings > Connectors > VM Project Hub.", isError = true)
         }
-        val baseUrl = prefs.hubBaseUrl.trim().removeSuffix("/")
-        val apiBase = if (!baseUrl.contains("/wp-json/xcodes/v1")) "$baseUrl/wp-json/xcodes/v1" else baseUrl
+        val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
         val payload = buildJsonObject {
             put("path", relPath.removePrefix("wp://"))
             put("content", content)
@@ -1058,6 +1108,190 @@ class OmniRouteAgentLoop @Inject constructor(
         return when (val result = httpClient.execute(request)) {
             is VmResult.Success -> ToolOutcome("Successfully wrote to WordPress file \"$relPath\": ${result.value}", isError = false)
             is VmResult.Failure -> ToolOutcome("WordPress file write failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun playStoreStatus(call: OmniRouteToolCall): ToolOutcome {
+        val prefs = userPreferencesRepository.preferences.first()
+        val hubKey = when (val result = wordpressHubKey()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
+        } ?: return ToolOutcome("Play Console integration requires Hub access.", isError = true)
+        val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
+        val pkg = argument(call.argumentsJson, "package_name")?.takeIf { it.isNotBlank() }
+        val url = if (pkg != null) "$apiBase/playstore/tracks?package=${java.net.URLEncoder.encode(pkg, "UTF-8")}" else "$apiBase/playstore/status"
+        val request = Request.Builder()
+            .url(url)
+            .header("X-VMPJ-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("Play Store check failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun kaggleStatus(call: OmniRouteToolCall): ToolOutcome {
+        val prefs = userPreferencesRepository.preferences.first()
+        val hubKey = when (val result = wordpressHubKey()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
+        } ?: return ToolOutcome("Kaggle integration requires Hub access.", isError = true)
+        val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
+        val request = Request.Builder()
+            .url("$apiBase/kaggle/status")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("Kaggle status failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun kaggleDispatch(call: OmniRouteToolCall): ToolOutcome {
+        val title = argument(call.argumentsJson, "title")
+            ?: return ToolOutcome("Missing required argument \"title\".", isError = true)
+        val code = argument(call.argumentsJson, "code")
+            ?: return ToolOutcome("Missing required argument \"code\".", isError = true)
+        val enableGpu = argument(call.argumentsJson, "gpu")?.toBooleanStrictOrNull() ?: true
+        val prefs = userPreferencesRepository.preferences.first()
+        val hubKey = when (val result = wordpressHubKey()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
+        } ?: return ToolOutcome("Kaggle integration requires Hub access.", isError = true)
+        val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
+        val payload = buildJsonObject {
+            put("title", title)
+            put("code", code)
+            put("enable_gpu", enableGpu)
+        }.toString()
+        val request = Request.Builder()
+            .url("$apiBase/kaggle/dispatch")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("Kaggle dispatch failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun hubSystemStatus(call: OmniRouteToolCall): ToolOutcome {
+        val prefs = userPreferencesRepository.preferences.first()
+        val hubKey = when (val result = wordpressHubKey()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
+        } ?: return ToolOutcome("Hub access requires companion configuration.", isError = true)
+        val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
+        val request = Request.Builder()
+            .url("$apiBase/system")
+            .header("X-VMPJ-Key", hubKey)
+            .header("Authorization", "Bearer $hubKey")
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        return when (val result = httpClient.execute(request)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("Hub system status failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun mcpCall(call: OmniRouteToolCall, workingDirectory: String): ToolOutcome {
+        val argsObj = parseArgumentsObject(call.argumentsJson)
+        val toolName = argument(argsObj, "tool_name")
+            ?: return ToolOutcome("Missing required argument \"tool_name\" for mcp_call.", isError = true)
+        val serverName = argument(argsObj, "server_name")
+        val toolArgs = when (val raw = argsObj?.get("arguments")) {
+            is JsonObject -> raw
+            is JsonPrimitive -> {
+                try {
+                    json.parseToJsonElement(raw.content) as? JsonObject ?: buildJsonObject { }
+                } catch (_: Exception) {
+                    buildJsonObject { }
+                }
+            }
+            else -> {
+                // If nested "arguments" key is absent, extract any parameters passed at the root of the call
+                if (argsObj != null) {
+                    buildJsonObject {
+                        for ((k, v) in argsObj) {
+                            if (k != "tool_name" && k != "server_name") {
+                                put(k, v)
+                            }
+                        }
+                    }
+                } else buildJsonObject { }
+            }
+        }
+
+        return when (val result = mcpManager.executeMcpTool(serverName, toolName, toolArgs, workingDirectory)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("MCP execution failed: ${result.error.summaryWithReason()}", isError = true)
+        }
+    }
+
+    private suspend fun mcpListTools(call: OmniRouteToolCall, workingDirectory: String): ToolOutcome {
+        val argsObj = parseArgumentsObject(call.argumentsJson)
+        val serverName = argument(argsObj, "server_name")
+        val enabledServers = mcpManager.getEnabledServers(workingDirectory)
+        if (enabledServers.isEmpty()) {
+            return ToolOutcome(
+                "No MCP servers are configured or enabled. You can connect any app or WordPress site under Settings > Connectors > Model Context Protocol (MCP).",
+                isError = false,
+            )
+        }
+        val targetServers = if (!serverName.isNullOrBlank()) {
+            enabledServers.filter { it.name.equals(serverName, ignoreCase = true) || it.id == serverName }
+        } else {
+            enabledServers
+        }
+
+        if (targetServers.isEmpty()) {
+            return ToolOutcome(
+                "No active MCP server found matching \"$serverName\". Configured active servers: ${enabledServers.joinToString { it.name }}",
+                isError = false,
+            )
+        }
+
+        val sb = StringBuilder()
+        for (server in targetServers) {
+            sb.appendLine("MCP Server: ${server.name} (${server.serverType}) [${server.endpointUrl}]")
+            when (val toolsResult = mcpManager.testServer(server)) {
+                is VmResult.Success -> {
+                    val tools = toolsResult.value
+                    if (tools.isEmpty()) {
+                        sb.appendLine("  (No tools advertised)")
+                    } else {
+                        tools.forEach { tool ->
+                            sb.appendLine("  - ${tool.name}: ${tool.description}")
+                        }
+                    }
+                }
+                is VmResult.Failure -> {
+                    sb.appendLine("  Connection error: ${toolsResult.error.summaryWithReason()}")
+                }
+            }
+            sb.appendLine()
+        }
+        return ToolOutcome(sb.toString().trim(), isError = false)
+    }
+
+    private suspend fun mcpResourceRead(call: OmniRouteToolCall, workingDirectory: String): ToolOutcome {
+        val argsObj = parseArgumentsObject(call.argumentsJson)
+        val uri = argument(argsObj, "uri")
+            ?: return ToolOutcome("Missing required argument \"uri\" for mcp_resource_read.", isError = true)
+        val serverName = argument(argsObj, "server_name")
+        return when (val result = mcpManager.readMcpResource(serverName, uri, workingDirectory)) {
+            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Failure -> ToolOutcome("MCP read resource failed: ${result.error.summaryWithReason()}", isError = true)
         }
     }
 
@@ -1662,6 +1896,13 @@ class OmniRouteAgentLoop @Inject constructor(
         OmniRouteTool.WORDPRESS_FILE_LIST -> "List WordPress files ${path ?: "wp-content"}"
         OmniRouteTool.WORDPRESS_FILE_READ -> "Read WordPress file ${path ?: "?"}"
         OmniRouteTool.WORDPRESS_FILE_WRITE -> "Write WordPress file ${path ?: "?"}"
+        OmniRouteTool.PLAY_STORE_STATUS -> "Check Play Store status ${path ?: ""}"
+        OmniRouteTool.KAGGLE_STATUS -> "Check Kaggle status"
+        OmniRouteTool.KAGGLE_DISPATCH -> "Dispatch Kaggle GPU job"
+        OmniRouteTool.HUB_SYSTEM_STATUS -> "Check Hub system status"
+        OmniRouteTool.MCP_CALL -> "MCP execute ${path ?: "tool"}"
+        OmniRouteTool.MCP_LIST_TOOLS -> "MCP list tools"
+        OmniRouteTool.MCP_RESOURCE_READ -> "MCP read resource ${path ?: "?"}"
         null -> toolName
     }
     private suspend fun runBuild(
@@ -1876,6 +2117,9 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         if (OmniRouteTool.WORDPRESS_FILE_LIST in allowedTools) {
             append("Use wordpress_file_list, wordpress_file_read, and wordpress_file_write to inspect, code, and edit WordPress sites, themes, and plugins via HTTPS REST API without needing VPS or SSH root access. ")
+        }
+        if (OmniRouteTool.MCP_CALL in allowedTools) {
+            append("Use mcp_list_tools to discover available Model Context Protocol (MCP) tools across connected apps (WordPress, external servers, databases), mcp_call to execute them, and mcp_resource_read to inspect schemas and resources. ")
         }
         if (OmniRouteTool.EDIT_FILE in allowedTools) {
             append(
@@ -2218,4 +2462,10 @@ internal fun trimHistory(
     // send a request the model rejects, which ended the run mid-task.
     if (trimmed.sumOf { it.size() } > budget) trimmed = trimmed.map { it.shortened() }
     return trimmed
+}
+
+private fun extractGoogleId(raw: String): String {
+    val trimmed = raw.trim()
+    val match = Regex("""(?:/d/|id=)([a-zA-Z0-9-_]+)""").find(trimmed)
+    return match?.groupValues?.get(1) ?: trimmed
 }

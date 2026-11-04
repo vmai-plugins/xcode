@@ -107,9 +107,10 @@ class TerminalViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val prefs = preferencesRepository.preferences.first()
+                val servers = serverRepository.servers.first()
                 val targetServer = serverId
-                    ?: prefs.autoConnectServerId?.takeIf { id -> serverRepository.servers.first().any { it.id == id } }
-                    ?: serverRepository.servers.first().firstOrNull()?.id
+                    ?: prefs.autoConnectServerId?.takeIf { id -> servers.any { it.id == id } }
+                    ?: servers.firstOrNull()?.id
                 if (targetServer == null) {
                     _uiState.value = _uiState.value.copy(
                         error = VmError.NotFound(
@@ -120,7 +121,7 @@ class TerminalViewModel @Inject constructor(
                     )
                     return@launch
                 }
-                val scrollback = preferencesRepository.preferences.first().terminalScrollbackLines
+                val scrollback = prefs.terminalScrollbackLines
                 when (val result = sessionManager.open(targetServer, columns, rows, scrollback)) {
                     is VmResult.Success -> {
                         selectSession(result.value.id)
@@ -187,7 +188,7 @@ class TerminalViewModel @Inject constructor(
                 segments.forEachIndexed { index, part ->
                     if (part.isNotEmpty()) {
                         activeSession()?.send(part)
-                        pendingLine.append(part)
+                        synchronized(pendingLine) { pendingLine.append(part) }
                     }
                     if (index < segments.size - 1) {
                         val proceed = submitLineInternal()
@@ -198,7 +199,7 @@ class TerminalViewModel @Inject constructor(
             return
         }
         activeSession()?.send(text)
-        pendingLine.append(text)
+        synchronized(pendingLine) { pendingLine.append(text) }
     }
 
     /**
@@ -211,7 +212,9 @@ class TerminalViewModel @Inject constructor(
      */
     fun sendBackspaces(count: Int) {
         if (count <= 0) return
-        pendingLine.setLength((pendingLine.length - count).coerceAtLeast(0))
+        synchronized(pendingLine) {
+            pendingLine.setLength((pendingLine.length - count).coerceAtLeast(0))
+        }
         activeSession()?.send(TerminalKeyEncoder.encode(TerminalKey.BACKSPACE).repeat(count))
     }
 
@@ -221,12 +224,14 @@ class TerminalViewModel @Inject constructor(
             // meaningfully intervene.
             TerminalKey.ENTER -> submitLine()
             TerminalKey.BACKSPACE -> {
-                if (pendingLine.isNotEmpty()) pendingLine.setLength(pendingLine.length - 1)
+                synchronized(pendingLine) {
+                    if (pendingLine.isNotEmpty()) pendingLine.setLength(pendingLine.length - 1)
+                }
                 activeSession()?.sendKey(key)
             }
             // Up/Down recall bash/zsh history, which changes the active line.
             TerminalKey.ARROW_UP, TerminalKey.ARROW_DOWN -> {
-                pendingLine.setLength(0)
+                synchronized(pendingLine) { pendingLine.setLength(0) }
                 activeSession()?.sendKey(key)
             }
             TerminalKey.ARROW_LEFT, TerminalKey.ARROW_RIGHT,
@@ -257,8 +262,11 @@ class TerminalViewModel @Inject constructor(
     private suspend fun submitLineInternal(): Boolean {
         val session = activeSession() ?: return false
         val server = session.serverId
-        val rawLine = pendingLine.toString().trim()
-        pendingLine.setLength(0)
+        val rawLine = synchronized(pendingLine) {
+            val line = pendingLine.toString().trim()
+            pendingLine.setLength(0)
+            line
+        }
 
         val screen = _uiState.value.screen
         val line = if (rawLine.isNotEmpty()) {
@@ -300,12 +308,12 @@ class TerminalViewModel @Inject constructor(
 
     fun sendControl(char: Char) {
         // A control character ends or edits the line in ways the mirror cannot track.
-        pendingLine.setLength(0)
+        synchronized(pendingLine) { pendingLine.setLength(0) }
         activeSession()?.sendControl(char)
     }
 
     fun interrupt() {
-        pendingLine.setLength(0)
+        synchronized(pendingLine) { pendingLine.setLength(0) }
         activeSession()?.interrupt()
     }
 

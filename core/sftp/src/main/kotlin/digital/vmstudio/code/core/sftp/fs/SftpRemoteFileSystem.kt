@@ -268,15 +268,28 @@ class SftpRemoteFileSystem @Inject constructor(
                 safeMkdirs(sftp, parent)
             }
             val bytes = content.toByteArray(Charsets.UTF_8)
-            // TRUNC so a shorter replacement does not leave the tail of the old file.
+            val tempPath = "$normalised.vm_tmp.${System.currentTimeMillis()}"
             val modes = setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
-            sftp.open(normalised, modes).use { remote ->
-                var offset = 0
-                while (offset < bytes.size) {
-                    val chunk = minOf(CHUNK_BYTES, bytes.size - offset)
-                    remote.write(offset.toLong(), bytes, offset, chunk)
-                    offset += chunk
+            try {
+                sftp.open(tempPath, modes).use { remote ->
+                    var offset = 0
+                    while (offset < bytes.size) {
+                        val chunk = minOf(CHUNK_BYTES, bytes.size - offset)
+                        remote.write(offset.toLong(), bytes, offset, chunk)
+                        offset += chunk
+                    }
                 }
+                try {
+                    sftp.rm(normalised)
+                } catch (_: Exception) {
+                    // Target file may not exist yet
+                }
+                sftp.rename(tempPath, normalised)
+            } catch (t: Throwable) {
+                try {
+                    sftp.rm(tempPath)
+                } catch (_: Exception) {}
+                throw t
             }
             VmLog.i(LogCategory.SFTP, TAG, "Wrote ${bytes.size} bytes to $path")
         }

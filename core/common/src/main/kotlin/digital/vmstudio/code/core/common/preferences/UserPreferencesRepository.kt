@@ -288,6 +288,7 @@ class UserPreferencesRepository @Inject constructor(
             chatBubbleColorHex = this[Keys.CHAT_BUBBLE_COLOR],
             defaultProjectColorHex = this[Keys.DEFAULT_PROJECT_COLOR],
             chatColors = parseFolders(this[Keys.CHAT_COLORS]),
+            mcpServersJson = this[Keys.MCP_SERVERS_JSON] ?: defaults.mcpServersJson,
         )
     }
 
@@ -352,6 +353,10 @@ class UserPreferencesRepository @Inject constructor(
         if (id != null) it[Keys.EVOLUTION_API_KEY_CREDENTIAL] = id else it.remove(Keys.EVOLUTION_API_KEY_CREDENTIAL)
     }
 
+    suspend fun setMcpServersJson(json: String) = edit {
+        it[Keys.MCP_SERVERS_JSON] = json
+    }
+
     /** Unknown stored names fall back to the default rather than throwing. */
     private inline fun <reified E : Enum<E>> String?.toEnum(default: E): E =
         this?.let { name -> enumValues<E>().firstOrNull { it.name == name } } ?: default
@@ -409,6 +414,7 @@ class UserPreferencesRepository @Inject constructor(
         val CHAT_BUBBLE_COLOR = stringPreferencesKey("chat_bubble_color")
         val DEFAULT_PROJECT_COLOR = stringPreferencesKey("default_project_color")
         val CHAT_COLORS = stringPreferencesKey("chat_colors")
+        val MCP_SERVERS_JSON = stringPreferencesKey("mcp_servers_json")
     }
 
     private companion object {

@@ -35,6 +35,15 @@ data class GitHubTreeItem(
     val size: Long = 0,
 )
 
+data class GitHubArtifact(
+    val id: Long,
+    val name: String,
+    val sizeInBytes: Long,
+    val archiveDownloadUrl: String,
+    val createdAt: String,
+    val isExpired: Boolean = false,
+)
+
 data class GitHubDeviceAuth(
     val deviceCode: String,
     val userCode: String,
@@ -455,7 +464,7 @@ class GitHubRepositoryClient @Inject constructor(
         }
     }
 
-    /** Dispatches a GitHub Actions workflow (e.g. build.yml or nightly.yml) to compile APKs in the cloud. */
+    /** Dispatches a GitHub Actions workflow (e.g. android.yml, build.yml or nightly.yml) to compile APKs in the cloud. */
     suspend fun dispatchWorkflow(
         repoFullName: String,
         workflowFileName: String = "build.yml",
@@ -475,31 +484,34 @@ class GitHubRepositoryClient @Inject constructor(
                     ),
                 )
             }
-            // Candidate targets: GitHub Actions accepts only workflow file names (e.g. "build.yml")
+            // Candidate targets: Android repositories commonly name their workflow android.yml, build.yml, or release.yml
             val baseName = workflowFileName.substringAfterLast('/')
-            val workflowCandidates = listOf(baseName, "build.yml", "nightly.yml").distinct()
+            val workflowCandidates = listOf(baseName, "android.yml", "build.yml", "ci.yml", "release.yml", "nightly.yml", "main.yml").distinct()
+            val refCandidates = listOf(ref, "main", "master").distinct()
 
             var lastFailure: VmResult.Failure? = null
-            for (target in workflowCandidates) {
-                val url = "https://api.github.com/repos/$repoFullName/actions/workflows/$target/dispatches"
-                val bodyJson = org.json.JSONObject().apply {
-                    put("ref", ref)
-                }.toString()
+            for (targetRef in refCandidates) {
+                for (target in workflowCandidates) {
+                    val url = "https://api.github.com/repos/$repoFullName/actions/workflows/$target/dispatches"
+                    val bodyJson = org.json.JSONObject().apply {
+                        put("ref", targetRef)
+                    }.toString()
 
-                val request = Request.Builder()
-                    .url(url)
-                    .post(bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .header("Authorization", "Bearer $token")
-                    .header("Accept", "application/vnd.github+json")
-                    .header("X-GitHub-Api-Version", "2022-11-28")
-                    .build()
+                    val request = Request.Builder()
+                        .url(url)
+                        .post(bodyJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                        .header("Authorization", "Bearer $token")
+                        .header("Accept", "application/vnd.github+json")
+                        .header("X-GitHub-Api-Version", "2022-11-28")
+                        .build()
 
-                when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
-                    is VmResult.Success -> return VmResult.Success(Unit)
-                    is VmResult.Failure -> {
-                        lastFailure = response
-                        if (response.error is VmError.Authentication) {
-                            return response
+                    when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
+                        is VmResult.Success -> return VmResult.Success(Unit)
+                        is VmResult.Failure -> {
+                            lastFailure = response
+                            if (response.error is VmError.Authentication) {
+                                return response
+                            }
                         }
                     }
                 }
@@ -509,7 +521,7 @@ class GitHubRepositoryClient @Inject constructor(
                 VmError.Network(
                     summary = "Could not dispatch cloud build on GitHub Actions",
                     reason = (baseError as? VmError.Network)?.reason ?: baseError?.summary ?: "GitHub API returned an error.",
-                    suggestedAction = "Ensure your GitHub token has 'workflow' and 'repo' scopes in Settings → GitHub Integration.",
+                    suggestedAction = "Ensure your GitHub repository has an active GitHub Actions workflow and your token has 'workflow' scope.",
                     statusCode = (baseError as? VmError.Network)?.statusCode,
                 ),
             )
@@ -522,6 +534,55 @@ class GitHubRepositoryClient @Inject constructor(
                     reason = exception.message,
                 ),
             )
+        } finally {
+            secret.wipe()
+        }
+    }
+
+    /** Lists published workflow build artifacts for a repository from GitHub Actions. */
+    suspend fun listWorkflowArtifacts(repoFullName: String): VmResult<List<GitHubArtifact>> {
+        val secret = when (val result = readToken()) {
+            is VmResult.Success -> result.value
+            is VmResult.Failure -> return result
+        }
+        return try {
+            val token = secret.useAsString { it.trim() }
+            val url = "https://api.github.com/repos/$repoFullName/actions/artifacts?per_page=30"
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .build()
+
+            when (val response = httpClient.execute(request, RetryPolicy.NONE)) {
+                is VmResult.Failure -> response
+                is VmResult.Success -> {
+                    try {
+                        val json = org.json.JSONObject(response.value)
+                        val artifactsArray = json.optJSONArray("artifacts") ?: org.json.JSONArray()
+                        val list = mutableListOf<GitHubArtifact>()
+                        for (i in 0 until artifactsArray.length()) {
+                            val item = artifactsArray.getJSONObject(i)
+                            if (!item.optBoolean("expired", false)) {
+                                list.add(
+                                    GitHubArtifact(
+                                        id = item.getLong("id"),
+                                        name = item.getString("name"),
+                                        sizeInBytes = item.optLong("size_in_bytes", 0L),
+                                        archiveDownloadUrl = item.getString("archive_download_url"),
+                                        createdAt = item.optString("created_at", ""),
+                                        isExpired = item.optBoolean("expired", false),
+                                    ),
+                                )
+                            }
+                        }
+                        VmResult.Success(list)
+                    } catch (e: Exception) {
+                        VmResult.Failure(VmError.Unexpected(summary = "Failed to parse GitHub artifacts: ${e.message}"))
+                    }
+                }
+            }
         } finally {
             secret.wipe()
         }

@@ -1271,6 +1271,7 @@ class AgentChatViewModel @Inject constructor(
                 }.distinctBy { it.id }
 
                 val isSwarmRequested = resolvedPrompt.contains("@swarm", ignoreCase = true)
+                val isWebSearchRequested = resolvedPrompt.contains("@web", ignoreCase = true)
                 val requestedRoles = buildList {
                     if (resolvedPrompt.contains("@architect", ignoreCase = true)) add("Architect (System Design)")
                     if (resolvedPrompt.contains("@frontend", ignoreCase = true)) add("Frontend (UI/Web/Compose)")
@@ -1278,10 +1279,11 @@ class AgentChatViewModel @Inject constructor(
                     if (resolvedPrompt.contains("@reviewer", ignoreCase = true)) add("Reviewer (Diff Audit/QA)")
                 }
 
-                if (matchedProjects.isNotEmpty() || matchedRepos.isNotEmpty() || isSwarmRequested || requestedRoles.isNotEmpty()) {
+                if (matchedProjects.isNotEmpty() || matchedRepos.isNotEmpty() || isSwarmRequested || isWebSearchRequested || requestedRoles.isNotEmpty()) {
                     val elements = (matchedProjects.map { "@${it.name}" } +
                         matchedRepos.map { "@${it.fullName}" } +
                         (if (isSwarmRequested) listOf("@swarm") else emptyList()) +
+                        (if (isWebSearchRequested) listOf("@web") else emptyList()) +
                         requestedRoles.map { "@${it.substringBefore(' ').lowercase()}" }
                     ).joinToString(", ")
                     append(
@@ -1295,6 +1297,10 @@ class AgentChatViewModel @Inject constructor(
 
                 val fullPrompt = buildString {
                     append(resolvedPrompt)
+                    if (isWebSearchRequested) {
+                        append("\n\n[Web Search & Grounding Directive]\n")
+                        append("The user requested live web research for this query. Perform real-time web searches and use web_fetch to consult authoritative online documentation, official references, and up-to-date resources before answering.\n")
+                    }
                     if (isSwarmRequested) {
                         append("\n\n[Swarm Coordinator Mode]\n")
                         append("The user requested multi-agent swarm execution across projects. ")
@@ -1392,7 +1398,7 @@ class AgentChatViewModel @Inject constructor(
                     history = state.transcript.toConversationTurns(),
                     autoCompactTokens = preferences.preferences.first().agentMaxContextTokens,
                     contextChars = preferences.contextChars(),
-                    webAccessEnabled = preferences.preferences.first().aiWebAccessEnabled,
+                    webAccessEnabled = isWebSearchRequested || preferences.preferences.first().aiWebAccessEnabled,
                     maxIterations = preferences.preferences.first().agentMaxIterations,
                     maxCommandsPerRun = preferences.preferences.first().agentMaxCommandsPerRun,
                     googleDriveToken = gdriveToken,

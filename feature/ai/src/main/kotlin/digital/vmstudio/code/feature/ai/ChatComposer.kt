@@ -36,7 +36,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Source
@@ -72,6 +74,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import digital.vmstudio.code.core.ai.model.AgentPermissionMode
 import digital.vmstudio.code.core.ai.omniroute.OmniRouteModels
 import digital.vmstudio.code.core.git.GitHubRepository
@@ -118,6 +121,7 @@ internal fun ModernComposer(
     onOpenPreview: (() -> Unit)? = null,
     onOpenFiles: (() -> Unit)? = null,
     onTriggerCloudBuild: (() -> Unit)? = null,
+    onOpenConnectors: (() -> Unit)? = null,
     onDetach: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
     lastUserPrompt: String? = null,
@@ -480,6 +484,12 @@ internal fun ModernComposer(
                     onEditDirectory = onEditDirectory,
                     onPermissionModeChange = onPermissionModeChange,
                     onSquadPresetChange = onSquadPresetChange,
+                    onOpenConnectors = onOpenConnectors,
+                    onTriggerWebSearch = {
+                        val trimmed = text.trim()
+                        val updated = if (trimmed.startsWith("@web")) trimmed else "@web $trimmed".trim()
+                        onTextChange(updated)
+                    },
                     onSendInBackground = { onSendInBackground(text) { onTextChange("") } },
                 )
 
@@ -770,6 +780,8 @@ private fun ComposerPlusMenu(
     onEditDirectory: () -> Unit,
     onPermissionModeChange: (AgentPermissionMode) -> Unit,
     onSquadPresetChange: (digital.vmstudio.code.core.ai.model.AgentSquadPreset) -> Unit = {},
+    onOpenConnectors: (() -> Unit)? = null,
+    onTriggerWebSearch: (() -> Unit)? = null,
     onSendInBackground: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -816,6 +828,42 @@ private fun ComposerPlusMenu(
                     onEditDirectory()
                 },
             )
+            if (onOpenConnectors != null) {
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text("Connectors")
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                ) {
+                                    Text(
+                                        "MCP",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Drive, Notion, WordPress, Slack, Figma",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    leadingIcon = { Icon(Icons.Default.Extension, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onOpenConnectors()
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = {
                     Column {
@@ -834,6 +882,37 @@ private fun ComposerPlusMenu(
                     onSendInBackground()
                 },
             )
+            if (onTriggerWebSearch != null) {
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text("Web search")
+                                Text(
+                                    text = "Ground agent in live Google web search",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    },
+                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onTriggerWebSearch()
+                    },
+                )
+            }
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             MenuSectionLabel("Mode")
             AgentPermissionMode.entries.forEach { mode ->

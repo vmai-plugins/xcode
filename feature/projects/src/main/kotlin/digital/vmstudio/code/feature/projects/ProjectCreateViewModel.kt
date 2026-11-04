@@ -443,8 +443,14 @@ class ProjectCreateViewModel @Inject constructor(
         branch: String,
         targetDir: File,
     ): VmResult<Unit> = withContext(Dispatchers.IO) {
+        val parent = targetDir.parentFile ?: targetDir
+        parent.mkdirs()
+        val stagingDir = File(parent, ".stage_${System.currentTimeMillis()}_${targetDir.name}")
+        var conn: HttpURLConnection? = null
+        var conn2: HttpURLConnection? = null
+
         try {
-            targetDir.mkdirs()
+            stagingDir.mkdirs()
             val coordinates = extractGitHubRepoCoordinates(repoUrl)
                 ?: return@withContext VmResult.Success(Unit)
             val owner = coordinates.first
@@ -464,7 +470,7 @@ class ProjectCreateViewModel @Inject constructor(
             }
 
             val url = URL(zipUrlString)
-            val conn = url.openConnection() as HttpURLConnection
+            conn = url.openConnection() as HttpURLConnection
             conn.instanceFollowRedirects = true
             conn.connectTimeout = 15000
             conn.readTimeout = 60000
@@ -476,12 +482,13 @@ class ProjectCreateViewModel @Inject constructor(
             }
 
             var finalStream: InputStream? = null
-            if (conn.responseCode in 300..399) {
+            val responseCode = conn.responseCode
+            if (responseCode in 300..399) {
                 val redirectUrl = conn.getHeaderField("Location")
                 if (redirectUrl != null) {
                     val redirectUri = runCatching { java.net.URI(redirectUrl) }.getOrNull()
                     if (redirectUri != null && isTrustedGithubArchiveRedirect(redirectUri)) {
-                        val conn2 = URL(redirectUrl).openConnection() as HttpURLConnection
+                        conn2 = URL(redirectUrl).openConnection() as HttpURLConnection
                         conn2.connectTimeout = 15000
                         conn2.readTimeout = 60000
                         conn2.setRequestProperty("User-Agent", "x-codes-mobile")
@@ -490,24 +497,28 @@ class ProjectCreateViewModel @Inject constructor(
                         }
                     }
                 }
-            } else if (conn.responseCode == 200) {
+            } else if (responseCode == 200) {
                 finalStream = conn.inputStream
             }
 
             if (finalStream != null) {
-                extractZip(finalStream, targetDir)
+                extractZip(finalStream, stagingDir)
+                targetDir.mkdirs()
+                stagingDir.copyRecursively(targetDir, overwrite = true)
+                stagingDir.deleteRecursively()
                 VmResult.Success(Unit)
             } else {
+                stagingDir.deleteRecursively()
                 VmResult.Failure(
                     VmError.Network(
                         summary = "Failed to download repository archive",
-                        reason = "GitHub returned HTTP ${conn.responseCode}. The repository may be private or the branch does not exist.",
+                        reason = "GitHub returned HTTP $responseCode. The repository may be private or the branch does not exist.",
                         suggestedAction = "Ensure the repository is public and the branch exists.",
                     ),
                 )
             }
         } catch (e: Exception) {
-            targetDir.mkdirs()
+            stagingDir.deleteRecursively()
             VmResult.Failure(
                 VmError.Network(
                     summary = "Failed to download repository from GitHub",
@@ -515,14 +526,26 @@ class ProjectCreateViewModel @Inject constructor(
                     cause = e,
                 ),
             )
+        } finally {
+            runCatching { conn?.disconnect() }
+            runCatching { conn2?.disconnect() }
         }
     }
 
     private fun extractZip(inputStream: InputStream, targetDir: File) {
+        val maxEntries = 20_000
+        val maxDecompressedBytes = 500L * 1024 * 1024
+        var totalBytes = 0L
+        var totalEntries = 0
+
         ZipInputStream(inputStream).use { zis ->
             var entry = zis.nextEntry
             var rootDirPrefix: String? = null
             while (entry != null) {
+                totalEntries++
+                if (totalEntries > maxEntries) {
+                    throw java.io.IOException("Archive contains too many entries (exceeds $maxEntries)")
+                }
                 val name = entry.name.replace('\\', '/')
                 if (rootDirPrefix == null) {
                     rootDirPrefix = if (entry.isDirectory) {
@@ -546,7 +569,16 @@ class ProjectCreateViewModel @Inject constructor(
                         } else {
                             outFile.parentFile?.mkdirs()
                             outFile.outputStream().use { fos ->
-                                zis.copyTo(fos)
+                                val buf = ByteArray(16 * 1024)
+                                while (true) {
+                                    val count = zis.read(buf)
+                                    if (count < 0) break
+                                    fos.write(buf, 0, count)
+                                    totalBytes += count
+                                    if (totalBytes > maxDecompressedBytes) {
+                                        throw java.io.IOException("Archive uncompressed size exceeds limit of 500 MB")
+                                    }
+                                }
                             }
                         }
                     }

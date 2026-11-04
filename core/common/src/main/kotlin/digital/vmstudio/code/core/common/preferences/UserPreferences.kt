@@ -129,10 +129,12 @@ data class UserPreferences(
     val chatBubbleColorHex: String? = null,
     val defaultProjectColorHex: String? = null,
     val chatColors: Map<String, String> = emptyMap(),
+    val mcpServersJson: String = "[]",
 ) {
     companion object {
         const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
         const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"
+        const val COMPANION_MASTER_KEY = "xc_vmpj_companion_master_key_vmstudio"
         const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
         /** Default AI gateway; users may configure another OpenAI-compatible endpoint. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"

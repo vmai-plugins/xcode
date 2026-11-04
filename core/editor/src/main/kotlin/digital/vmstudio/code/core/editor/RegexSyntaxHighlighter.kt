@@ -99,6 +99,9 @@ class RegexSyntaxHighlighter(
     private fun scanString(source: String, start: Int, delimiter: Char): Pair<Int, Boolean> {
         var i = start + 1
         while (i < source.length) {
+            if (source[i] == '\n') {
+                return i to false
+            }
             if (source[i] == '\\') {
                 i += 2
                 if (i >= source.length) break

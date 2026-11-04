@@ -163,6 +163,10 @@ fun BrowserScreen(
                             displayZoomControls = false
                         }
                         setDownloadListener { downloadUrl, _, _, _, _ ->
+                            if (downloadUrl.startsWith("blob:") || downloadUrl.startsWith("data:")) {
+                                android.widget.Toast.makeText(context, "Direct download for blob/data URL is not supported", android.widget.Toast.LENGTH_SHORT).show()
+                                return@setDownloadListener
+                            }
                             try {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -183,6 +187,17 @@ fun BrowserScreen(
                             }
                         }
                         webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                                val target = request?.url?.toString() ?: return false
+                                return handleExternalScheme(context, target)
+                            }
+
+                            @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+                            override fun shouldOverrideUrlLoading(view: WebView?, targetUrl: String?): Boolean {
+                                if (targetUrl == null) return false
+                                return handleExternalScheme(context, targetUrl)
+                            }
+
                             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                 isLoading = true
                                 url?.let { currentUrl = it }
@@ -213,7 +228,7 @@ fun BrowserScreen(
                             }
 
                             override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-                                val host = error?.url?.let { Uri.parse(it).host } ?: ""
+                                val host = runCatching { error?.url?.let { Uri.parse(it).host } }.getOrNull().orEmpty()
                                 if (host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2" || host.startsWith("192.168.") || host.startsWith("10.")) {
                                     handler?.proceed()
                                 } else {
@@ -222,16 +237,48 @@ fun BrowserScreen(
                             }
                         }
                         webView = this
-                        loadUrl(url)
+                        val targetUrl = normalizeBrowserUrl(url)
+                        loadUrl(targetUrl)
                     }
                 },
                 update = { view ->
-                    if (url.isNotBlank() && url != lastLoadedUrl) {
-                        lastLoadedUrl = url
-                        view.loadUrl(url)
+                    val targetUrl = normalizeBrowserUrl(url)
+                    if (targetUrl != "about:blank" && targetUrl != lastLoadedUrl) {
+                        lastLoadedUrl = targetUrl
+                        view.loadUrl(targetUrl)
                     }
                 },
             )
         }
+    }
+}
+
+private fun normalizeBrowserUrl(rawUrl: String): String {
+    val trimmed = rawUrl.trim()
+    return when {
+        trimmed.isBlank() -> "about:blank"
+        trimmed.startsWith("http://") || trimmed.startsWith("https://") ||
+            trimmed.startsWith("file://") || trimmed.startsWith("content://") ||
+            trimmed.startsWith("about:") -> trimmed
+        else -> "https://$trimmed"
+    }
+}
+
+private fun handleExternalScheme(context: android.content.Context, url: String): Boolean {
+    if (url.startsWith("http://", ignoreCase = true) ||
+        url.startsWith("https://", ignoreCase = true) ||
+        url.startsWith("about:", ignoreCase = true) ||
+        url.startsWith("file:", ignoreCase = true)
+    ) {
+        return false
+    }
+    return try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        true
+    } catch (_: Exception) {
+        true
     }
 }

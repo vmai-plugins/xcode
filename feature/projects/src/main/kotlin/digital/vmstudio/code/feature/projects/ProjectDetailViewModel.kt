@@ -84,6 +84,7 @@ class ProjectDetailViewModel @Inject constructor(
     private val evolutionApiClient: EvolutionApiClient,
     private val preferencesRepository: UserPreferencesRepository,
     private val credentialStore: SecureCredentialStore,
+    private val gitHubRepositoryClient: digital.vmstudio.code.core.git.GitHubRepositoryClient,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -194,32 +195,56 @@ class ProjectDetailViewModel @Inject constructor(
         val proj = project.value ?: return
         val srvId = proj.serverId ?: RemoteFileSystem.LOCAL_SERVER_ID
         val basePath = proj.remotePath
+        val isGithub = proj.remotePath.startsWith("/github/")
         viewModelScope.launch {
             val artifacts = mutableListOf<ApkArtifact>()
 
-            val apkDirs = listOf(
-                "$basePath/app/build/outputs/apk/debug",
-                "$basePath/app/build/outputs/apk/release",
-                "$basePath/build/outputs/apk/debug",
-                "$basePath/build/outputs/apk/release",
-            )
-            for (dir in apkDirs) {
-                when (val listRes = remoteFileSystem.list(srvId, dir)) {
-                    is VmResult.Success -> {
-                        val apkEntries = listRes.value.filter { it.name.endsWith(".apk", ignoreCase = true) }
-                        apkEntries.forEach { entry ->
-                            artifacts.add(
-                                ApkArtifact(
-                                    name = entry.name,
-                                    path = entry.path,
-                                    sizeBytes = entry.sizeBytes,
-                                    modifiedAtSeconds = entry.modifiedAtSeconds,
-                                    isRemote = proj.isRemote,
-                                ),
-                            )
+            if (isGithub) {
+                val parts = proj.remotePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
+                if (parts.size >= 2) {
+                    val repoFullName = "${parts[0]}/${parts[1]}"
+                    when (val artRes = gitHubRepositoryClient.listWorkflowArtifacts(repoFullName)) {
+                        is VmResult.Success -> {
+                            artRes.value.forEach { artifact ->
+                                artifacts.add(
+                                    ApkArtifact(
+                                        name = if (artifact.name.endsWith(".apk", ignoreCase = true)) artifact.name else "${artifact.name}.apk",
+                                        path = artifact.archiveDownloadUrl,
+                                        sizeBytes = artifact.sizeInBytes,
+                                        modifiedAtSeconds = System.currentTimeMillis() / 1000L,
+                                        isRemote = true,
+                                    ),
+                                )
+                            }
                         }
+                        is VmResult.Failure -> Unit
                     }
-                    is VmResult.Failure -> Unit
+                }
+            } else {
+                val apkDirs = listOf(
+                    "$basePath/app/build/outputs/apk/debug",
+                    "$basePath/app/build/outputs/apk/release",
+                    "$basePath/build/outputs/apk/debug",
+                    "$basePath/build/outputs/apk/release",
+                )
+                for (dir in apkDirs) {
+                    when (val listRes = remoteFileSystem.list(srvId, dir)) {
+                        is VmResult.Success -> {
+                            val apkEntries = listRes.value.filter { it.name.endsWith(".apk", ignoreCase = true) }
+                            apkEntries.forEach { entry ->
+                                artifacts.add(
+                                    ApkArtifact(
+                                        name = entry.name,
+                                        path = entry.path,
+                                        sizeBytes = entry.sizeBytes,
+                                        modifiedAtSeconds = entry.modifiedAtSeconds,
+                                        isRemote = proj.isRemote,
+                                    ),
+                                )
+                            }
+                        }
+                        is VmResult.Failure -> Unit
+                    }
                 }
             }
 
@@ -230,14 +255,35 @@ class ProjectDetailViewModel @Inject constructor(
     fun buildAndroidApk() {
         val proj = project.value ?: return
         val srvId = proj.serverId
-        if (srvId == null || proj.isLocal) {
-            notificationMessage.value = "Local build: Scanning for project APK artifacts..."
-            scanApkArtifacts()
-            return
-        }
+        val isGithub = proj.remotePath.startsWith("/github/")
         viewModelScope.launch {
             isBuildingApk.value = true
             try {
+                if (isGithub) {
+                    val parts = proj.remotePath.removePrefix("/github/").split("/").filter { it.isNotEmpty() }
+                    if (parts.size >= 2) {
+                        val repoFullName = "${parts[0]}/${parts[1]}"
+                        buildStatusMessage.value = "Dispatching cloud APK build via GitHub Actions for $repoFullName..."
+                        when (val dispatchRes = gitHubRepositoryClient.dispatchWorkflow(repoFullName = repoFullName)) {
+                            is VmResult.Success -> {
+                                buildStatusMessage.value = "GitHub Actions build triggered! Compiling APK in cloud..."
+                                notificationMessage.value = "GitHub Actions build triggered. Check Actions tab on GitHub or scan outputs once complete."
+                                scanApkArtifacts()
+                                return@launch
+                            }
+                            is VmResult.Failure -> {
+                                error.value = dispatchRes.error
+                                buildStatusMessage.value = null
+                                return@launch
+                            }
+                        }
+                    }
+                }
+                if (srvId == null || proj.isLocal) {
+                    notificationMessage.value = "Local workspace: Scanning for project APK artifacts..."
+                    scanApkArtifacts()
+                    return@launch
+                }
                 buildStatusMessage.value = "Running Gradle assembleDebug on server..."
                 val safePath = digital.vmstudio.code.core.ssh.command.shellQuotePath(proj.remotePath)
                 val cmd = "cd $safePath && chmod +x ./gradlew && ./gradlew assembleDebug"

@@ -715,6 +715,7 @@ fun AgentChatScreen(
                     { onOpenFiles(sid, state.workingDirectory.trim()) }
                 },
                 onTriggerCloudBuild = { showCloudBuildDialog = true },
+                onOpenConnectors = onOpenConnectors,
                 onDetach = viewModel::detachToBackground,
                 focusRequester = composerFocusRequester,
                 lastUserPrompt = lastUserPrompt,

@@ -1,5 +1,6 @@
 package digital.vmstudio.code.core.update
 
+import android.os.Build
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.preferences.ReleaseChannel
 import digital.vmstudio.code.core.common.preferences.UserPreferencesSource
@@ -108,15 +109,26 @@ class GitHubUpdateChecker @Inject constructor(
         val remoteVersion = tagName.removePrefix("v")
 
         // For stable channel, ensure remoteVersion is newer than current.
-        // For nightly channel, allow if tag is nightly or newer.
+        // For nightly channel, allow if tag is nightly and user is not already on that nightly build.
+        val currentVersion = appVersionProvider.versionName
         val isNewer = if (remoteVersion.equals("nightly", ignoreCase = true)) {
-            allowPreRelease
+            allowPreRelease && !currentVersion.contains("nightly", ignoreCase = true)
         } else {
-            remoteVersion.isNewerThan(appVersionProvider.versionName)
+            remoteVersion.isNewerThan(currentVersion)
         }
         if (!isNewer) return null
 
-        val apk = assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) } ?: return null
+        val apkAssets = assets.filter { it.name.endsWith(".apk", ignoreCase = true) }
+        if (apkAssets.isEmpty()) return null
+
+        val deviceAbis = Build.SUPPORTED_ABIS.map { it.lowercase() }
+        val apk = apkAssets.firstOrNull { asset ->
+            val name = asset.name.lowercase()
+            deviceAbis.any { abi -> name.contains(abi) }
+        } ?: apkAssets.firstOrNull { asset ->
+            val name = asset.name.lowercase()
+            name.contains("universal") || (!name.contains("arm") && !name.contains("x86"))
+        } ?: apkAssets.first()
         return UpdateInfo(
             versionName = remoteVersion,
             releaseNotes = body?.takeIf { it.isNotBlank() },

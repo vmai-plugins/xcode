@@ -265,7 +265,7 @@ fun SettingsScreen(
                     title = "About X-Codes",
                     description = "Build updates, release channel, App Hub sync",
                     icon = Icons.Default.Info,
-                    badgeText = uiState.installedVersionName.ifBlank { "v0.15.30" },
+                    badgeText = uiState.installedVersionName.ifBlank { "v0.16.0" },
                     iconColor = Color(0xFF10B981),
                     onClick = onOpenAbout,
                 )

@@ -193,6 +193,7 @@ private fun TableView(table: MarkdownBlock.Table, color: Color) {
 
 @Composable
 private fun CodeBlockView(block: MarkdownBlock.CodeBlock) {
+    @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
     val spacing = VmTheme.spacing
     val highlighted = remember(block.code) { highlightCodeSyntax(block.code) }
