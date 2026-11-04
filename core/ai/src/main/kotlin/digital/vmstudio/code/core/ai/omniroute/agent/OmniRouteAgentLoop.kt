@@ -1015,11 +1015,12 @@ class OmniRouteAgentLoop @Inject constructor(
     private fun normalizeWordPressApiBase(rawUrl: String): String {
         val trimmed = rawUrl.trim().removeSuffix("/")
         val withScheme = when {
-            trimmed.isBlank() -> "https://vmstudio.digital"
+            trimmed.isBlank() || trimmed.contains("saketdhamashram.org") -> "https://vmstudio.digital"
             !trimmed.startsWith("http://") && !trimmed.startsWith("https://") -> "https://$trimmed"
             else -> trimmed
         }
-        return if (!withScheme.contains("/wp-json/xcodes/v1")) "$withScheme/wp-json/xcodes/v1" else withScheme
+        val root = withScheme.substringBefore("/wp-json/").removeSuffix("/")
+        return "$root/wp-json/xcodes/v1"
     }
 
     private suspend fun wordpressFileList(call: OmniRouteToolCall): ToolOutcome {

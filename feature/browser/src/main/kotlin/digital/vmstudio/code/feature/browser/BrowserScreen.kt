@@ -161,6 +161,8 @@ fun BrowserScreen(
                             setSupportZoom(true)
                             builtInZoomControls = true
                             displayZoomControls = false
+                            allowFileAccess = false
+                            allowContentAccess = false
                         }
                         setDownloadListener { downloadUrl, _, _, _, _ ->
                             if (downloadUrl.startsWith("blob:") || downloadUrl.startsWith("data:")) {
@@ -258,7 +260,6 @@ private fun normalizeBrowserUrl(rawUrl: String): String {
     return when {
         trimmed.isBlank() -> "about:blank"
         trimmed.startsWith("http://") || trimmed.startsWith("https://") ||
-            trimmed.startsWith("file://") || trimmed.startsWith("content://") ||
             trimmed.startsWith("about:") -> trimmed
         else -> "https://$trimmed"
     }

@@ -279,9 +279,7 @@ class ConnectorsViewModel @Inject constructor(
             val key = projectHubClient.getEffectiveHubKey()
             if (!key.isNullOrBlank()) {
                 refreshProjectHubStatus()
-                if (preferences.hubApiKeyCredentialId != null || !preferences.legacyHubApiKey.isNullOrBlank()) {
-                    syncCredentialsIfMissing()
-                }
+                syncCredentialsIfMissing()
             } else {
                 extraState.update {
                     it.copy(

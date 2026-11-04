@@ -304,14 +304,14 @@ fun AgentChatScreen(
                             Text("Dispatching to GitHub Actions...", style = MaterialTheme.typography.bodySmall)
                         }
                     }
-                    if (cloudBuildError != null) {
+                    cloudBuildError?.let { errText ->
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
                             modifier = Modifier.padding(top = 8.dp),
                         ) {
                             Text(
-                                text = cloudBuildError!!,
+                                text = errText,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(8.dp),

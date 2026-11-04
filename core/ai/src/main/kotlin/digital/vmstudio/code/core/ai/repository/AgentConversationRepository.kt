@@ -157,17 +157,20 @@ class DefaultAgentConversationRepository @Inject constructor(
                             ),
                         )
 
-                        message.role == MessageRole.USER && message.content.isNotBlank() -> add(
-                            StoredEntry.User(message.createdAtMillis, message.content),
-                        )
+                        message.role == MessageRole.USER -> {
+                            if (message.content.isNotBlank()) {
+                                add(StoredEntry.User(message.createdAtMillis, message.content))
+                            }
+                        }
 
-                        !message.reasoning.isNullOrBlank() -> add(
-                            StoredEntry.Reasoning(message.createdAtMillis, message.reasoning!!),
-                        )
-
-                        message.content.isNotBlank() -> add(
-                            StoredEntry.Assistant(message.createdAtMillis, message.content),
-                        )
+                        else -> {
+                            if (!message.reasoning.isNullOrBlank()) {
+                                add(StoredEntry.Reasoning(message.createdAtMillis, message.reasoning.orEmpty()))
+                            }
+                            if (message.content.isNotBlank()) {
+                                add(StoredEntry.Assistant(message.createdAtMillis, message.content))
+                            }
+                        }
                     }
                 }
 

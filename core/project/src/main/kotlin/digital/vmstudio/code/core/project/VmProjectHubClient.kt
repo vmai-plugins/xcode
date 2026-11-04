@@ -174,11 +174,8 @@ class VmProjectHubClient @Inject constructor(
         } else {
             DEFAULT_HUB_BASE_URL
         }
-        return if (!base.contains("/wp-json/xcodes/v1")) {
-            "${base.removeSuffix("/")}/wp-json/xcodes/v1"
-        } else {
-            base.removeSuffix("/")
-        }
+        val root = base.substringBefore("/wp-json/").removeSuffix("/")
+        return "$root/wp-json/xcodes/v1"
     }
 
     suspend fun testHubKey(key: String, customBaseUrl: String? = null): VmResult<Int> = withContext(ioDispatcher) {

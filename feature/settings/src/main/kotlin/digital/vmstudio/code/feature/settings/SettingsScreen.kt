@@ -150,7 +150,7 @@ fun SettingsScreen(
                             )
                             Text(
                                 text = if (preferences.hasSignedIn && !preferences.userEmail.isNullOrBlank()) {
-                                    preferences.userEmail!!
+                                    preferences.userEmail.orEmpty()
                                 } else {
                                     "Connected to OmniRoute AI"
                                 },

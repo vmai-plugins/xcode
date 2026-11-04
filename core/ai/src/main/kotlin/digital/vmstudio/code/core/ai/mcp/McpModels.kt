@@ -200,7 +200,7 @@ object CuratedConnectorsCatalog {
             name = "WordPress (WP-CLI & REST)",
             description = "Manage WordPress posts, pages, plugins, themes, database, and files",
             author = "VMStudio",
-            defaultEndpointUrl = "https://saketdhamashram.org/wp-json/mcp/v1",
+            defaultEndpointUrl = "https://vmstudio.digital/wp-json/mcp/v1",
             serverType = "WORDPRESS",
             requiresApiKey = true,
             apiKeyPlaceholder = "Application Password or VM Hub Key",

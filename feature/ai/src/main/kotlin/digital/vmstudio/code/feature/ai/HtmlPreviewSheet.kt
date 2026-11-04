@@ -227,22 +227,24 @@ internal fun HtmlPreviewSheet(
                     Modifier.fillMaxSize()
                 }
 
+                val currentError = state.error
+                val currentHtml = state.htmlContent
                 Box(modifier = previewModifier) {
                     when {
                         state.isLoading -> {
                             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                         }
-                        state.error != null -> {
+                        currentError != null -> {
                             VmErrorPanel(
-                                error = state.error!!,
+                                error = currentError,
                                 modifier = Modifier
                                     .align(Alignment.Center)
                                     .padding(16.dp),
                             )
                         }
-                        state.mode == PreviewMode.FILE && state.htmlContent != null -> {
+                        state.mode == PreviewMode.FILE && currentHtml != null -> {
                             SandboxedWebView(
-                                html = state.htmlContent!!,
+                                html = currentHtml,
                                 onWebViewCreated = { webViewInstance = it },
                             )
                         }

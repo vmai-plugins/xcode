@@ -373,7 +373,7 @@ private fun TerminalInputBar(
                 value = value,
                 onValueChange = { newValue ->
                     // Defer resetting until IME active composition completes to prevent duplicated keystrokes
-                    val hasActiveComposition = newValue.composition != null && !newValue.composition!!.collapsed
+                    val hasActiveComposition = newValue.composition?.collapsed == false
                     if (hasActiveComposition) {
                         value = newValue
                         return@BasicTextField
