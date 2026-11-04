@@ -920,9 +920,23 @@ class OmniRouteAgentLoop @Inject constructor(
         val spreadsheetId = extractGoogleId(rawSpreadsheetId)
         val range = argument(call.argumentsJson, "range")
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
-        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        var token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        if (token.isNullOrBlank()) {
+            val prefs = userPreferencesRepository.preferences.first()
+            val credId = prefs.googleSheetsTokenCredentialId ?: prefs.googleDriveTokenCredentialId
+            if (credId != null) {
+                token = when (val res = credentialStore.read(credId)) {
+                    is VmResult.Success -> {
+                        val str = res.value.useAsString { it.trim() }
+                        res.value.wipe()
+                        str.takeIf { it.isNotBlank() }
+                    }
+                    is VmResult.Failure -> null
+                }
+            }
+        }
         val apiKey = argument(call.argumentsJson, "api_key")?.trim()
-        val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
+        val encodedRange = java.net.URLEncoder.encode(range, "UTF-8").replace("+", "%20")
         val url = if (!apiKey.isNullOrBlank()) {
             "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange?key=$apiKey"
         } else {
@@ -951,14 +965,28 @@ class OmniRouteAgentLoop @Inject constructor(
             ?: return ToolOutcome("Missing required argument \"range\".", isError = true)
         val values = argument(call.argumentsJson, "values")
             ?: return ToolOutcome("Missing required argument \"values\".", isError = true)
-        val token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        var token = (argument(call.argumentsJson, "token") ?: argument(call.argumentsJson, "access_token") ?: driveToken)?.trim()
+        if (token.isNullOrBlank()) {
+            val prefs = userPreferencesRepository.preferences.first()
+            val credId = prefs.googleSheetsTokenCredentialId ?: prefs.googleDriveTokenCredentialId
+            if (credId != null) {
+                token = when (val res = credentialStore.read(credId)) {
+                    is VmResult.Success -> {
+                        val str = res.value.useAsString { it.trim() }
+                        res.value.wipe()
+                        str.takeIf { it.isNotBlank() }
+                    }
+                    is VmResult.Failure -> null
+                }
+            }
+        }
         if (token.isNullOrBlank()) {
             return ToolOutcome(
-                output = "Google Sheets append requires an OAuth 'token' or 'access_token' in tool arguments.",
+                output = "Google Sheets append requires an authenticated Google account or 'token' parameter. Connect Google in Settings > Connectors.",
                 isError = true,
             )
         }
-        val encodedRange = java.net.URLEncoder.encode(range, "UTF-8")
+        val encodedRange = java.net.URLEncoder.encode(range, "UTF-8").replace("+", "%20")
         val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$encodedRange:append?valueInputOption=USER_ENTERED"
         val rowsArray = try {
             val element = json.parseToJsonElement(values)
@@ -1065,9 +1093,12 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
         val encodedPath = java.net.URLEncoder.encode(relPath.removePrefix("wp://"), "UTF-8")
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$apiBase/fs/read?path=$encodedPath")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
+            .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
             .get()
             .build()
@@ -1104,9 +1135,12 @@ class OmniRouteAgentLoop @Inject constructor(
             put("path", relPath.removePrefix("wp://"))
             put("content", content)
         }.toString()
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$apiBase/fs/write")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
+            .header("Authorization", "Bearer $hubKey")
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .post(payload.toRequestBody(JSON_MEDIA_TYPE))
@@ -1126,9 +1160,11 @@ class OmniRouteAgentLoop @Inject constructor(
         val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
         val pkg = argument(call.argumentsJson, "package_name")?.takeIf { it.isNotBlank() }
         val url = if (pkg != null) "$apiBase/playstore/tracks?package=${java.net.URLEncoder.encode(pkg, "UTF-8")}" else "$apiBase/playstore/status"
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url(url)
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
             .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
             .get()
@@ -1146,9 +1182,11 @@ class OmniRouteAgentLoop @Inject constructor(
             is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
         } ?: return ToolOutcome("Kaggle integration requires Hub access.", isError = true)
         val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$apiBase/kaggle/status")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
             .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
             .get()
@@ -1176,9 +1214,11 @@ class OmniRouteAgentLoop @Inject constructor(
             put("code", code)
             put("enable_gpu", enableGpu)
         }.toString()
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$apiBase/kaggle/dispatch")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
             .header("Authorization", "Bearer $hubKey")
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
@@ -1197,9 +1237,11 @@ class OmniRouteAgentLoop @Inject constructor(
             is VmResult.Failure -> return ToolOutcome("Could not read the Hub API key: ${result.error.summary}", isError = true)
         } ?: return ToolOutcome("Hub access requires companion configuration.", isError = true)
         val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$apiBase/system")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
             .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
             .get()
