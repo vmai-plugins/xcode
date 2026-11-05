@@ -14,19 +14,27 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Icon
@@ -124,35 +132,99 @@ internal fun EmptyChatHero(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // --- Kimi Glowing Orb Avatar ---
+        // --- Obsidian Developer IDE Engine Mark ---
         Surface(
-            shape = RoundedCornerShape(32.dp),
-            color = Color(0xFF1E88E5).copy(alpha = 0.15f),
-            modifier = Modifier.size(72.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(
+                width = 1.dp,
+                brush = Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFF38BDF8))),
+            ),
+            modifier = Modifier.size(64.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF29B6F6),
-                    modifier = Modifier.size(44.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(modifier = Modifier.size(4.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
-                            Box(modifier = Modifier.size(4.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
-                        }
-                    }
-                }
+                Text(
+                    text = "XC",
+                    style = VmTheme.code.mono.copy(
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    ),
+                )
             }
         }
 
         Text(
-            text = "$greeting! What would you like to build today?",
-            style = MaterialTheme.typography.titleLarge,
+            text = "$greeting! What would you like to build?",
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 20.dp),
+            modifier = Modifier.padding(top = 16.dp),
         )
+
+        // Cluster Telemetry Live Status Strip
+        Row(
+            modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFF10B981).copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF10B981)))
+                    Text(
+                        text = "MSI: 0ms",
+                        style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFF10B981),
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFF38BDF8).copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.35f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF38BDF8)))
+                    Text(
+                        text = "GPU Siv: 5ms",
+                        style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFF38BDF8),
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFA855F7).copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, Color(0xFFA855F7).copy(alpha = 0.35f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFA855F7)))
+                    Text(
+                        text = "VPS Hub: Live",
+                        style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFFA855F7),
+                    )
+                }
+            }
+        }
 
         Text(
             text = if (isGeneral) "General workspace · No project pinned" else "Active folder: $dirName",
