@@ -20,21 +20,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +46,7 @@ import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -142,7 +141,7 @@ fun VmApp(
                 PermanentNavigationDrawer(
                     drawerContent = {
                         PermanentDrawerSheet(modifier = Modifier.width(320.dp)) {
-                            DrawerWorkspaceHeader()
+                            DrawerWorkspaceHeader(onNewChat = { navigateToNewChat(navController) })
                             DrawerNavigationItems(
                                 currentRoute = currentRoute,
                                 currentConversationId = currentConversationId,
@@ -181,7 +180,7 @@ fun VmApp(
                     gesturesEnabled = drawerAvailable,
                     drawerContent = {
                         ModalDrawerSheet {
-                            DrawerWorkspaceHeader()
+                            DrawerWorkspaceHeader(onNewChat = { closeDrawerThen { navigateToNewChat(navController) } })
                             DrawerNavigationItems(
                                 currentRoute = currentRoute,
                                 currentConversationId = currentConversationId,
@@ -246,23 +245,39 @@ private fun AppMainContent(
 }
 
 @Composable
-private fun DrawerWorkspaceHeader() {
-    Column(
+private fun DrawerWorkspaceHeader(
+    onNewChat: () -> Unit,
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 20.dp, top = 28.dp, bottom = 12.dp),
+            .padding(start = 20.dp, end = 16.dp, top = 26.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            text = "X-Codes",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = "Cloud IDE & Autonomous Agent",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-        )
+        Column {
+            Text(
+                text = "X-Codes",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Autonomous Coding Agent",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            )
+        }
+
+        FilledTonalButton(
+            onClick = onNewChat,
+            shape = RoundedCornerShape(16.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("New Chat", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
@@ -279,253 +294,251 @@ private fun ColumnScope.DrawerNavigationItems(
     onSelectChat: (String) -> Unit,
     onNavigate: (VmDestination) -> Unit,
 ) {
-    Text(
-        text = "Workspace",
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp),
-    )
+    var searchQuery by remember { mutableStateOf("") }
 
-    DrawerNavItem(
-        label = "Chat & Agent",
-        icon = Icons.Default.ChatBubbleOutline,
-        isSelected = currentRoute == VmDestination.NewChat.route || currentRoute == VmDestination.GeneralChat.route,
-        onClick = onNewChat,
-    )
-    DrawerNavItem(
-        label = "Projects",
-        icon = Icons.Default.Folder,
-        isSelected = currentRoute == VmDestination.Projects.route,
-        onClick = { onNavigate(VmDestination.Projects) },
-    )
-    DrawerNavItem(
-        label = "Files & Code",
-        icon = Icons.Default.Code,
-        isSelected = currentRoute == VmDestination.Files.route,
-        onClick = { onNavigate(VmDestination.Files) },
-    )
-    DrawerNavItem(
-        label = "Servers & Cluster",
-        icon = Icons.Default.Dns,
-        isSelected = currentRoute == VmDestination.Servers.route,
-        onClick = { onNavigate(VmDestination.Servers) },
-    )
-    DrawerNavItem(
-        label = "Connectors & MCP",
-        icon = Icons.Default.Extension,
-        isSelected = currentRoute == VmDestination.Connectors.route,
-        onClick = { onNavigate(VmDestination.Connectors) },
-    )
-    DrawerNavItem(
-        label = "Tasks & Runs",
-        icon = Icons.Default.Schedule,
-        isSelected = currentRoute == VmDestination.Tasks.route,
-        onClick = { onNavigate(VmDestination.Tasks) },
-    )
-    DrawerNavItem(
-        label = "Activity Timeline",
-        icon = Icons.Default.History,
-        isSelected = currentRoute == VmDestination.ActivityTimeline.route,
-        onClick = { onNavigate(VmDestination.ActivityTimeline) },
-    )
-
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-    )
-
-    Text(
-        text = "Recent Chats",
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp),
-    )
-    LazyColumn(modifier = Modifier.weight(1f)) {
-        items(
-            conversations.conversations.take(DRAWER_RECENT_CHATS),
-            key = { it.id },
-        ) { chat ->
-            val isSelected = chat.id == currentConversationId
-            NavigationDrawerItem(
-                label = {
-                    Column {
-                        Text(
-                            text = chat.title.ifBlank { "Untitled chat" },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                        chat.workingDirectory?.let { dir ->
-                            Text(
-                                text = dir.substringAfterLast('/'),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            )
-                        }
-                    }
-                },
-                icon = {
-                    Icon(
-                        Icons.Default.ChatBubbleOutline,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                    )
-                },
-                selected = isSelected,
-                shape = RoundedCornerShape(12.dp),
-                colors = NavigationDrawerItemDefaults.colors(
-                    selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                    unselectedContainerColor = Color.Transparent,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+    // Search bar for conversations
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Search",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            BasicTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.weight(1f),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
                 ),
-                badge = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (chat.isRunning) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(12.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        Box {
-                            IconButton(
-                                onClick = { onChatMenuClick(chat.id) },
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.MoreVert,
-                                    contentDescription = "Rename or delete chat",
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                            ConversationMenu(
-                                expanded = chatMenuFor == chat.id,
-                                onDismiss = onChatMenuDismiss,
-                                onAction = { action -> onChatAction(chat to action) },
-                            )
-                        }
+                singleLine = true,
+                decorationBox = { innerTextField ->
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = "Search conversations…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        )
                     }
+                    innerTextField()
                 },
-                onClick = { onSelectChat(chat.id) },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+            )
+            if (searchQuery.isNotEmpty()) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Clear",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { searchQuery = "" },
+                )
+            }
+        }
+    }
+
+    val filteredChats = remember(conversations.conversations, searchQuery) {
+        if (searchQuery.isBlank()) conversations.conversations
+        else conversations.conversations.filter {
+            it.title.contains(searchQuery, ignoreCase = true) ||
+                it.workingDirectory?.contains(searchQuery, ignoreCase = true) == true
+        }
+    }
+
+    val groupedChats = remember(filteredChats) {
+        val now = java.time.LocalDate.now()
+        val zone = java.time.ZoneId.systemDefault()
+        filteredChats.groupBy { summary ->
+            val chatDate = java.time.Instant.ofEpochMilli(summary.updatedAtMillis).atZone(zone).toLocalDate()
+            val days = java.time.temporal.ChronoUnit.DAYS.between(chatDate, now)
+            when {
+                days == 0L -> "Today"
+                days == 1L -> "Yesterday"
+                days in 2..7 -> "Previous 7 Days"
+                days in 8..30 -> "Previous 30 Days"
+                else -> "Older"
+            }
+        }
+    }
+
+    val timeOrder = listOf("Today", "Yesterday", "Previous 7 Days", "Previous 30 Days", "Older")
+
+    if (filteredChats.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (searchQuery.isNotBlank()) "No chats found matching \"$searchQuery\""
+                else "No conversations yet.\nTap 'New Chat' above to begin.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center,
             )
         }
-        if (conversations.conversations.isNotEmpty()) {
-            item(key = "all-chats") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onNavigate(VmDestination.Chats) },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        text = "All chats",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        text = "›",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+    } else {
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            timeOrder.forEach { groupName ->
+                val chatsInGroup = groupedChats[groupName].orEmpty()
+                if (chatsInGroup.isNotEmpty()) {
+                    item(key = "header-$groupName") {
+                        Text(
+                            text = groupName,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                            modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
+                        )
+                    }
+
+                    items(chatsInGroup, key = { it.id }) { chat ->
+                        val isSelected = chat.id == currentConversationId
+                        NavigationDrawerItem(
+                            label = {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = chat.title.ifBlank { "Untitled chat" },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        ),
+                                    )
+                                    chat.workingDirectory?.let { dir ->
+                                        Text(
+                                            text = "📁 " + dir.substringAfterLast('/'),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        )
+                                    }
+                                }
+                            },
+                            icon = {
+                                if (chat.isRunning) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.ChatBubbleOutline,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            },
+                            selected = isSelected,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = NavigationDrawerItemDefaults.colors(
+                                selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                unselectedContainerColor = Color.Transparent,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            ),
+                            badge = {
+                                Box {
+                                    IconButton(
+                                        onClick = { onChatMenuClick(chat.id) },
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MoreVert,
+                                            contentDescription = "Rename or delete chat",
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                    ConversationMenu(
+                                        expanded = chatMenuFor == chat.id,
+                                        onDismiss = onChatMenuDismiss,
+                                        onAction = { action -> onChatAction(chat to action) },
+                                    )
+                                }
+                            },
+                            onClick = { onSelectChat(chat.id) },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                        )
+                    }
                 }
             }
         }
     }
 
     HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
     )
-    Row(
+
+    // Bottom Settings & Hub Tile (1-tap access to Settings where Servers, Connectors, Projects, Appearance reside)
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onNavigate(VmDestination.Settings) },
     ) {
         Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFE07A5F))
-                    .clickable { onNavigate(VmDestination.Settings) },
-                contentAlignment = Alignment.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = "XC",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Color.White,
-                )
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE07A5F)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "XC",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Color.White,
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Settings & Hub",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "Servers, Connectors, AI Models",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
             }
-            IconButton(
-                onClick = { onNavigate(VmDestination.Settings) },
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    modifier = Modifier.size(20.dp),
-                    tint = if (currentRoute == VmDestination.Settings.route) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Button(
-            onClick = onNewChat,
-            shape = RoundedCornerShape(24.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.White,
-                contentColor = Color.Black,
-            ),
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.Black)
-            Spacer(Modifier.width(6.dp))
-            Text("New chat", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Settings",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
-}
-
-@Composable
-private fun DrawerNavItem(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-) {
-    NavigationDrawerItem(
-        label = { Text(label, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
-        icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)) },
-        selected = isSelected,
-        shape = RoundedCornerShape(12.dp),
-        colors = NavigationDrawerItemDefaults.colors(
-            selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            selectedTextColor = MaterialTheme.colorScheme.onSurface,
-            selectedIconColor = MaterialTheme.colorScheme.primary,
-            unselectedContainerColor = Color.Transparent,
-            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-        ),
-        onClick = onClick,
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-    )
 }
 
 private val DRAWER_ROUTES = setOf(
