@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
@@ -27,6 +29,11 @@ import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -38,9 +45,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +109,13 @@ fun ServersScreen(
     )
 }
 
+internal data class QuickConnectTarget(
+    val name: String,
+    val host: String,
+    val port: Int,
+    val username: String,
+)
+
 @Composable
 internal fun ServersContent(
     state: ServersUiState,
@@ -106,13 +126,14 @@ internal fun ServersContent(
     onDismissError: () -> Unit,
     onStartRadarScan: () -> Unit,
     onStopRadarScan: () -> Unit,
-    onQuickAddServer: (DiscoveredHost, DiscoveredPort, (String) -> Unit) -> Unit,
+    onQuickAddServer: (String, String, Int, String, String, (String) -> Unit) -> Unit,
     onGetConnectCode: (DiscoveredHost, DiscoveredPort) -> String,
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
     var pendingDeletion by remember { mutableStateOf<Server?>(null) }
     var showRadarDialog by remember { mutableStateOf(false) }
+    var quickConnectTarget by remember { mutableStateOf<QuickConnectTarget?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -147,18 +168,38 @@ internal fun ServersContent(
             ),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            // Cluster Quick Connect Banner
+            // Cluster Quick Connect Banner with Tailscale Zero-Config IPs
             item(key = "cluster_banner") {
                 ClusterNodesBanner(
                     onAddLaptop1 = {
-                        val host = DiscoveredHost(ip = "192.168.29.248", hostname = "Laptop 1 (MSI Orchestrator)")
-                        val port = DiscoveredPort(port = 22, serviceName = "OpenSSH", category = ServiceCategory.SSH, latencyMs = 0)
-                        onQuickAddServer(host, port) { serverId -> onOpenServer(serverId) }
+                        val existing = state.servers.firstOrNull {
+                            it.host == "100.107.28.68" || it.name.contains("Laptop 1", ignoreCase = true)
+                        }
+                        if (existing != null) {
+                            onOpenServer(existing.id)
+                        } else {
+                            quickConnectTarget = QuickConnectTarget(
+                                name = "Laptop 1 (MSI Orchestrator)",
+                                host = "100.107.28.68",
+                                port = 22,
+                                username = "tripc",
+                            )
+                        }
                     },
                     onAddLaptop2 = {
-                        val host = DiscoveredHost(ip = "192.168.29.227", hostname = "Laptop 2 (High-Compute GPU)")
-                        val port = DiscoveredPort(port = 22, serviceName = "OpenSSH", category = ServiceCategory.SSH, latencyMs = 0)
-                        onQuickAddServer(host, port) { serverId -> onOpenServer(serverId) }
+                        val existing = state.servers.firstOrNull {
+                            it.host == "100.123.215.64" || it.name.contains("Laptop 2", ignoreCase = true)
+                        }
+                        if (existing != null) {
+                            onOpenServer(existing.id)
+                        } else {
+                            quickConnectTarget = QuickConnectTarget(
+                                name = "Laptop 2 (High-Compute GPU)",
+                                host = "100.123.215.64",
+                                port = 22,
+                                username = "vikra",
+                            )
+                        }
                     },
                     onOpenRadar = {
                         showRadarDialog = true
@@ -221,12 +262,44 @@ internal fun ServersContent(
             },
             onRescan = onStartRadarScan,
             onQuickAdd = { host, port ->
-                onQuickAddServer(host, port) { serverId ->
+                val existing = state.servers.firstOrNull { it.host == host.ip }
+                if (existing != null) {
                     showRadarDialog = false
-                    onOpenServer(serverId)
+                    onOpenServer(existing.id)
+                } else {
+                    showRadarDialog = false
+                    quickConnectTarget = QuickConnectTarget(
+                        name = host.hostname ?: "Node ${host.ip}",
+                        host = host.ip,
+                        port = port.port,
+                        username = "tripc",
+                    )
                 }
             },
             onGetConnectCode = onGetConnectCode
+        )
+    }
+
+    quickConnectTarget?.let { target ->
+        QuickConnectPasswordDialog(
+            target = target,
+            onDismiss = { quickConnectTarget = null },
+            onConnect = { password ->
+                onQuickAddServer(
+                    target.name,
+                    target.host,
+                    target.port,
+                    target.username,
+                    password,
+                ) { serverId ->
+                    quickConnectTarget = null
+                    onOpenServer(serverId)
+                }
+            },
+            onOpenManual = {
+                quickConnectTarget = null
+                onAddServer()
+            },
         )
     }
 
@@ -572,6 +645,129 @@ private fun ServerCard(
                             onDelete()
                         },
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickConnectPasswordDialog(
+    target: QuickConnectTarget,
+    onDismiss: () -> Unit,
+    onConnect: (String) -> Unit,
+    onOpenManual: () -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = target.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = "${target.username}@${target.host}:${target.port}",
+                            style = VmTheme.code.mono,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Text(
+                        text = "Enter Windows or SSH password to connect securely over WireGuard Tailscale mesh.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(10.dp),
+                    )
+                }
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    placeholder = { Text("Windows user password") },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (password.isNotBlank()) onConnect(password)
+                        },
+                    ),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onOpenManual) {
+                        Text("Manual Setup", fontSize = 12.sp)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onDismiss) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick = { onConnect(password) },
+                            enabled = password.isNotBlank(),
+                        ) {
+                            Text("Connect")
+                        }
+                    }
                 }
             }
         }

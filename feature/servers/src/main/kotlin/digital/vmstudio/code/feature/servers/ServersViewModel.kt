@@ -8,6 +8,8 @@ import digital.vmstudio.code.core.common.result.VmResult
 import digital.vmstudio.code.core.network.radar.DevRadar
 import digital.vmstudio.code.core.network.radar.DiscoveredHost
 import digital.vmstudio.code.core.network.radar.DiscoveredPort
+import digital.vmstudio.code.core.database.entity.ServerEnvironment
+import digital.vmstudio.code.core.database.entity.SshAuthMethod
 import digital.vmstudio.code.core.ssh.connection.SshConnectionManager
 import digital.vmstudio.code.core.ssh.model.Server
 import digital.vmstudio.code.core.ssh.model.ServerDraft
@@ -104,16 +106,27 @@ class ServersViewModel @Inject constructor(
         return devRadar.generateConnectCode(host, port)
     }
 
-    fun quickAddServer(host: DiscoveredHost, port: DiscoveredPort, onSuccess: (String) -> Unit) {
+    fun quickAddServer(
+        name: String,
+        host: String,
+        port: Int,
+        username: String,
+        password: String,
+        onSuccess: (String) -> Unit,
+    ) {
         viewModelScope.launch {
             val draft = ServerDraft(
-                name = host.hostname ?: "Node ${host.ip}",
-                host = host.ip,
-                port = port.port.toString(),
-                username = "tripc",
+                name = name,
+                host = host,
+                port = port.toString(),
+                username = username,
+                authMethod = SshAuthMethod.PASSWORD,
+                password = password,
+                environment = ServerEnvironment.DEVELOPMENT,
             )
             when (val res = serverRepository.save(draft)) {
                 is VmResult.Success -> {
+                    transientError.value = null
                     onSuccess(res.value.id)
                 }
                 is VmResult.Failure -> {

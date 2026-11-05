@@ -23,9 +23,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -276,11 +280,67 @@ private fun ColumnScope.DrawerNavigationItems(
     onNavigate: (VmDestination) -> Unit,
 ) {
     Text(
-        text = "Recents",
+        text = "Workspace",
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 6.dp),
+        modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp),
+    )
+
+    DrawerNavItem(
+        label = "Chat & Agent",
+        icon = Icons.Default.ChatBubbleOutline,
+        isSelected = currentRoute == VmDestination.NewChat.route || currentRoute == VmDestination.GeneralChat.route,
+        onClick = onNewChat,
+    )
+    DrawerNavItem(
+        label = "Projects",
+        icon = Icons.Default.Folder,
+        isSelected = currentRoute == VmDestination.Projects.route,
+        onClick = { onNavigate(VmDestination.Projects) },
+    )
+    DrawerNavItem(
+        label = "Files & Code",
+        icon = Icons.Default.Code,
+        isSelected = currentRoute == VmDestination.Files.route,
+        onClick = { onNavigate(VmDestination.Files) },
+    )
+    DrawerNavItem(
+        label = "Servers & Cluster",
+        icon = Icons.Default.Dns,
+        isSelected = currentRoute == VmDestination.Servers.route,
+        onClick = { onNavigate(VmDestination.Servers) },
+    )
+    DrawerNavItem(
+        label = "Connectors & MCP",
+        icon = Icons.Default.Extension,
+        isSelected = currentRoute == VmDestination.Connectors.route,
+        onClick = { onNavigate(VmDestination.Connectors) },
+    )
+    DrawerNavItem(
+        label = "Tasks & Runs",
+        icon = Icons.Default.Schedule,
+        isSelected = currentRoute == VmDestination.Tasks.route,
+        onClick = { onNavigate(VmDestination.Tasks) },
+    )
+    DrawerNavItem(
+        label = "Activity Timeline",
+        icon = Icons.Default.History,
+        isSelected = currentRoute == VmDestination.ActivityTimeline.route,
+        onClick = { onNavigate(VmDestination.ActivityTimeline) },
+    )
+
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+    )
+
+    Text(
+        text = "Recent Chats",
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp),
     )
     LazyColumn(modifier = Modifier.weight(1f)) {
         items(
@@ -441,6 +501,31 @@ private fun ColumnScope.DrawerNavigationItems(
             Text("New chat", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
         }
     }
+}
+
+@Composable
+private fun DrawerNavItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    NavigationDrawerItem(
+        label = { Text(label, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
+        icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)) },
+        selected = isSelected,
+        shape = RoundedCornerShape(12.dp),
+        colors = NavigationDrawerItemDefaults.colors(
+            selectedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+            selectedIconColor = MaterialTheme.colorScheme.primary,
+            unselectedContainerColor = Color.Transparent,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        ),
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+    )
 }
 
 private val DRAWER_ROUTES = setOf(

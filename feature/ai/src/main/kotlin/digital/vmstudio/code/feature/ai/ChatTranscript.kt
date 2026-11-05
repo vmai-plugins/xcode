@@ -119,8 +119,9 @@ internal fun groupTranscript(items: List<TranscriptItem>): List<TranscriptRowIte
 }
 
 /**
- * Consecutive tool calls collapse into one quiet line ("Ran 5 tools ›") that expands
- * to the individual calls, so a long agent run does not bury the conversation.
+ * Living Agentic Loop Accordion:
+ * Displays autonomous multi-step tool iterations with real-time status,
+ * telemetry breakdowns, step counters, and collapsible syntax-highlighted traces.
  */
 @Composable
 internal fun ToolBatchRow(
@@ -137,96 +138,196 @@ internal fun ToolBatchRow(
     val readCount = batch.tools.count { it.name.contains("read", ignoreCase = true) || it.name.contains("list", ignoreCase = true) }
     val editCount = batch.tools.count { it.name.contains("edit", ignoreCase = true) || it.name.contains("write", ignoreCase = true) }
     val cmdCount = batch.tools.count { it.name.contains("command", ignoreCase = true) || it.name.contains("bash", ignoreCase = true) }
-
-    val summary = buildString {
-        if (isRunning) {
-            append("Executing ${batch.tools.size} steps…")
-        } else {
-            val parts = mutableListOf<String>()
-            if (readCount > 0) parts.add("read $readCount file${if (readCount > 1) "s" else ""}")
-            if (editCount > 0) parts.add("edited $editCount file${if (editCount > 1) "s" else ""}")
-            if (cmdCount > 0) parts.add("ran $cmdCount command${if (cmdCount > 1) "s" else ""}")
-            if (parts.isNotEmpty()) {
-                append("Explored: " + parts.joinToString(", "))
-            } else {
-                append("Ran ${batch.tools.size} tools")
-            }
-        }
-    }
+    val activeTool = batch.tools.lastOrNull { it.isRunning } ?: batch.tools.lastOrNull()
 
     val haptic = LocalHapticFeedback.current
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
+
+    val borderColor = when {
+        isRunning -> Color(0xFFA855F7).copy(alpha = 0.5f)
+        failed > 0 -> MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+    ) {
+        Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    expanded = !expanded
-                },
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Header: Loop Status & Expand Action
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        expanded = !expanded
+                    },
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (isRunning) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(11.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (isRunning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = Color(0xFFA855F7),
+                        )
+                        Text(
+                            text = "Agent Loop Running",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                            color = Color(0xFFA855F7),
+                        )
+                    } else if (failed > 0) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = "Failed",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "Agent Loop Halted",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Complete",
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "Agent Loop Completed",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+
+                    // Steps Counter Pill
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
                         Text(
-                            text = "${batch.tools.size}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            text = "${batch.tools.size} steps",
+                            style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                     }
                 }
-                Text(
-                    text = summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Hide" else "Show",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
 
-        AnimatedVisibility(visible = expanded) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                batch.tools.forEach { tool ->
-                    ToolRow(
-                        item = tool,
-                        onOpenDiff = onOpenDiff,
-                        onRollback = onRollback,
-                        onPreview = onPreview,
-                        onFixError = onFixError,
-                        onInstallApk = onInstallApk,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = if (expanded) "Collapse" else "View trace",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Hide" else "Show",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
                     )
                 }
             }
+
+            // Summary Breakdown Chips (Visible always to give high-density insight)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (readCount > 0) {
+                    StepSummaryChip(label = "$readCount read${if (readCount > 1) "s" else ""}", color = Color(0xFF38BDF8))
+                }
+                if (editCount > 0) {
+                    StepSummaryChip(label = "$editCount edit${if (editCount > 1) "s" else ""}", color = Color(0xFF10B981))
+                }
+                if (cmdCount > 0) {
+                    StepSummaryChip(label = "$cmdCount cmd${if (cmdCount > 1) "s" else ""}", color = Color(0xFFA855F7))
+                }
+
+                // If collapsed and running, show active step name
+                if (!expanded && activeTool != null) {
+                    Text(
+                        text = "• ${activeTool.summary.ifBlank { activeTool.name }}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            // Expanded Execution Trace
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    batch.tools.forEachIndexed { index, tool ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                text = "#${index + 1}",
+                                style = VmTheme.code.mono.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolRow(
+                                    item = tool,
+                                    onOpenDiff = onOpenDiff,
+                                    onRollback = onRollback,
+                                    onPreview = onPreview,
+                                    onFixError = onFixError,
+                                    onInstallApk = onInstallApk,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun StepSummaryChip(label: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = color.copy(alpha = 0.12f),
+    ) {
+        Text(
+            text = label,
+            style = VmTheme.code.mono.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+            color = color,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
     }
 }
 
@@ -1111,17 +1212,47 @@ private fun RunStatusRow(label: String) {
             seconds++
         }
     }
-    Row(
-        modifier = Modifier.padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFFA855F7).copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, Color(0xFFA855F7).copy(alpha = 0.28f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
     ) {
-        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-        Text(
-            text = "$label… ${seconds}s",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(13.dp),
+                    strokeWidth = 2.dp,
+                    color = Color(0xFFA855F7),
+                )
+                Text(
+                    text = "$label…",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium, fontSize = 12.sp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color(0xFFA855F7).copy(alpha = 0.15f),
+            ) {
+                Text(
+                    text = "${seconds}s",
+                    style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                    color = Color(0xFFA855F7),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        }
     }
 }
 

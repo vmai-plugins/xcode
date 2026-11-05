@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -536,6 +538,77 @@ internal fun ModernComposer(
                     )
                 }
             }
+        }
+
+        // Developer Agentic Quick Action Chips (Instant 1-Tap Control)
+        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 3.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            QuickActionPill(
+                label = "Build APK",
+                icon = Icons.Default.Bolt,
+                color = Color(0xFF10B981),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    if (onTriggerCloudBuild != null) {
+                        onTriggerCloudBuild()
+                    } else {
+                        onTextChange("/build x-codes")
+                    }
+                },
+            )
+
+            QuickActionPill(
+                label = "Cluster Nodes",
+                icon = Icons.Default.Laptop,
+                color = Color(0xFF38BDF8),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onTextChange("/status cluster")
+                },
+            )
+
+            QuickActionPill(
+                label = "ComfyUI Studio",
+                icon = Icons.Default.AutoAwesome,
+                color = Color(0xFFA855F7),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    try {
+                        uriHandler.openUri("http://100.123.215.64:8188")
+                    } catch (_: Exception) {
+                        onTextChange("http://100.123.215.64:8188")
+                    }
+                },
+            )
+
+            QuickActionPill(
+                label = "Git Diff",
+                icon = Icons.Default.Source,
+                color = Color(0xFFF59E0B),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val updated = if (text.isBlank()) "@git-diff " else "$text @git-diff "
+                    onTextChange(updated)
+                },
+            )
+
+            QuickActionPill(
+                label = "Run Tests",
+                icon = Icons.Default.Check,
+                color = Color(0xFF06B6D4),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val updated = if (text.isBlank()) "/test " else "$text /test "
+                    onTextChange(updated)
+                },
+            )
         }
 
         // Sleek Capsule Input Pill (Gemini / Claude style)
@@ -1199,3 +1272,38 @@ private fun attachmentName(context: Context, uri: Uri): String =
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
         ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
         ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')
+
+@Composable
+private fun QuickActionPill(
+    label: String,
+    icon: ImageVector,
+    color: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = color.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(13.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                color = color,
+            )
+        }
+    }
+}
