@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,14 +70,14 @@ private fun ApprovalDialog(
 
     VmDialog(
         title = when {
-            request.requestedByAgent -> "The AI agent wants to run a command"
-            destructive -> "This command can destroy data"
-            else -> "Run this command?"
+            request.requestedByAgent -> "Approve Terminal Command"
+            destructive -> "Caution: High-Risk Command"
+            else -> "Run Terminal Command?"
         },
         onDismiss = onDeny,
-        confirmLabel = if (destructive) "Run anyway" else "Run",
+        confirmLabel = if (destructive) "Run Anyway" else "Run Command",
         onConfirm = onAllow,
-        dismissLabel = "Cancel",
+        dismissLabel = "Reject / Skip",
         destructive = destructive,
         icon = when {
             request.requestedByAgent -> Icons.Default.AutoAwesome
@@ -85,6 +86,13 @@ private fun ApprovalDialog(
         },
         modifier = modifier,
     ) {
+        // Beginner explainer
+        Text(
+            text = "The AI agent requested permission to run a terminal command on \"${request.serverName}\". Verify the syntax before executing.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         // Scrolls rather than squeezing: server nicknames are user-chosen and
         // unbounded, and this dialog is narrower than the full screen width.
         Row(
@@ -121,28 +129,55 @@ private fun ApprovalDialog(
                 .padding(spacing.sm),
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-            request.assessment.findings.take(MAX_FINDINGS).forEach { finding ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = if (finding.risk >= CommandRisk.DESTRUCTIVE) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            VmTheme.colors.warning
-                        },
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Text(
-                        text = finding.explanation,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        if (request.assessment.findings.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                request.assessment.findings.take(MAX_FINDINGS).forEach { finding ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = if (finding.risk >= CommandRisk.DESTRUCTIVE) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                VmTheme.colors.warning
+                            },
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = finding.explanation,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
+            }
+        }
+
+        // Beginner Reassurance Guardrail
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color(0xFF0284C7),
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = "Safe guard: Rejecting stops this command from running. Your environment and files will remain unchanged.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

@@ -44,7 +44,7 @@ fun CrashReportDialog() {
         dismissLabel = "Dismiss",
     ) {
         Text(
-            text = "A report was saved. Copy it and paste it into your chat with Claude so the " +
+            text = "A report was saved. Copy it and paste it into your agent chat so the " +
                 "cause can be fixed. It has no passwords or keys.",
             style = MaterialTheme.typography.bodyMedium,
         )

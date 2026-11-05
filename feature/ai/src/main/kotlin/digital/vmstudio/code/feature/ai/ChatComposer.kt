@@ -1,13 +1,16 @@
 package digital.vmstudio.code.feature.ai
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -164,6 +167,31 @@ internal fun ModernComposer(
         }
     }
     val context = LocalContext.current
+
+    val launchSpeech: () -> Unit = {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                )
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak instructions for AI…")
+            }
+            speechLauncher.launch(intent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "Speech recognition is not available", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            launchSpeech()
+        } else {
+            Toast.makeText(context, "Microphone permission is required for voice prompts", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -823,17 +851,10 @@ internal fun ModernComposer(
                             .clip(CircleShape)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                try {
-                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                        putExtra(
-                                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                                        )
-                                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak instructions for AI…")
-                                    }
-                                    speechLauncher.launch(intent)
-                                } catch (_: Exception) {
-                                    Toast.makeText(context, "Speech recognition is not available", Toast.LENGTH_SHORT).show()
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    launchSpeech()
+                                } else {
+                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                 }
                             },
                     ) {
