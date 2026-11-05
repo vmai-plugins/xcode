@@ -73,6 +73,8 @@ class GoogleAuthClient @Inject constructor(
         private const val DRIVE_FLOW = "drive"
         private const val PROFILE_SCOPE = "openid email profile"
         private const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
+        private const val SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+        private const val GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
     }
 
     private val prefs by lazy {
@@ -91,7 +93,7 @@ class GoogleAuthClient @Inject constructor(
     fun buildDriveAuthorizationUri(clientId: String = DEFAULT_CLIENT_ID): Uri =
         buildAuthorizationUri(
             clientId = clientId,
-            scope = "$PROFILE_SCOPE $DRIVE_SCOPE",
+            scope = "$PROFILE_SCOPE $DRIVE_SCOPE $SHEETS_SCOPE $GMAIL_SCOPE",
             flow = DRIVE_FLOW,
             requestRefreshToken = true,
         )

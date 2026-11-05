@@ -135,6 +135,8 @@ fun ConnectorsScreen(
     var sheetsIdDraft by remember { mutableStateOf("") }
     var sheetsRangeDraft by remember { mutableStateOf("Sheet1!A1:E5") }
 
+    var gmailExpanded by remember { mutableStateOf(false) }
+
     var driveExpanded by remember { mutableStateOf(false) }
     var driveTokenDraft by remember { mutableStateOf("") }
     var driveTokenVisible by remember { mutableStateOf(false) }
@@ -857,6 +859,62 @@ fun ConnectorsScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // 4b. Google Gmail
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.DATA_SHEETS) {
+                item(key = "card-gmail") {
+                    ModernConnectorCard(
+                        icon = Icons.AutoMirrored.Filled.Send,
+                        iconTint = Color(0xFFD32F2F),
+                        title = "Google Gmail",
+                        category = "Inbox, Threads & Outreach Automation",
+                        status = if (state.gmailUnreadCount != null || state.hasSheetsToken) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.gmailUnreadCount != null) "${state.gmailUnreadCount} unread" else if (state.hasSheetsToken) "Ready" else "Available",
+                        description = "Enables AI agents to search email threads, inspect client inquiries, draft proposals, and send notifications via Gmail API v1.",
+                        tags = listOf("Gmail v1", "Inbox Search", "Drafts", "RFC 2822 Send"),
+                        isExpanded = gmailExpanded,
+                        onToggleExpand = { gmailExpanded = !gmailExpanded },
+                        statusMessage = state.gmailStatusMessage,
+                        primaryActionText = "Check Inbox",
+                        onPrimaryAction = {
+                            val tok = state.savedSheetsToken ?: state.savedDriveToken.orEmpty()
+                            if (tok.isNotBlank()) {
+                                viewModel.testGmailConnection(tok)
+                            } else {
+                                gmailExpanded = !gmailExpanded
+                            }
+                        },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            Text(
+                                "Gmail Mailbox Automation",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Connect with Google OAuth to enable your AI agents to inspect unread client inquiries, draft replies, and send emails via Gmail API v1.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            VmButton(
+                                text = if (state.isTestingGmail) "Checking Inbox…" else "Check Unread Messages",
+                                onClick = {
+                                    val tok = state.savedSheetsToken ?: state.savedDriveToken.orEmpty()
+                                    viewModel.testGmailConnection(tok)
+                                },
+                                enabled = (state.savedSheetsToken ?: state.savedDriveToken) != null && !state.isTestingGmail,
+                                style = VmButtonStyle.Primary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
                     }
                 }

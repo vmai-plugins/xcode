@@ -79,6 +79,10 @@ data class ConnectorsUiState(
     val hasSheetsToken: Boolean = false,
     val savedSheetsToken: String? = null,
     val savedSpreadsheetId: String? = null,
+    // Gmail
+    val isTestingGmail: Boolean = false,
+    val gmailStatusMessage: String? = null,
+    val gmailUnreadCount: Int? = null,
     // GitHub
     val githubRepoCount: Int? = null,
     val githubUsername: String? = null,
@@ -141,6 +145,9 @@ private data class MutableExtraState(
     val sheetPreviewRows: List<List<String>> = emptyList(),
     val savedSheetsToken: String? = null,
     val savedSpreadsheetId: String? = null,
+    val isTestingGmail: Boolean = false,
+    val gmailStatusMessage: String? = null,
+    val gmailUnreadCount: Int? = null,
     val githubRepoCount: Int? = null,
     val githubUsername: String? = null,
     val isTestingGithub: Boolean = false,
@@ -172,6 +179,7 @@ class ConnectorsViewModel @Inject constructor(
     private val googleAuthClient: GoogleAuthClient,
     private val driveOAuthState: GoogleDriveOAuthState,
     private val googleSheetsClient: GoogleSheetsClient,
+    private val gmailClient: digital.vmstudio.code.core.connectors.gmail.GmailClient,
     private val githubClient: GitHubRepositoryClient,
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     private val preferencesRepository: UserPreferencesRepository,
@@ -222,6 +230,9 @@ class ConnectorsViewModel @Inject constructor(
             hasSheetsToken = prefs.googleSheetsTokenCredentialId != null || prefs.googleDriveTokenCredentialId != null || prefs.googleDriveRefreshTokenCredentialId != null,
             savedSheetsToken = extra.savedSheetsToken,
             savedSpreadsheetId = extra.savedSpreadsheetId ?: prefs.googleSheetsSpreadsheetId,
+            isTestingGmail = extra.isTestingGmail,
+            gmailStatusMessage = extra.gmailStatusMessage,
+            gmailUnreadCount = extra.gmailUnreadCount,
             githubRepoCount = extra.githubRepoCount,
             githubUsername = extra.githubUsername ?: prefs.githubUsername,
             hasGithubToken = prefs.githubTokenCredentialId != null,
@@ -489,6 +500,32 @@ class ConnectorsViewModel @Inject constructor(
                         it.copy(
                             isTestingSheet = false,
                             sheetStatusMessage = "Connection failed: ${res.error.summary}",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun testGmailConnection(token: String) {
+        viewModelScope.launch {
+            extraState.update { it.copy(isTestingGmail = true, gmailStatusMessage = "Querying Gmail API v1…") }
+            when (val res = gmailClient.listMessages(token, query = "is:unread", maxResults = 10)) {
+                is VmResult.Success -> {
+                    val count = res.value.resultSizeEstimate
+                    extraState.update {
+                        it.copy(
+                            isTestingGmail = false,
+                            gmailStatusMessage = "Gmail Connected • $count unread messages discovered",
+                            gmailUnreadCount = count,
+                        )
+                    }
+                }
+                is VmResult.Failure -> {
+                    extraState.update {
+                        it.copy(
+                            isTestingGmail = false,
+                            gmailStatusMessage = "Gmail Error: ${res.error.summary}",
                         )
                     }
                 }
