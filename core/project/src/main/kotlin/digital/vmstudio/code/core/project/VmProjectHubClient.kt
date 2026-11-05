@@ -1046,6 +1046,103 @@ class VmProjectHubClient @Inject constructor(
         }
     }
 
+    suspend fun syncFleetToLocalRepositories(): VmResult<Int> = withContext(ioDispatcher) {
+        val nodesResult = fetchClusterNodes()
+        val nodes = if (nodesResult is VmResult.Success) nodesResult.value else emptyList()
+
+        var count = 0
+        val existingServers = try {
+            serverRepository.servers.first().associateBy { it.id }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
+        // If no nodes from network, fallback to sovereign cluster defaults
+        val effectiveNodes = if (nodes.isNotEmpty()) nodes else listOf(
+            ClusterNode(
+                id = "laptop-msi",
+                name = "Laptop 1 (MSI Orchestrator)",
+                specs = "8GB RAM",
+                ip = "192.168.29.248",
+                tailscaleIp = "100.107.28.68",
+                role = "Dev Agent & Monitoring",
+                status = "online",
+                ollamaReady = false,
+                latencyMs = 0L,
+                lastSeen = System.currentTimeMillis() / 1000,
+            ),
+            ClusterNode(
+                id = "laptop-gpu",
+                name = "Laptop 2 (High-Compute Node)",
+                specs = "24GB RAM + 6GB GPU",
+                ip = "192.168.29.145",
+                tailscaleIp = "",
+                role = "Local AI Inference & Build Acceleration",
+                status = "online",
+                ollamaReady = true,
+                latencyMs = 3L,
+                lastSeen = System.currentTimeMillis() / 1000,
+            ),
+            ClusterNode(
+                id = "vps-master",
+                name = "VPS Master (24/7 Backbone)",
+                specs = "8GB RAM (Always-On)",
+                ip = "200.234.41.231",
+                tailscaleIp = "",
+                role = "24/7 Autonomous Task Queue & Storage",
+                status = "online",
+                ollamaReady = false,
+                latencyMs = 65L,
+                lastSeen = System.currentTimeMillis() / 1000,
+            ),
+        )
+
+        for (node in effectiveNodes) {
+            if (node.id.isBlank() || node.id == "unknown") continue
+            val existing = existingServers[node.id]
+            val resolvedHost = node.ip.ifBlank { node.tailscaleIp }
+            if (resolvedHost.isBlank()) continue
+
+            val draft = ServerDraft(
+                id = existing?.id ?: node.id,
+                name = existing?.name ?: node.name,
+                host = resolvedHost,
+                port = existing?.port?.toString() ?: "22",
+                username = existing?.username?.ifBlank { "tripc" } ?: if (node.id.contains("vps")) "root" else "tripc",
+                authMethod = SshAuthMethod.PRIVATE_KEY,
+                retainExistingSecret = existing != null,
+            )
+            val saveRes = serverRepository.save(draft)
+            if (saveRes is VmResult.Success) count++
+        }
+
+        // Auto-provision core projects
+        val existingProjects = try {
+            projectRepository.observeAll().first()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val defaultProjects = listOf(
+            Triple("x-codes", "laptop-msi", "D:/Dev/x-codes"),
+            Triple("TripCosmos.co", "laptop-msi", "D:/Dev/tripcosmos"),
+            Triple("OnlinePuja.live", "laptop-msi", "D:/Dev/onlinepuja"),
+            Triple("vm-project-hub", "laptop-msi", "D:/Dev/vm-project-hub"),
+        )
+        for ((name, serverId, remotePath) in defaultProjects) {
+            if (existingProjects.none { it.name.equals(name, ignoreCase = true) }) {
+                projectRepository.create(
+                    name = name,
+                    serverId = serverId,
+                    remotePath = remotePath,
+                    description = "Fleet project auto-synced from X-Brain",
+                    branch = "main",
+                )
+            }
+        }
+
+        VmResult.Success(count)
+    }
+
     companion object {
         const val HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
         const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"

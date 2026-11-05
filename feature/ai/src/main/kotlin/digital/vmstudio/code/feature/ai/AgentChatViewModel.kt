@@ -1159,9 +1159,11 @@ class AgentChatViewModel @Inject constructor(
             when (val res = projectHubClient.fetchClusterNodes()) {
                 is digital.vmstudio.code.core.common.result.VmResult.Success -> {
                     _uiState.update { it.copy(clusterNodes = res.value) }
+                    projectHubClient.syncFleetToLocalRepositories()
                 }
                 is digital.vmstudio.code.core.common.result.VmResult.Failure -> {
                     VmLog.d(LogCategory.AI, TAG, "Cluster nodes fetch failed: ${res.error.summary}")
+                    projectHubClient.syncFleetToLocalRepositories()
                 }
             }
         }

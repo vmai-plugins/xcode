@@ -470,7 +470,9 @@ internal fun ModernComposer(
             }
         }
 
-        // Minimal Gemini / Claude-style top selector chips (Model & Mode)
+        var showDevToolsPills by remember { mutableStateOf(false) }
+
+        // Minimal Gemini / Claude / VS Code Copilot top selector chips (Model & Mode)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -512,44 +514,17 @@ internal fun ModernComposer(
                     )
                 }
             }
-            // Active Project / Working Directory Pill
-            if (workingDirectory.isNotBlank() && workingDirectory != "/") {
-                val dirLabel = workingDirectory.trimEnd('/').substringAfterLast('/')
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF10B981).copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
-                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { onEditDirectory() },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981)),
-                        )
-                        Text(
-                            text = dirLabel,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color(0xFF10B981),
-                        )
-                    }
-                }
-            }
 
+            // Quick Tools Toggle Pill (keeps canvas minimal like VS Code / Antigravity)
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (text.contains("@swarm", ignoreCase = true)) Color(0xFFFFB74D).copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, if (text.contains("@swarm", ignoreCase = true)) Color(0xFFFFB74D) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                color = if (showDevToolsPills) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, if (showDevToolsPills) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        showSwarmGuide = true
+                        showDevToolsPills = !showDevToolsPills
                     },
             ) {
                 Row(
@@ -558,30 +533,31 @@ internal fun ModernComposer(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Agent Swarm Guide",
-                        tint = Color(0xFFFFB74D),
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "Toggle Quick Actions",
+                        tint = if (showDevToolsPills) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(12.dp),
                     )
                     Text(
-                        text = "Swarm",
+                        text = if (showDevToolsPills) "Actions ▴" else "Actions ▾",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = if (text.contains("@swarm", ignoreCase = true)) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (showDevToolsPills) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
 
-        // Developer Agentic Quick Action Chips (Instant 1-Tap Control)
-        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 3.dp)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        // Developer Agentic Quick Action Chips (Collapsible for minimal cockpit)
+        if (showDevToolsPills) {
+            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 3.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             QuickActionPill(
                 label = "💡 Recipes",
                 icon = Icons.Default.AutoAwesome,
@@ -675,6 +651,7 @@ internal fun ModernComposer(
                 },
             )
         }
+    }
 
         // Active Antigravity Session Chip
         if (!activeAntigravitySessionId.isNullOrBlank()) {
