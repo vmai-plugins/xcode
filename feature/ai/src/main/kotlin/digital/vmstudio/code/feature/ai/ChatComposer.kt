@@ -589,6 +589,17 @@ internal fun ModernComposer(
             )
 
             QuickActionPill(
+                label = "Paperclip Squad",
+                icon = Icons.Default.Code,
+                color = Color(0xFF6366F1),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val updated = if (text.isBlank()) "@paperclip " else "$text @paperclip "
+                    onTextChange(updated)
+                },
+            )
+
+            QuickActionPill(
                 label = "Git Diff",
                 icon = Icons.Default.Source,
                 color = Color(0xFFF59E0B),

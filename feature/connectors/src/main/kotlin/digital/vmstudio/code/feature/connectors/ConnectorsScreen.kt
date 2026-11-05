@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Storage
@@ -136,6 +137,7 @@ fun ConnectorsScreen(
     var sheetsRangeDraft by remember { mutableStateOf("Sheet1!A1:E5") }
 
     var gmailExpanded by remember { mutableStateOf(false) }
+    var playstoreExpanded by remember { mutableStateOf(false) }
 
     var driveExpanded by remember { mutableStateOf(false) }
     var driveTokenDraft by remember { mutableStateOf("") }
@@ -912,6 +914,54 @@ fun ConnectorsScreen(
                                     viewModel.testGmailConnection(tok)
                                 },
                                 enabled = (state.savedSheetsToken ?: state.savedDriveToken) != null && !state.isTestingGmail,
+                                style = VmButtonStyle.Primary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 4c. Google Play Console
+            if (state.selectedFilter == ConnectorFilter.ALL || state.selectedFilter == ConnectorFilter.CLOUD_SERVERS) {
+                item(key = "card-playstore") {
+                    ModernConnectorCard(
+                        icon = Icons.Default.PlayArrow,
+                        iconTint = Color(0xFF00C853),
+                        title = "Google Play Console",
+                        category = "Android Release & CI/CD Rollouts",
+                        status = if (state.playstoreAppsCount != null) VmStatus.CONNECTED else VmStatus.IDLE,
+                        statusText = if (state.playstoreAppsCount != null) "${state.playstoreAppsCount} Apps Linked" else "Available",
+                        description = "Deploy signed AAB bundles directly from GitHub builds to Internal, Alpha, Beta & Production tracks and manage reviews.",
+                        tags = listOf("API v3", "AAB Bundles", "Tracks & Rollouts", "Reviews & Replies"),
+                        isExpanded = playstoreExpanded,
+                        onToggleExpand = { playstoreExpanded = !playstoreExpanded },
+                        statusMessage = state.playstoreStatusMessage,
+                        primaryActionText = "Inspect Tracks",
+                        onPrimaryAction = {
+                            viewModel.testPlaystoreConnection()
+                        },
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            Text(
+                                "Play Console Automation Pipeline",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "Seamlessly integrated with X-Brain and GitHub Actions: build APK for Apps Hub, generate release AAB bundles, and publish rollouts directly to Google Play Store tracks.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            VmButton(
+                                text = if (state.isTestingPlaystore) "Inspecting Tracks…" else "Test Play Console Connection",
+                                onClick = { viewModel.testPlaystoreConnection() },
+                                enabled = !state.isTestingPlaystore,
                                 style = VmButtonStyle.Primary,
                                 modifier = Modifier.fillMaxWidth(),
                             )
