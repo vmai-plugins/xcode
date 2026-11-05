@@ -128,6 +128,9 @@ internal fun ModernComposer(
     onOpenFiles: (() -> Unit)? = null,
     onTriggerCloudBuild: (() -> Unit)? = null,
     onOpenConnectors: (() -> Unit)? = null,
+    onOpenAntigravity: (() -> Unit)? = null,
+    activeAntigravitySessionId: String? = null,
+    onClearAntigravitySession: (() -> Unit)? = null,
     onDetach: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
     lastUserPrompt: String? = null,
@@ -638,6 +641,18 @@ internal fun ModernComposer(
                 },
             )
 
+            if (onOpenAntigravity != null) {
+                QuickActionPill(
+                    label = if (activeAntigravitySessionId != null) "Antigravity (${activeAntigravitySessionId.take(6)})" else "Antigravity Brain",
+                    icon = Icons.Default.Bolt,
+                    color = Color(0xFF818CF8),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onOpenAntigravity()
+                    },
+                )
+            }
+
             QuickActionPill(
                 label = "Git Diff",
                 icon = Icons.Default.Source,
@@ -659,6 +674,47 @@ internal fun ModernComposer(
                     onTextChange(updated)
                 },
             )
+        }
+
+        // Active Antigravity Session Chip
+        if (!activeAntigravitySessionId.isNullOrBlank()) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF6366F1).copy(alpha = 0.2f),
+                border = BorderStroke(1.dp, Color(0xFF818CF8).copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFF818CF8), modifier = Modifier.size(14.dp))
+                        Text(
+                            text = "Connected Antigravity Session: ${activeAntigravitySessionId.take(8)}…",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    if (onClearAntigravitySession != null) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Detach session",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clickable { onClearAntigravitySession() },
+                        )
+                    }
+                }
+            }
         }
 
         // Sleek Capsule Input Pill (Gemini / Claude style)

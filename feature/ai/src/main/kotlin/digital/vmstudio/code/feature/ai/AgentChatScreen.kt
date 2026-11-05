@@ -281,6 +281,27 @@ fun AgentChatScreen(
         )
     }
 
+    var showAntigravitySheet by remember { mutableStateOf(false) }
+
+    if (showAntigravitySheet) {
+        AntigravitySessionsSheet(
+            isOpen = showAntigravitySheet,
+            onDismiss = { showAntigravitySheet = false },
+            sessions = state.antigravitySessions,
+            isLoading = state.isLoadingAntigravitySessions,
+            serverName = state.availableServers.firstOrNull { it.id == state.serverId }?.name ?: "Connected Laptop",
+            onRefresh = { viewModel.loadAntigravitySessions() },
+            onSelectSession = { session ->
+                viewModel.attachAntigravitySession(session)
+                Toast.makeText(context, "Attached to Antigravity session ${session.id.take(8)}", Toast.LENGTH_SHORT).show()
+            },
+            onStartNewSession = {
+                viewModel.clearAntigravitySession()
+                Toast.makeText(context, "Ready to start new Antigravity session on laptop", Toast.LENGTH_SHORT).show()
+            },
+        )
+    }
+
     var showCloudBuildDialog by remember { mutableStateOf(false) }
     var isCloudBuilding by remember { mutableStateOf(false) }
     var cloudBuildError by remember { mutableStateOf<String?>(null) }
@@ -824,6 +845,12 @@ fun AgentChatScreen(
                 },
                 onTriggerCloudBuild = { showCloudBuildDialog = true },
                 onOpenConnectors = onOpenConnectors,
+                onOpenAntigravity = {
+                    viewModel.loadAntigravitySessions()
+                    showAntigravitySheet = true
+                },
+                activeAntigravitySessionId = state.activeAntigravitySessionId,
+                onClearAntigravitySession = viewModel::clearAntigravitySession,
                 onDetach = viewModel::detachToBackground,
                 focusRequester = composerFocusRequester,
                 lastUserPrompt = lastUserPrompt,

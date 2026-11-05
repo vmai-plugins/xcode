@@ -164,6 +164,9 @@ data class AgentChatUiState(
     val isLoadingGithubFileTree: Boolean = false,
     val squadPreset: digital.vmstudio.code.core.ai.model.AgentSquadPreset = digital.vmstudio.code.core.ai.model.AgentSquadPreset.FULL_STACK,
     val chatBubbleColorHex: String? = null,
+    val antigravitySessions: List<digital.vmstudio.code.core.ai.antigravity.AntigravitySessionSummary> = emptyList(),
+    val isLoadingAntigravitySessions: Boolean = false,
+    val activeAntigravitySessionId: String? = null,
 ) {
     /**
      * Claude Code runs on a server, in a folder. A gateway model needs neither: with
@@ -221,6 +224,7 @@ class AgentChatViewModel @Inject constructor(
     private val projectHubClient: digital.vmstudio.code.core.project.VmProjectHubClient,
     private val executionCoordinator: AgentExecutionCoordinator,
     private val apkInstaller: digital.vmstudio.code.core.update.ApkInstaller,
+    private val antigravityRemoteBridge: digital.vmstudio.code.core.ai.antigravity.AntigravityRemoteBridge,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -720,6 +724,25 @@ class AgentChatViewModel @Inject constructor(
         if (hasLoadedGithubRepositories || _uiState.value.isLoadingGithubRepositories) return
         hasLoadedGithubRepositories = true
         requestGithubRepositories()
+    }
+
+    fun loadAntigravitySessions(serverId: String? = _uiState.value.serverId) {
+        val sid = serverId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingAntigravitySessions = true) }
+            when (val res = antigravityRemoteBridge.listSessions(sid)) {
+                is VmResult.Success -> _uiState.update { it.copy(antigravitySessions = res.value, isLoadingAntigravitySessions = false) }
+                is VmResult.Failure -> _uiState.update { it.copy(isLoadingAntigravitySessions = false) }
+            }
+        }
+    }
+
+    fun attachAntigravitySession(session: digital.vmstudio.code.core.ai.antigravity.AntigravitySessionSummary) {
+        _uiState.update { it.copy(activeAntigravitySessionId = session.id) }
+    }
+
+    fun clearAntigravitySession() {
+        _uiState.update { it.copy(activeAntigravitySessionId = null) }
     }
 
     fun triggerCloudBuild(
@@ -1298,6 +1321,29 @@ class AgentChatViewModel @Inject constructor(
                 val conversationId = state.conversationId ?: createConversation(server, state, resolvedInput)
                 activeConvId = conversationId
                 if (conversationId == null) {
+                    _uiState.update { it.copy(isRunning = false) }
+                    return@launch
+                }
+
+                if (!state.activeAntigravitySessionId.isNullOrBlank() && server.isNotBlank()) {
+                    append(TranscriptItem.StreamingText(STREAMING_ID, "Executing on Antigravity daemon on $server..."))
+                    val turnResult = antigravityRemoteBridge.executeTurn(
+                        serverId = server,
+                        conversationId = state.activeAntigravitySessionId,
+                        prompt = resolvedInput,
+                        model = state.selectedModel.takeIf { it.isNotBlank() },
+                    )
+                    _uiState.update { it.copy(transcript = it.transcript.dropStreamingDraft()) }
+                    when (turnResult) {
+                        is VmResult.Success -> {
+                            val output = turnResult.value.ifBlank { "Turn executed successfully on Antigravity daemon." }
+                            append(TranscriptItem.AssistantText(nextId(), output))
+                            conversations.record(conversationId, digital.vmstudio.code.core.ai.model.AgentEvent.AssistantMessage(output))
+                        }
+                        is VmResult.Failure -> {
+                            append(TranscriptItem.Failure(nextId(), turnResult.error))
+                        }
+                    }
                     _uiState.update { it.copy(isRunning = false) }
                     return@launch
                 }
