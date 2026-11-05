@@ -136,6 +136,7 @@ internal fun ModernComposer(
     val haptic = LocalHapticFeedback.current
     var showMentionSheet by remember { mutableStateOf(false) }
     var showSwarmGuide by remember { mutableStateOf(false) }
+    var showPromptLibrary by remember { mutableStateOf(false) }
     var lastClearedText by remember { mutableStateOf<String?>(null) }
 
     // Detect if user is actively typing a mention (e.g. "@", "@web", @"My Proj")
@@ -551,6 +552,16 @@ internal fun ModernComposer(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             QuickActionPill(
+                label = "💡 Recipes",
+                icon = Icons.Default.AutoAwesome,
+                color = Color(0xFFF59E0B),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    showPromptLibrary = true
+                },
+            )
+
+            QuickActionPill(
                 label = "Build APK",
                 icon = Icons.Default.Bolt,
                 color = Color(0xFF10B981),
@@ -676,9 +687,10 @@ internal fun ModernComposer(
                     enabled = enabled,
                     placeholder = {
                         Text(
-                            text = if (isRunning) "Queue follow-up task…" else "Ask anything…",
-                            style = MaterialTheme.typography.bodyLarge,
+                            text = if (isRunning) "Queue follow-up task…" else "Ask anything, type / for commands, @ for files…",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                            maxLines = 1,
                         )
                     },
                     colors = TextFieldDefaults.colors(
@@ -901,6 +913,16 @@ internal fun ModernComposer(
                 showSwarmGuide = false
             },
             onDismiss = { showSwarmGuide = false },
+        )
+    }
+
+    if (showPromptLibrary) {
+        PromptLibrarySheet(
+            onSelectRecipe = { selectedPrompt ->
+                onTextChange(selectedPrompt)
+                showPromptLibrary = false
+            },
+            onDismiss = { showPromptLibrary = false },
         )
     }
 }
@@ -1174,12 +1196,27 @@ private fun ComposerPlusMenu(
                 )
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            MenuSectionLabel("Mode")
+            MenuSectionLabel("Permission Mode")
             AgentPermissionMode.entries.forEach { mode ->
+                val subtitle = when (mode) {
+                    AgentPermissionMode.MANUAL -> "Safe for beginners · Asks before edits & commands"
+                    AgentPermissionMode.ACCEPT_EDITS -> "Edits files automatically · Asks before commands"
+                    AgentPermissionMode.PLAN -> "Plan-only mode · Proposes plan without touching code"
+                    AgentPermissionMode.BYPASS -> "Hands-free autonomy · No approval prompts"
+                }
                 DropdownMenuItem(
-                    text = { Text(mode.chatLabel()) },
+                    text = {
+                        Column {
+                            Text(mode.chatLabel(), fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
                     leadingIcon = {
-                        if (mode == permissionMode) Icon(Icons.Default.Check, contentDescription = null)
+                        if (mode == permissionMode) Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     },
                     onClick = {
                         expanded = false

@@ -960,8 +960,37 @@ private fun ToolRow(
                     .fillMaxWidth()
                     .padding(top = 4.dp, bottom = 4.dp),
             ) {
-                val outputLines = rawOutput.lines()
-                val isDiff = outputLines.any { it.startsWith("+") || it.startsWith("-") }
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = if (item.isError) "Error Stack / Execution Output" else "Tool Execution Log",
+                            style = VmTheme.code.mono.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            color = if (item.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        val clipboard = LocalClipboardManager.current
+                        var copied by remember { mutableStateOf(false) }
+                        Text(
+                            text = if (copied) "✓ Copied" else "📋 Copy Log",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable {
+                                    clipboard.setText(AnnotatedString(rawOutput))
+                                    copied = true
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
+                    val outputLines = rawOutput.lines()
+                    val isDiff = outputLines.any { it.startsWith("+") || it.startsWith("-") }
                 if (isDiff) {
                     Column(modifier = Modifier.padding(6.dp)) {
                         outputLines.take(300).forEach { line ->
@@ -995,6 +1024,7 @@ private fun ToolRow(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(8.dp),
                     )
+                }
                 }
             }
         }
