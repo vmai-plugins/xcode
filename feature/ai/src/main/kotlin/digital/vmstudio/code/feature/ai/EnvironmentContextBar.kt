@@ -138,7 +138,7 @@ fun EnvironmentContextBar(
                 )
                 else -> Triple(
                     "PHONE",
-                    "Phone RAM Shadow • 0ms",
+                    "RAM Cache • 0ms",
                     Color(0xFF06B6D4),
                 )
             }
