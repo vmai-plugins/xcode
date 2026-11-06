@@ -527,11 +527,16 @@ fun AgentChatScreen(
                                 requestOpenProjects = true
                             },
                             onOpenServerPicker = {
-                                val firstRemoteServer = state.availableServers
-                                    .firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }
-                                    ?.id
-                                if (firstRemoteServer != null) {
-                                    directoryServerId = firstRemoteServer
+                                val target = state.serverId?.takeIf { !RemoteFileSystem.isLocalServer(it) }
+                                    ?: state.availableServers.firstOrNull {
+                                        it.host == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST ||
+                                            it.host.contains("vmstudio", ignoreCase = true) ||
+                                            it.id == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+                                    }?.id
+                                    ?: state.availableServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }?.id
+
+                                if (target != null) {
+                                    directoryServerId = target
                                     showDirectoryDialog = true
                                 } else {
                                     onOpenSettings()

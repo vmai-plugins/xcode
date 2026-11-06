@@ -199,6 +199,7 @@ data class ChatServerOption(
     val id: String,
     val name: String,
     val target: String,
+    val host: String = "",
 )
 
 @Suppress("LongParameterList")
@@ -303,7 +304,7 @@ class AgentChatViewModel @Inject constructor(
                                 target = "Local storage",
                             ),
                         ) + servers.map { server ->
-                            ChatServerOption(server.id, server.name, server.displayTarget)
+                            ChatServerOption(server.id, server.name, server.displayTarget, server.host)
                         },
                     )
                 }
@@ -1041,15 +1042,29 @@ class AgentChatViewModel @Inject constructor(
         val path = project?.remotePath.orEmpty()
         val isLinuxPath = path.startsWith("/home/") || path.startsWith("/var/") || path.startsWith("/opt/") || path.startsWith("/etc/") || path.startsWith("/root/")
         val currentServer = _uiState.value.serverId
+        val sovereignVpsServerId = _uiState.value.availableServers.firstOrNull {
+            it.host == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST ||
+                it.host.contains("vmstudio", ignoreCase = true) ||
+                it.id == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+        }?.id
+
+        val resolvedServerId = when {
+            project == null -> null
+            project.serverId != null && !RemoteFileSystem.isLocalServer(project.serverId) -> project.serverId
+            isLinuxPath -> sovereignVpsServerId ?: project.serverId ?: currentServer
+            project.remotePath.startsWith("/github/") -> null
+            else -> currentServer ?: RemoteFileSystem.LOCAL_SERVER_ID
+        }
+
+        if (project != null && (project.serverId == null || RemoteFileSystem.isLocalServer(project.serverId)) && isLinuxPath && sovereignVpsServerId != null) {
+            viewModelScope.launch {
+                projectRepository.update(project.copy(serverId = sovereignVpsServerId))
+            }
+        }
 
         _uiState.update {
             it.copy(
-                serverId = when {
-                    project == null -> null
-                    project.serverId != null && !RemoteFileSystem.isLocalServer(project.serverId) -> project.serverId
-                    project.remotePath.startsWith("/github/") -> null
-                    else -> currentServer ?: RemoteFileSystem.LOCAL_SERVER_ID
-                },
+                serverId = resolvedServerId,
                 workingDirectory = project?.remotePath.orEmpty(),
                 conversationId = null,
                 providerSessionId = null,

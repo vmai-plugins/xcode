@@ -96,10 +96,18 @@ class OmniRouteAgentLoop @Inject constructor(
         val rawServerId = config.serverId
         val workingDirectory = config.workingDirectory
         val isLinuxPath = workingDirectory.startsWith("/home/") || workingDirectory.startsWith("/var/") || workingDirectory.startsWith("/opt/") || workingDirectory.startsWith("/etc/")
-        val serverId = if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(rawServerId) && isLinuxPath) {
-            val servers = serverRepository.servers.first()
+        val servers = serverRepository.servers.first()
+        val currentServer = servers.firstOrNull { it.id == rawServerId }
+        val isCurrentServerNonLinux = currentServer != null && (
+            currentServer.host.startsWith("192.168.") ||
+            currentServer.name.contains("Laptop", ignoreCase = true) ||
+            currentServer.host.startsWith("10.") ||
+            currentServer.host.startsWith("172.")
+        )
+
+        val serverId = if (isLinuxPath && (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(rawServerId) || isCurrentServerNonLinux)) {
             servers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
-                ?: servers.firstOrNull { !digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(it.id) }?.id
+                ?: servers.firstOrNull { !digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(it.id) && !it.host.startsWith("192.168.") }?.id
                 ?: rawServerId
         } else {
             rawServerId
