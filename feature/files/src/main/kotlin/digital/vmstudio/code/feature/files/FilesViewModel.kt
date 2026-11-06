@@ -68,7 +68,7 @@ class FilesViewModel @Inject constructor(
                     id = RemoteFileSystem.LOCAL_SERVER_ID,
                     name = "This Device (Local Storage)",
                     target = "Local Storage",
-                    lastConnectedAtMillis = System.currentTimeMillis(),
+                    lastConnectedAtMillis = 0L,
                 )
                 val options = listOf(localOption) + servers.map {
                     ServerOption(

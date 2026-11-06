@@ -83,10 +83,7 @@ class ProjectsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val current = projects.observeAll().first()
-            if (current.none { it.description.contains("VM Hub #") }) {
-                syncFromHub()
-            }
+            syncFromHub()
         }
     }
 

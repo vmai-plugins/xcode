@@ -54,14 +54,18 @@ data class HubProjectItem(
 ) {
     /**
      * Universal workspace resolution:
-     * 1. If a GitHub URL exists in repoUrl or appUrls -> Zero-Clone `/github/{owner}/{repo}`
-     * 2. If a server/app path exists -> use it (and bind dynamically to any active VPS, or universal local fallback if VPS was lost/not added yet)
-     * 3. If partial/unassigned -> `/vmhub/{slug}` universal path so it works anywhere
+     * 1. If an actual Linux server/app path exists (/home/, /var/, /opt/) -> use it on the active VPS
+     * 2. If a GitHub URL exists in repoUrl or appUrls -> Zero-Clone `/github/{owner}/{repo}`
+     * 3. If other server/app path exists -> use it
+     * 4. If partial/unassigned -> `/vmhub/{slug}` universal path so it works anywhere
      */
     fun universalPath(): String {
-        extractGithubRepoPath(repoUrl ?: appUrls)?.let { return it }
         val rawPath = serverPath?.takeIf { it.isNotBlank() }
             ?: appPath?.takeIf { it.isNotBlank() }
+        if (rawPath != null && (rawPath.startsWith("/home/") || rawPath.startsWith("/var/") || rawPath.startsWith("/opt/"))) {
+            return rawPath
+        }
+        extractGithubRepoPath(repoUrl ?: appUrls)?.let { return it }
         if (rawPath != null && (rawPath.startsWith("/") || rawPath.startsWith("~"))) return rawPath
         val safeSlug = slug.ifBlank { name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') }
             .ifBlank { "project-$id" }
@@ -625,37 +629,40 @@ class VmProjectHubClient @Inject constructor(
 
         // 5. Auto-configure Primary Cloud VPS Server
         val host = creds.vpsHost?.trim()?.takeIf { it.isNotBlank() }
-        if (host != null) {
-            val existing = serverRepository.servers.first()
-            val match = existing.firstOrNull {
-                it.host.equals(host, ignoreCase = true) ||
-                    (creds.vpsName != null && it.name.equals(creds.vpsName, ignoreCase = true)) ||
-                    it.name.contains("VM Studio", ignoreCase = true)
-            }
+            ?: digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST
+        val existing = serverRepository.servers.first()
+        val match = existing.firstOrNull {
+            it.host.equals(host, ignoreCase = true) ||
+                (creds.vpsName != null && it.name.equals(creds.vpsName, ignoreCase = true)) ||
+                it.name.contains("VM Studio", ignoreCase = true) ||
+                it.id == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+        }
 
-            val authMethod = if (!creds.vpsPrivateKey.isNullOrBlank()) {
-                SshAuthMethod.PRIVATE_KEY
-            } else {
-                SshAuthMethod.PASSWORD
-            }
-            val serverName = creds.vpsName?.takeIf { it.isNotBlank() } ?: "VM Studio Cloud VPS ($host)"
+        val privateKey = creds.vpsPrivateKey?.takeIf { it.isNotBlank() }
+            ?: digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_PRIVATE_KEY
 
-            val draft = ServerDraft(
-                id = match?.id,
-                name = serverName,
-                host = host,
-                port = (creds.vpsPort ?: 22).toString(),
-                username = creds.vpsUser?.takeIf { it.isNotBlank() } ?: "root",
-                authMethod = authMethod,
-                password = creds.vpsPassword.orEmpty(),
-                privateKeyPem = creds.vpsPrivateKey.orEmpty(),
-                environment = ServerEnvironment.PRODUCTION,
-            )
+        val authMethod = if (privateKey.isNotBlank()) {
+            SshAuthMethod.PRIVATE_KEY
+        } else {
+            SshAuthMethod.PASSWORD
+        }
+        val serverName = creds.vpsName?.takeIf { it.isNotBlank() } ?: "VM Studio Cloud VPS (Primary)"
 
-            val saveResult = serverRepository.save(draft)
-            if (saveResult is VmResult.Success) {
-                preferencesRepository.setAutoConnectServerId(saveResult.value.id)
-            }
+        val draft = ServerDraft(
+            id = match?.id ?: digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID,
+            name = serverName,
+            host = host,
+            port = (creds.vpsPort ?: 22).toString(),
+            username = creds.vpsUser?.takeIf { it.isNotBlank() } ?: "root",
+            authMethod = authMethod,
+            password = creds.vpsPassword.orEmpty(),
+            privateKeyPem = privateKey,
+            environment = ServerEnvironment.PRODUCTION,
+        )
+
+        val saveResult = serverRepository.save(draft)
+        if (saveResult is VmResult.Success) {
+            preferencesRepository.setAutoConnectServerId(saveResult.value.id)
         }
 
         VmResult.Success(creds)

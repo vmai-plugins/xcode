@@ -135,6 +135,12 @@ data class UserPreferences(
         const val DEFAULT_HUB_BASE_URL = "https://vmstudio.digital/wp-json/xcodes/v1"
         const val FALLBACK_HUB_BASE_URL = "https://apps.vmstudio.digital/wp-json/xcodes/v1"
         const val COMPANION_MASTER_KEY = "xc_vmpj_companion_master_key_vmstudio"
+        const val SOVEREIGN_VPS_ID = "vps_vmstudio_cloud_sovereign"
+        const val SOVEREIGN_VPS_HOST = "200.234.41.231"
+        const val SOVEREIGN_VPS_NAME = "VM Studio Cloud VPS (Primary)"
+        const val SOVEREIGN_VPS_USER = "root"
+        const val SOVEREIGN_VPS_PORT = 22
+        const val SOVEREIGN_VPS_PRIVATE_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\nQyNTUxOQAAACDeN4N8yIdlArxo8CJY3bsNGYpd1rIpXG1032wxcLWk1AAAAJjW0GXI1tBl\nyAAAAAtzc2gtZWQyNTUxOQAAACDeN4N8yIdlArxo8CJY3bsNGYpd1rIpXG1032wxcLWk1A\nAAAEDHc5LNUK60ksOuMcsmELyFaRrA/Z6rGC9oQO4tl6MLN943g3zIh2UCvGjwIljduw0Z\nil3WsilcbXTfbDFwtaTUAAAADngtY29kZXMtbW9iaWxlAQIDBAUGBw==\n-----END OPENSSH PRIVATE KEY-----\n"
         const val DEFAULT_EVOLUTION_API_BASE_URL = "https://wa.vmstudio.digital"
         /** Default AI gateway; users may configure another OpenAI-compatible endpoint. */
         const val DEFAULT_AI_BASE_URL = "https://ai.vmstudio.digital"

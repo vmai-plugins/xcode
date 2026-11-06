@@ -45,7 +45,26 @@ class MainViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             try {
-                // Zero-config companion master key ensures background hub sync always runs
+                // 1. Immediately seed the sovereign VPS node if not present so UI never starts empty
+                val currentServers = serverRepository.servers.first()
+                if (currentServers.none { it.host == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST || it.host.contains("vmstudio", ignoreCase = true) }) {
+                    val defaultDraft = digital.vmstudio.code.core.ssh.model.ServerDraft(
+                        id = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID,
+                        name = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_NAME,
+                        host = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST,
+                        port = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_PORT.toString(),
+                        username = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_USER,
+                        authMethod = digital.vmstudio.code.core.database.entity.SshAuthMethod.PRIVATE_KEY,
+                        privateKeyPem = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_PRIVATE_KEY,
+                        environment = digital.vmstudio.code.core.database.entity.ServerEnvironment.PRODUCTION,
+                    )
+                    val saved = serverRepository.save(defaultDraft)
+                    if (saved is digital.vmstudio.code.core.common.result.VmResult.Success) {
+                        preferencesRepository.setAutoConnectServerId(saved.value.id)
+                    }
+                }
+
+                // 2. Zero-config companion master key ensures background hub sync always runs
                 projectHubClient.syncHubCredentialsAndVps()
                 projectHubClient.syncUniversalProjects()
                 projectHubClient.syncAllChatsFromServer()
@@ -54,7 +73,7 @@ class MainViewModel @Inject constructor(
                 if (currentPrefs.vpsAutoConnectEnabled) {
                     val servers = serverRepository.servers.first()
                     val targetServerId = currentPrefs.autoConnectServerId?.takeIf { id -> servers.any { it.id == id } }
-                        ?: servers.firstOrNull { it.host.contains("vmstudio", ignoreCase = true) }?.id
+                        ?: servers.firstOrNull { it.host.contains("vmstudio", ignoreCase = true) || it.host == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST }?.id
                         ?: servers.firstOrNull()?.id
 
                     if (targetServerId != null) {

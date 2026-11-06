@@ -107,7 +107,11 @@ class ProjectCreateViewModel @Inject constructor(
             )
             val allServers = listOf(localOption) + list
             _uiState.update { state ->
-                val chosenServerId = state.selectedServerId ?: RemoteFileSystem.LOCAL_SERVER_ID
+                val primaryRemote = list.firstOrNull { it.id == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID }
+                    ?: list.firstOrNull()
+                val chosenServerId = state.selectedServerId?.takeIf { it != RemoteFileSystem.LOCAL_SERVER_ID }
+                    ?: primaryRemote?.id
+                    ?: RemoteFileSystem.LOCAL_SERVER_ID
                 val isLocal = chosenServerId == RemoteFileSystem.LOCAL_SERVER_ID
                 val defaultPath = defaultProjectPath(isLocal, state.name)
                 state.copy(

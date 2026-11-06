@@ -137,8 +137,11 @@ data class ServerOption(
  * The server the drawer's Files entry opens on: the one connected to most recently,
  * else the first saved one (every server ties at 0 before its first connection).
  */
-internal fun pickDefaultServerId(servers: List<ServerOption>): String? =
-    servers.maxByOrNull { it.lastConnectedAtMillis }?.id
+internal fun pickDefaultServerId(servers: List<ServerOption>): String? {
+    val remoteServers = servers.filter { it.id != digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.LOCAL_SERVER_ID }
+    val candidates = if (remoteServers.isNotEmpty()) remoteServers else servers
+    return candidates.maxByOrNull { it.lastConnectedAtMillis }?.id ?: candidates.firstOrNull()?.id
+}
 
 /**
  * Names to try, in order, for a file uploaded as [name]: the name itself, then
