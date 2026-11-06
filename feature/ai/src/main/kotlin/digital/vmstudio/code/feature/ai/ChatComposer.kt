@@ -381,6 +381,24 @@ internal fun ModernComposer(
                     )
                 }
 
+                // Paperclip Autonomous Agent Fleet
+                listOf(
+                    Pair("@kernel", Icons.Default.Bolt),
+                    Pair("@toolchain", Icons.Default.Build),
+                    Pair("@auditor", Icons.Default.Source),
+                    Pair("@paperclip", Icons.Default.AutoAwesome),
+                ).filter { (tag, _) -> query.isBlank() || tag.removePrefix("@").contains(query, ignoreCase = true) }
+                    .forEach { (tag, icon) ->
+                        MentionChip(
+                            label = tag,
+                            icon = icon,
+                            onClick = {
+                                val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                                onTextChange("$beforeAt$tag ")
+                            },
+                        )
+                    }
+
                 listOf(
                     Pair("@architect", Icons.Default.Code),
                     Pair("@research", Icons.Default.Search),

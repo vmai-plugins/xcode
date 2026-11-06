@@ -169,10 +169,28 @@ class DefaultSshConnectionManager @Inject constructor(
 
         return try {
             val session = withContext(ioDispatcher) {
-                val created = buildClient(server, verifier)
-                client = created
+                val candidates = candidateEndpoints(server)
+                var connectedClient: SSHClient? = null
+                var lastConnectError: Throwable? = null
 
-                runInterruptible { created.connect(server.host, server.port) }
+                for (candidate in candidates) {
+                    val (cHost, cPort) = candidate
+                    val attemptTimeout = if (candidates.size > 1) 3_500 else server.connectTimeoutMillis
+                    val attemptClient = buildClient(server, verifier, attemptTimeout)
+                    try {
+                        runInterruptible { attemptClient.connect(cHost, cPort) }
+                        connectedClient = attemptClient
+                        client = attemptClient
+                        VmLog.i(LogCategory.SSH, TAG, "Connected to ${server.name} via candidate $cHost:$cPort")
+                        break
+                    } catch (t: Throwable) {
+                        lastConnectError = t
+                        closeQuietly(attemptClient)
+                        VmLog.w(LogCategory.SSH, TAG, "Candidate $cHost:$cPort failed for ${server.name}: ${t.message}")
+                    }
+                }
+
+                val created = connectedClient ?: throw (lastConnectError ?: java.net.ConnectException("Failed to connect to ${server.name} via any candidate"))
                 authenticate(created, server)
                 configureKeepAlive(created, server)
 
@@ -222,7 +240,39 @@ class DefaultSshConnectionManager @Inject constructor(
         }
     }
 
-    private fun buildClient(server: Server, verifier: TofuHostKeyVerifier): SSHClient {
+    private fun candidateEndpoints(server: Server): List<Pair<String, Int>> {
+        val list = mutableListOf<Pair<String, Int>>()
+        when (server.id) {
+            "laptop-msi" -> {
+                list.add("192.168.29.248" to 22)
+                list.add(server.host to server.port)
+                list.add("agents.vmstudio.digital" to 2201)
+                list.add("100.107.28.68" to 22)
+            }
+            "laptop-gpu" -> {
+                list.add("192.168.29.145" to 22)
+                list.add(server.host to server.port)
+                list.add("agents.vmstudio.digital" to 2202)
+                list.add("100.123.215.64" to 22)
+            }
+            "vps-master" -> {
+                list.add(server.host to server.port)
+                list.add("200.234.41.231" to 22)
+                list.add("agents.vmstudio.digital" to 22)
+            }
+            else -> {
+                if (server.name.contains("MSI", ignoreCase = true) || server.name.contains("Laptop 1", ignoreCase = true)) {
+                    list.add("192.168.29.248" to 22)
+                } else if (server.name.contains("Laptop 2", ignoreCase = true) || server.name.contains("24GB", ignoreCase = true)) {
+                    list.add("192.168.29.145" to 22)
+                }
+                list.add(server.host to server.port)
+            }
+        }
+        return list.distinct()
+    }
+
+    private fun buildClient(server: Server, verifier: TofuHostKeyVerifier, timeoutOverrideMs: Int? = null): SSHClient {
         val config = DefaultConfig().apply {
             // Without an explicit provider sshj never sends keepalives, and a NAT
             // or firewall silently drops an idle session with no notification.
@@ -230,7 +280,7 @@ class DefaultSshConnectionManager @Inject constructor(
         }
         return SSHClient(config).apply {
             addHostKeyVerifier(verifier)
-            connectTimeout = server.connectTimeoutMillis
+            connectTimeout = timeoutOverrideMs ?: server.connectTimeoutMillis
             // Socket read timeout. sshj drops the whole connection when it expires,
             // so it must outlast the gap between keepalive replies; with keepalives
             // off there is no traffic on an idle terminal at all, so no timeout.

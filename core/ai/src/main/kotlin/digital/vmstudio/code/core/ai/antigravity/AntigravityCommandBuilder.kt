@@ -53,6 +53,7 @@ object AntigravityCommandBuilder {
 
     fun shellQuote(text: String): String {
         if (text.isEmpty()) return "''"
-        return "'" + text.replace("'", "'\\''") + "'"
+        // PowerShell over SSH uses doubled single-quotes '' rather than POSIX '\''
+        return "'" + text.replace("'", "''") + "'"
     }
 }
