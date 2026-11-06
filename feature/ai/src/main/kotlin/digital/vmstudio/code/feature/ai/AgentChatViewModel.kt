@@ -338,7 +338,7 @@ class AgentChatViewModel @Inject constructor(
             // fallback for an agent opened straight from a server.
             !projectPath.isNullOrBlank() -> {
                 _uiState.update { it.copy(workingDirectory = projectPath) }
-                val isLinux = projectPath.startsWith("/home/") || projectPath.startsWith("/var/") || projectPath.startsWith("/opt/") || projectPath.startsWith("/etc/")
+                val isLinux = projectPath.startsWith("/home/") || projectPath.startsWith("/var/") || projectPath.startsWith("/opt/") || projectPath.startsWith("/etc/") || projectPath.startsWith("/vmhub/")
                 if (isLinux && (serverId == null || RemoteFileSystem.isLocalServer(serverId))) {
                     viewModelScope.launch {
                         val activeServers = serverRepository.servers.first()

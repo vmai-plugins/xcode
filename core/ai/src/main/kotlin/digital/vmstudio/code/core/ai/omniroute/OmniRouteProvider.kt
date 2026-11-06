@@ -88,17 +88,8 @@ class OmniRouteProvider @Inject constructor(
 
     override suspend fun checkHealth(serverId: String?): VmResult<AiProviderHealth> {
         val settings = preferences.preferences.first()
-        val baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
-        if (baseUrl.isEmpty()) {
-            return VmResult.Success(
-                AiProviderHealth(
-                    kind = kind,
-                    isAvailable = false,
-                    endpoint = baseUrl,
-                    diagnosis = "No valid gateway URL is set. Add your OmniRoute address " +
-                        "(like https://ai.example.com) in Settings.",
-                ),
-            )
+        val baseUrl = normalizeBaseUrl(settings.aiBaseUrl).ifBlank {
+            digital.vmstudio.code.core.common.preferences.UserPreferences.DEFAULT_AI_BASE_URL
         }
 
         val key = resolveApiKey(settings.aiApiKeyCredentialId)
@@ -539,6 +530,10 @@ class OmniRouteProvider @Inject constructor(
                 is VmResult.Success -> return result.value.registerForRedaction()
                 is VmResult.Failure -> Unit
             }
+        }
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        if (masterKey.isNotBlank()) {
+            return Secret.of(masterKey).registerForRedaction()
         }
         return null
     }

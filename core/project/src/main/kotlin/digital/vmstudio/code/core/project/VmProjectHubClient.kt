@@ -69,7 +69,7 @@ data class HubProjectItem(
         if (rawPath != null && (rawPath.startsWith("/") || rawPath.startsWith("~"))) return rawPath
         val safeSlug = slug.ifBlank { name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') }
             .ifBlank { "project-$id" }
-        return "/vmhub/$safeSlug"
+        return "/opt/vmstudio/repos/$safeSlug"
     }
 
     val hasGithubRepo: Boolean
@@ -696,11 +696,8 @@ class VmProjectHubClient @Inject constructor(
 
         for (hub in hubProjects) {
             val targetPath = hub.universalPath()
-            val isLinuxServerPath = targetPath.startsWith("/home/") || targetPath.startsWith("/var/") || targetPath.startsWith("/opt/") || targetPath.startsWith("/etc/")
             val targetServerId = when {
                 targetPath.startsWith("/github/") -> null
-                targetPath.startsWith("/vmhub/") -> null
-                isLinuxServerPath -> primaryServerId
                 else -> primaryServerId
             }
             val descParts = mutableListOf<String>()
