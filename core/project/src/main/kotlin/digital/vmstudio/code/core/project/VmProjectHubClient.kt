@@ -1126,14 +1126,16 @@ class VmProjectHubClient @Inject constructor(
         } catch (_: Exception) {
             emptyList()
         }
+        val vpsId = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
         val defaultProjects = listOf(
-            Triple("x-codes", "laptop-msi", "D:/Dev/x-codes"),
-            Triple("TripCosmos.co", "laptop-msi", "D:/Dev/tripcosmos"),
-            Triple("OnlinePuja.live", "laptop-msi", "D:/Dev/onlinepuja"),
-            Triple("vm-project-hub", "laptop-msi", "D:/Dev/vm-project-hub"),
+            Triple("OnlinePuja.live", vpsId, "/home/onlinepujalive/htdocs/onlinepuja.live"),
+            Triple("TripCosmos.co", vpsId, "/home/tripcosmosco/htdocs/tripcosmos.co"),
+            Triple("vmstudio.digital", vpsId, "/home/vmstudio/htdocs/vmstudio.digital"),
+            Triple("x-codes (GitHub)", vpsId, "/github/vmai-plugins/xcode"),
         )
         for ((name, serverId, remotePath) in defaultProjects) {
-            if (existingProjects.none { it.name.equals(name, ignoreCase = true) }) {
+            val existing = existingProjects.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            if (existing == null) {
                 projectRepository.create(
                     name = name,
                     serverId = serverId,
@@ -1141,10 +1143,50 @@ class VmProjectHubClient @Inject constructor(
                     description = "Fleet project auto-synced from X-Brain",
                     branch = "main",
                 )
+            } else if (existing.remotePath.startsWith("/home/") && existing.serverId != vpsId) {
+                projectRepository.update(existing.copy(serverId = vpsId))
+            }
+        }
+
+        for (p in existingProjects) {
+            val isLinux = p.remotePath.startsWith("/home/") || p.remotePath.startsWith("/var/") || p.remotePath.startsWith("/opt/")
+            val isLanOrNull = p.serverId == null || p.serverId == "laptop-msi" || p.serverId == "laptop-gpu" || p.serverId == "local"
+            if (isLinux && isLanOrNull) {
+                projectRepository.update(p.copy(serverId = vpsId))
             }
         }
 
         VmResult.Success(count)
+    }
+
+    suspend fun listWorkspace(path: String): VmResult<List<String>> = withContext(ioDispatcher) {
+        val effectivePath = path.trim().ifBlank { "/home" }
+        val encoded = java.net.URLEncoder.encode(effectivePath, "UTF-8")
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
+        val request = Request.Builder()
+            .url("${getEffectiveHubBaseUrl()}/fs/list?path=$encoded")
+            .header("X-VMPJ-Companion-Key", masterKey)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+
+        when (val response = httpClient.execute(request, RetryPolicy(maxAttempts = 1))) {
+            is VmResult.Failure -> response
+            is VmResult.Success -> {
+                try {
+                    val root = json.parseToJsonElement(response.value) as? JsonObject
+                    val dirs = root?.get("directories") as? kotlinx.serialization.json.JsonArray
+                    val names = dirs?.mapNotNull { item ->
+                        val obj = item as? JsonObject
+                        val isDir = (obj?.get("is_dir") as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
+                        if (isDir) obj?.str("name") else null
+                    } ?: emptyList()
+                    VmResult.Success(names.filter { it.isNotBlank() && it != "." && it != ".." }.sortedBy { it.lowercase() })
+                } catch (e: Exception) {
+                    VmResult.Failure(VmError.Unexpected("Failed to parse directory list: ${e.message}"))
+                }
+            }
+        }
     }
 
     companion object {

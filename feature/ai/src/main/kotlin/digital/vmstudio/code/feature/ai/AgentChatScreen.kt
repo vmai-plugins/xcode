@@ -58,9 +58,14 @@ import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Smartphone
+import digital.vmstudio.code.core.ui.component.VmDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -113,6 +118,7 @@ fun AgentChatScreen(
         }
     }
     var showDirectoryDialog by remember { mutableStateOf(false) }
+    var showServerPickerDialog by remember { mutableStateOf(false) }
     var requestOpenProjects by remember { mutableStateOf(false) }
     var directoryServerId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
@@ -224,6 +230,24 @@ fun AgentChatScreen(
                 showDirectoryDialog = false
                 directoryServerId = null
             },
+        )
+    }
+
+    if (showServerPickerDialog) {
+        ServerPickerDialog(
+            currentServerId = state.serverId,
+            servers = state.availableServers,
+            onDismiss = { showServerPickerDialog = false },
+            onSelectServer = { srvId ->
+                if (srvId != state.serverId) {
+                    viewModel.selectServerFolder(srvId, state.workingDirectory)
+                }
+            },
+            onBrowseServer = { srvId ->
+                directoryServerId = srvId
+                showDirectoryDialog = true
+            },
+            onOpenSettings = onOpenSettings,
         )
     }
 
@@ -527,20 +551,7 @@ fun AgentChatScreen(
                                 requestOpenProjects = true
                             },
                             onOpenServerPicker = {
-                                val target = state.serverId?.takeIf { !RemoteFileSystem.isLocalServer(it) }
-                                    ?: state.availableServers.firstOrNull {
-                                        it.host == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST ||
-                                            it.host.contains("vmstudio", ignoreCase = true) ||
-                                            it.id == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
-                                    }?.id
-                                    ?: state.availableServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }?.id
-
-                                if (target != null) {
-                                    directoryServerId = target
-                                    showDirectoryDialog = true
-                                } else {
-                                    onOpenSettings()
-                                }
+                                showServerPickerDialog = true
                             },
                             onOpenConnectors = onOpenConnectors,
                             clusterNodes = state.clusterNodes,
@@ -893,5 +904,112 @@ private fun DirectoryChooser(
             onDismiss = onDismiss,
             onConfirm = onChoose,
         )
+    }
+}
+
+@Composable
+private fun ServerPickerDialog(
+    currentServerId: String?,
+    servers: List<ChatServerOption>,
+    onDismiss: () -> Unit,
+    onSelectServer: (String) -> Unit,
+    onBrowseServer: (String) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    VmDialog(
+        title = "Execution Environment",
+        onDismiss = onDismiss,
+        confirmLabel = "Configure Servers",
+        onConfirm = {
+            onDismiss()
+            onOpenSettings()
+        },
+        icon = Icons.Default.Dns,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Select where agent commands and workspace files execute:",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            servers.forEach { server ->
+                val isSelected = server.id == currentServerId
+                val isLaptopOrPc = server.name.contains("Laptop", ignoreCase = true) ||
+                    server.name.contains("PC", ignoreCase = true) ||
+                    server.name.contains("MSI", ignoreCase = true) ||
+                    server.host.startsWith("192.168.")
+                val isPhone = RemoteFileSystem.isLocalServer(server.id)
+                val (tag, color, icon) = when {
+                    isPhone -> Triple("PHONE", Color(0xFF06B6D4), Icons.Default.Smartphone)
+                    isLaptopOrPc -> Triple("PC/LAN", Color(0xFFF59E0B), Icons.Default.Computer)
+                    else -> Triple("VPS", Color(0xFF10B981), Icons.Default.Dns)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                    else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        onSelectServer(server.id)
+                        onDismiss()
+                    },
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    text = server.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = color.copy(alpha = 0.2f),
+                                ) {
+                                    Text(
+                                        text = tag,
+                                        style = VmTheme.code.mono.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                        color = color,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    )
+                                }
+                            }
+                            Text(
+                                text = server.target.ifBlank { server.host },
+                                style = VmTheme.code.mono.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (!isPhone) {
+                            IconButton(
+                                onClick = {
+                                    onDismiss()
+                                    onBrowseServer(server.id)
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.FolderOpen,
+                                    contentDescription = "Browse server folders",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

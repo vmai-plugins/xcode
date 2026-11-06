@@ -66,7 +66,18 @@ class SftpRemoteFileSystem @Inject constructor(
             current = if (current == "/" || current.isEmpty()) current + segment else "$current/$segment"
             if (segment.matches(Regex("^[a-zA-Z]:$"))) continue
             if (sftp.statExistence(current) == null) {
-                runCatching { sftp.mkdir(current) }
+                runCatching {
+                    sftp.mkdir(current)
+                    val parent = RemotePath.parent(current)
+                    if (!parent.isNullOrBlank()) {
+                        val parentAttrs = sftp.statExistence(parent)
+                        if (parentAttrs != null && parentAttrs.uid != 0) {
+                            runCatching { sftp.chown(current, parentAttrs.uid) }
+                            runCatching { sftp.chgrp(current, parentAttrs.gid) }
+                            runCatching { sftp.chmod(current, 0b111_111_101) } // 0775
+                        }
+                    }
+                }
             }
         }
     }
@@ -165,6 +176,16 @@ class SftpRemoteFileSystem @Inject constructor(
             // CREAT with EXCL so a race with another client fails rather than
             // silently truncating a file created a moment earlier.
             sftp.open(normalised, setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.EXCL)).close()
+            if (!parent.isNullOrBlank()) {
+                runCatching {
+                    val parentAttrs = sftp.statExistence(parent)
+                    if (parentAttrs != null && parentAttrs.uid != 0) {
+                        sftp.chown(normalised, parentAttrs.uid)
+                        sftp.chgrp(normalised, parentAttrs.gid)
+                        sftp.chmod(normalised, 0b110_110_100) // 0664
+                    }
+                }
+            }
             VmLog.i(LogCategory.SFTP, TAG, "Created file $path")
         }
     }
@@ -310,6 +331,16 @@ class SftpRemoteFileSystem @Inject constructor(
                 }
                 shadowCache.put(serverId, path, content)
                 shadowCache.put(serverId, normalised, content)
+                if (!parent.isNullOrBlank()) {
+                    runCatching {
+                        val parentAttrs = sftp.statExistence(parent)
+                        if (parentAttrs != null && parentAttrs.uid != 0) {
+                            sftp.chown(normalised, parentAttrs.uid)
+                            sftp.chgrp(normalised, parentAttrs.gid)
+                            sftp.chmod(normalised, 0b110_110_100) // 0664
+                        }
+                    }
+                }
             } catch (t: Throwable) {
                 if (hasBackup) {
                     try { sftp.rename(backupPath, normalised) } catch (_: Exception) {}

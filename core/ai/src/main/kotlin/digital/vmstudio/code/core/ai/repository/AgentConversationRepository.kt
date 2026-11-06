@@ -122,6 +122,8 @@ interface AgentConversationRepository {
 
     suspend fun updateModel(conversationId: String, modelId: String): VmResult<Unit>
 
+    suspend fun updateEnvironment(conversationId: String, serverId: String?, workingDirectory: String?): VmResult<Unit>
+
     suspend fun delete(conversationId: String): VmResult<Unit>
 }
 
@@ -374,6 +376,25 @@ class DefaultAgentConversationRepository @Inject constructor(
                 Unit
             }
         }
+
+    override suspend fun updateEnvironment(
+        conversationId: String,
+        serverId: String?,
+        workingDirectory: String?,
+    ): VmResult<Unit> = withContext(ioDispatcher) {
+        vmCatching(::mapError) {
+            conversationDao.getById(conversationId)?.let { current ->
+                conversationDao.upsert(
+                    current.copy(
+                        serverId = serverId,
+                        workingDirectory = workingDirectory,
+                        updatedAtMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+            Unit
+        }
+    }
 
     override suspend fun delete(conversationId: String): VmResult<Unit> =
         withContext(ioDispatcher) {

@@ -48,6 +48,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import digital.vmstudio.code.core.common.error.VmError
 import digital.vmstudio.code.core.common.result.VmResult
+import digital.vmstudio.code.core.ssh.repository.ServerRepository
+import digital.vmstudio.code.core.project.VmProjectHubClient
 import digital.vmstudio.code.core.sftp.fs.RemoteFileSystem
 import digital.vmstudio.code.core.sftp.model.RemoteFileType
 import digital.vmstudio.code.core.sftp.model.RemoteListingOptions
@@ -57,6 +59,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -73,6 +76,8 @@ data class FolderPickerState(
 @HiltViewModel
 class FolderPickerViewModel @Inject constructor(
     private val remoteFileSystem: RemoteFileSystem,
+    private val projectHubClient: VmProjectHubClient,
+    private val serverRepository: ServerRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(FolderPickerState())
@@ -88,22 +93,70 @@ class FolderPickerViewModel @Inject constructor(
         loading?.cancel()
         val initialTarget = path.ifBlank { "/" }
         _state.update { it.copy(path = initialTarget, isLoading = true, error = null) }
+        val isLinux = initialTarget.startsWith("/home/") || initialTarget.startsWith("/var/") || initialTarget.startsWith("/opt/") || initialTarget.startsWith("/etc/")
         loading = viewModelScope.launch {
+            val activeServers = serverRepository.servers.first()
+            val currentSrv = activeServers.firstOrNull { it.id == serverId }
+            val isSrvLan = currentSrv != null && (
+                currentSrv.host.startsWith("192.168.") ||
+                currentSrv.name.contains("Laptop", ignoreCase = true) ||
+                currentSrv.host.startsWith("10.") ||
+                currentSrv.host.startsWith("172.")
+            )
+            val effectiveServerId = if (isLinux && (isSrvLan || RemoteFileSystem.isLocalServer(serverId))) {
+                activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
+                    ?: serverId
+            } else {
+                serverId
+            }
+
             val target = if (path.isBlank()) {
                 val home = withTimeoutOrNull(4_000L) {
-                    (remoteFileSystem.homeDirectory(serverId) as? VmResult.Success)?.value
+                    (remoteFileSystem.homeDirectory(effectiveServerId) as? VmResult.Success)?.value
                 }
                 home ?: "/"
             } else path
 
             _state.update { it.copy(path = target) }
 
-            val listOutcome = withTimeoutOrNull(6_000L) {
+            // 1. Try SFTP directly
+            val listOutcome = withTimeoutOrNull(5_000L) {
                 remoteFileSystem.list(
-                    serverId,
+                    effectiveServerId,
                     target,
                     RemoteListingOptions(showHidden = true),
                 )
+            }
+
+            if (listOutcome is VmResult.Success) {
+                _state.value = FolderPickerState(
+                    path = target,
+                    folders = listOutcome.value
+                        .filter { it.type == RemoteFileType.DIRECTORY || it.symlinkTarget != null }
+                        .map { it.name }
+                        .sortedBy { it.lowercase() },
+                    isLoading = false,
+                )
+                return@launch
+            }
+
+            // 2. Seamless fallback to X-Brain REST /fs/list for Linux VPS paths
+            if (isLinux || target == "/" || target.startsWith("/root") || target.startsWith("/home") || target.startsWith("/var")) {
+                when (val restOutcome = projectHubClient.listWorkspace(target)) {
+                    is VmResult.Success -> {
+                        if (restOutcome.value.isNotEmpty()) {
+                            _state.value = FolderPickerState(
+                                path = target,
+                                folders = restOutcome.value,
+                                isLoading = false,
+                            )
+                            return@launch
+                        }
+                    }
+                    is VmResult.Failure -> {
+                        // proceed to timeout/error state below
+                    }
+                }
             }
 
             if (listOutcome == null) {

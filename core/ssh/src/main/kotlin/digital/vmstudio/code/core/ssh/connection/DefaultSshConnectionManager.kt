@@ -175,7 +175,8 @@ class DefaultSshConnectionManager @Inject constructor(
 
                 for (candidate in candidates) {
                     val (cHost, cPort) = candidate
-                    val attemptTimeout = if (candidates.size > 1) 3_500 else server.connectTimeoutMillis
+                    val isLanCandidate = cHost.startsWith("192.168.") || cHost.startsWith("10.") || cHost.startsWith("172.")
+                    val attemptTimeout = if (isLanCandidate && candidates.size > 1) 1_500 else if (candidates.size > 1) 3_500 else server.connectTimeoutMillis
                     val attemptClient = buildClient(server, verifier, attemptTimeout)
                     try {
                         runInterruptible { attemptClient.connect(cHost, cPort) }
@@ -255,7 +256,7 @@ class DefaultSshConnectionManager @Inject constructor(
                 list.add("agents.vmstudio.digital" to 2202)
                 list.add("100.123.215.64" to 22)
             }
-            "vps-master" -> {
+            "vps-master", digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID -> {
                 list.add(server.host to server.port)
                 list.add("200.234.41.231" to 22)
                 list.add("agents.vmstudio.digital" to 22)
@@ -263,8 +264,15 @@ class DefaultSshConnectionManager @Inject constructor(
             else -> {
                 if (server.name.contains("MSI", ignoreCase = true) || server.name.contains("Laptop 1", ignoreCase = true)) {
                     list.add("192.168.29.248" to 22)
+                    list.add("agents.vmstudio.digital" to 2201)
+                    list.add("100.107.28.68" to 22)
                 } else if (server.name.contains("Laptop 2", ignoreCase = true) || server.name.contains("24GB", ignoreCase = true)) {
                     list.add("192.168.29.145" to 22)
+                    list.add("agents.vmstudio.digital" to 2202)
+                    list.add("100.123.215.64" to 22)
+                } else if (server.host == "200.234.41.231" || server.name.contains("Cloud VPS", ignoreCase = true)) {
+                    list.add("200.234.41.231" to 22)
+                    list.add("agents.vmstudio.digital" to 22)
                 }
                 list.add(server.host to server.port)
             }

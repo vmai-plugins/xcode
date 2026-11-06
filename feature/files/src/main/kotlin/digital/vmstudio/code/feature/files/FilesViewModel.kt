@@ -59,8 +59,17 @@ class FilesViewModel @Inject constructor(
     init {
         // A starting folder (a project's or a chat's), when the caller has one.
         val startPath = savedStateHandle.get<String>(ARG_PATH)?.takeIf { it.isNotBlank() }
-        savedStateHandle.get<String>(ARG_SERVER_ID)?.takeIf { it.isNotBlank() }
-            ?.let { openServer(it, startPath) }
+        val rawServerId = savedStateHandle.get<String>(ARG_SERVER_ID)?.takeIf { it.isNotBlank() }
+        val isLinux = startPath?.let { it.startsWith("/home/") || it.startsWith("/var/") || it.startsWith("/opt/") || it.startsWith("/etc/") } ?: false
+        val vpsId = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+        val targetServerId = if (isLinux && (rawServerId == null || rawServerId == "laptop-msi" || rawServerId == "laptop-gpu")) {
+            vpsId
+        } else {
+            rawServerId
+        }
+        if (targetServerId != null) {
+            openServer(targetServerId, startPath)
+        }
 
         viewModelScope.launch {
             serverRepository.servers.collect { servers ->
@@ -82,8 +91,8 @@ class FilesViewModel @Inject constructor(
                 // The drawer route has no server argument: pick one as soon as the
                 // list is known, and again if one is added from the empty state.
                 if (serverId.isEmpty()) {
-                    val pick = pickDefaultServerId(options) ?: RemoteFileSystem.LOCAL_SERVER_ID
-                    openServer(pick, startPath = null)
+                    val pick = pickDefaultServerId(options, startPath) ?: RemoteFileSystem.LOCAL_SERVER_ID
+                    openServer(pick, startPath = startPath)
                 }
             }
         }

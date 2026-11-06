@@ -340,11 +340,18 @@ class AgentChatViewModel @Inject constructor(
             !projectPath.isNullOrBlank() -> {
                 _uiState.update { it.copy(workingDirectory = projectPath) }
                 val isLinux = projectPath.startsWith("/home/") || projectPath.startsWith("/var/") || projectPath.startsWith("/opt/") || projectPath.startsWith("/etc/") || projectPath.startsWith("/vmhub/")
-                if (isLinux && (serverId == null || RemoteFileSystem.isLocalServer(serverId))) {
-                    viewModelScope.launch {
-                        val activeServers = serverRepository.servers.first()
+                viewModelScope.launch {
+                    val activeServers = serverRepository.servers.first()
+                    val currentSrv = activeServers.firstOrNull { it.id == serverId }
+                    val isCurrentServerLan = currentSrv != null && (
+                        currentSrv.host.startsWith("192.168.") ||
+                        currentSrv.name.contains("Laptop", ignoreCase = true) ||
+                        currentSrv.host.startsWith("10.") ||
+                        currentSrv.host.startsWith("172.")
+                    )
+                    if (isLinux && (serverId == null || RemoteFileSystem.isLocalServer(serverId) || isCurrentServerLan)) {
                         val vpsServerId = activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
-                            ?: activeServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) }?.id
+                            ?: activeServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) && !it.host.startsWith("192.168.") }?.id
                         if (vpsServerId != null) {
                             _uiState.update { it.copy(serverId = vpsServerId) }
                             scanServerGitRepos()
@@ -520,17 +527,39 @@ class AgentChatViewModel @Inject constructor(
                 .map { it.toTranscriptItem(::nextId, seen) }
             val modelToRestore = stored.modelId.takeIf { it.isNotBlank() }
 
+            val workingDir = stored.workingDirectory ?: _uiState.value.workingDirectory
+            val isLinux = workingDir.startsWith("/home/") || workingDir.startsWith("/var/") || workingDir.startsWith("/opt/") || workingDir.startsWith("/etc/")
+            val activeServers = serverRepository.servers.first()
+            val candidateServerId = _uiState.value.serverId ?: stored.serverId
+            val candidateServer = activeServers.firstOrNull { it.id == candidateServerId }
+            val isCandidateServerLan = candidateServer != null && (
+                candidateServer.host.startsWith("192.168.") ||
+                candidateServer.name.contains("Laptop", ignoreCase = true) ||
+                candidateServer.host.startsWith("10.") ||
+                candidateServer.host.startsWith("172.")
+            )
+            val vpsServerId = activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
+                ?: activeServers.firstOrNull { !RemoteFileSystem.isLocalServer(it.id) && !it.host.startsWith("192.168.") }?.id
+
+            val effectiveServerId = if (isLinux && (candidateServerId == null || RemoteFileSystem.isLocalServer(candidateServerId) || isCandidateServerLan)) {
+                vpsServerId ?: candidateServerId
+            } else {
+                candidateServerId
+            }
+
+            if (effectiveServerId != null && effectiveServerId != stored.serverId) {
+                conversations.updateEnvironment(conversationId, effectiveServerId, workingDir)
+            }
+
             _uiState.update {
                 it.copy(
                     conversationId = conversationId,
                     providerSessionId = stored.providerSessionId?.takeIf {
                         it.startsWith(GATEWAY_SESSION_PREFIX)
                     },
-                    workingDirectory = stored.workingDirectory ?: it.workingDirectory,
+                    workingDirectory = workingDir,
                     transcript = restored,
-                    // The route of a reopened chat carries no server; without this
-                    // the chat could be read but never continued.
-                    serverId = it.serverId ?: stored.serverId,
+                    serverId = effectiveServerId,
                     selectedModel = modelToRestore ?: it.selectedModel,
                 )
             }
@@ -893,10 +922,31 @@ class AgentChatViewModel @Inject constructor(
 
     fun selectServerFolder(serverId: String, path: String) {
         if (_uiState.value.isRunning) return
+        val isLinux = path.startsWith("/home/") || path.startsWith("/var/") || path.startsWith("/opt/") || path.startsWith("/etc/")
         viewModelScope.launch {
+            val activeServers = serverRepository.servers.first()
+            val srv = activeServers.firstOrNull { it.id == serverId }
+            val isSrvLan = srv != null && (
+                srv.host.startsWith("192.168.") ||
+                srv.name.contains("Laptop", ignoreCase = true) ||
+                srv.host.startsWith("10.") ||
+                srv.host.startsWith("172.")
+            )
+            val effectiveServerId = if (isLinux && (isSrvLan || RemoteFileSystem.isLocalServer(serverId))) {
+                activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
+                    ?: serverId
+            } else {
+                serverId
+            }
+
+            val convId = _uiState.value.conversationId
+            if (convId != null) {
+                conversations.updateEnvironment(convId, effectiveServerId, path)
+            }
+
             val name = path.trimEnd('/').substringAfterLast('/').ifBlank { "VPS workspace" }
             val existing = projectRepository.observeAll().first().firstOrNull {
-                it.serverId == serverId && it.remotePath == path
+                it.serverId == effectiveServerId && it.remotePath == path
             }
             if (existing != null) {
                 selectProject(existing)
@@ -904,7 +954,7 @@ class AgentChatViewModel @Inject constructor(
             }
             when (val created = projectRepository.create(
                 name = name,
-                serverId = serverId,
+                serverId = effectiveServerId,
                 remotePath = path,
                 branch = null,
             )) {
@@ -913,7 +963,7 @@ class AgentChatViewModel @Inject constructor(
                     if (project != null) {
                         selectProject(project)
                     } else {
-                        setServerWorkingDirectory(serverId, path)
+                        setServerWorkingDirectory(effectiveServerId, path)
                     }
                 }
                 is VmResult.Failure -> _uiState.update { it.copy(error = created.error) }

@@ -137,8 +137,16 @@ data class ServerOption(
  * The server the drawer's Files entry opens on: the one connected to most recently,
  * else the first saved one (every server ties at 0 before its first connection).
  */
-internal fun pickDefaultServerId(servers: List<ServerOption>): String? {
+internal fun pickDefaultServerId(servers: List<ServerOption>, path: String? = null): String? {
+    val vpsId = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+    val isLinuxPath = path?.let { it.startsWith("/home/") || it.startsWith("/var/") || it.startsWith("/opt/") || it.startsWith("/etc/") } ?: false
+    if (isLinuxPath && servers.any { it.id == vpsId }) return vpsId
+
     val remoteServers = servers.filter { it.id != digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.LOCAL_SERVER_ID }
+    // Always prefer Sovereign Cloud VPS over LAN laptops
+    val sovereignVps = remoteServers.firstOrNull { it.id == vpsId || it.target.contains("200.234.41.231") || it.name.contains("Cloud VPS", ignoreCase = true) }
+    if (sovereignVps != null) return sovereignVps.id
+
     val candidates = if (remoteServers.isNotEmpty()) remoteServers else servers
     return candidates.maxByOrNull { it.lastConnectedAtMillis }?.id ?: candidates.firstOrNull()?.id
 }

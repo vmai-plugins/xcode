@@ -1116,14 +1116,32 @@ class OmniRouteAgentLoop @Inject constructor(
         }
         val apiBase = normalizeWordPressApiBase(prefs.hubBaseUrl)
         val encodedPath = java.net.URLEncoder.encode(relPath.removePrefix("wp://"), "UTF-8")
+        val masterKey = digital.vmstudio.code.core.common.preferences.UserPreferences.COMPANION_MASTER_KEY
         val request = Request.Builder()
             .url("$apiBase/fs/list?path=$encodedPath")
             .header("X-VMPJ-Key", hubKey)
+            .header("X-VMPJ-Companion-Key", masterKey)
+            .header("Authorization", "Bearer $hubKey")
             .header("Accept", "application/json")
             .get()
             .build()
         return when (val result = httpClient.execute(request)) {
-            is VmResult.Success -> ToolOutcome(result.value, isError = false)
+            is VmResult.Success -> {
+                val raw = result.value
+                val pretty = runCatching {
+                    val root = json.parseToJsonElement(raw) as? JsonObject
+                    val dirs = root?.get("directories") as? kotlinx.serialization.json.JsonArray
+                    dirs?.mapNotNull { item ->
+                        val obj = item as? JsonObject ?: return@mapNotNull null
+                        val isDir = (obj["is_dir"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
+                        val size = (obj["size"] as? JsonPrimitive)?.content ?: "0"
+                        val name = (obj["name"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                        val kind = if (isDir) "d" else "-"
+                        "$kind ${size.padStart(SIZE_COLUMN_WIDTH)}  $name"
+                    }?.joinToString("\n")
+                }.getOrNull()
+                ToolOutcome(pretty?.ifBlank { raw } ?: raw, isError = false)
+            }
             is VmResult.Failure -> ToolOutcome("WordPress list failed: ${result.error.summaryWithReason()}", isError = true)
         }
     }
@@ -1455,12 +1473,18 @@ class OmniRouteAgentLoop @Inject constructor(
 
         return when (val result = remoteFileSystem.readText(serverId, resolved, MAX_READ_BYTES)) {
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
-            is VmResult.Failure -> ToolOutcome(
-                result.error.summaryWithReason() +
-                    ". For a large file, use grep_search, or run_command with head, tail or sed " +
-                    "to read the part you need.",
-                isError = true,
-            )
+            is VmResult.Failure -> {
+                if (resolved.startsWith("/home/") || resolved.startsWith("/var/") || resolved.startsWith("/opt/")) {
+                    val fallback = wordpressFileRead(OmniRouteToolCall(call.id, OmniRouteTool.WORDPRESS_FILE_READ.toolName, """{"path":"$resolved"}"""))
+                    if (!fallback.isError) return fallback
+                }
+                ToolOutcome(
+                    result.error.summaryWithReason() +
+                        ". For a large file, use grep_search, or run_command with head, tail or sed " +
+                        "to read the part you need.",
+                    isError = true,
+                )
+            }
         }
     }
 
@@ -1497,7 +1521,13 @@ class OmniRouteAgentLoop @Inject constructor(
                 }
                 ToolOutcome(listing.ifBlank { "(empty directory)" }, isError = false)
             }
-            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Failure -> {
+                if (resolved.startsWith("/home/") || resolved.startsWith("/var/") || resolved.startsWith("/opt/")) {
+                    val fallback = wordpressFileList(OmniRouteToolCall(call.id, OmniRouteTool.WORDPRESS_FILE_LIST.toolName, """{"path":"$resolved"}"""))
+                    if (!fallback.isError) return fallback
+                }
+                ToolOutcome(result.error.summaryWithReason(), isError = true)
+            }
         }
     }
 
@@ -1814,7 +1844,22 @@ class OmniRouteAgentLoop @Inject constructor(
 
         return when (val result = remoteFileSystem.writeText(serverId, resolved, newContent)) {
             is VmResult.Success -> ToolOutcome("Successfully edited $resolved.", isError = false)
-            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Failure -> {
+                if (resolved.startsWith("/home/") || resolved.startsWith("/var/") || resolved.startsWith("/opt/")) {
+                    val fallback = wordpressFileWrite(
+                        OmniRouteToolCall(
+                            call.id,
+                            OmniRouteTool.WORDPRESS_FILE_WRITE.toolName,
+                            buildJsonObject {
+                                put("path", resolved)
+                                put("content", newContent)
+                            }.toString(),
+                        ),
+                    )
+                    if (!fallback.isError) return ToolOutcome("Successfully edited $resolved via Hub REST.", isError = false)
+                }
+                ToolOutcome(result.error.summaryWithReason(), isError = true)
+            }
         }
     }
 
@@ -1927,7 +1972,22 @@ class OmniRouteAgentLoop @Inject constructor(
         return when (val result = remoteFileSystem.writeText(serverId, resolved, content)) {
             is VmResult.Success ->
                 ToolOutcome("Wrote ${content.length} characters to $resolved.", isError = false)
-            is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
+            is VmResult.Failure -> {
+                if (resolved.startsWith("/home/") || resolved.startsWith("/var/") || resolved.startsWith("/opt/")) {
+                    val fallback = wordpressFileWrite(
+                        OmniRouteToolCall(
+                            call.id,
+                            OmniRouteTool.WORDPRESS_FILE_WRITE.toolName,
+                            buildJsonObject {
+                                put("path", resolved)
+                                put("content", content)
+                            }.toString(),
+                        ),
+                    )
+                    if (!fallback.isError) return fallback
+                }
+                ToolOutcome(result.error.summaryWithReason(), isError = true)
+            }
         }
     }
 

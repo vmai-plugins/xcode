@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -144,7 +145,8 @@ internal fun ToolBatchRow(
 
     val borderColor = when {
         isRunning -> Color(0xFFA855F7).copy(alpha = 0.5f)
-        failed > 0 -> MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+        failed == batch.tools.size -> MaterialTheme.colorScheme.error.copy(alpha = 0.4f)
+        failed > 0 -> Color(0xFFF59E0B).copy(alpha = 0.4f)
         else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
     }
 
@@ -186,11 +188,11 @@ internal fun ToolBatchRow(
                             color = Color(0xFFA855F7),
                         )
                         Text(
-                            text = "Agent Loop Running",
+                            text = "Agent Running Steps",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                             color = Color(0xFFA855F7),
                         )
-                    } else if (failed > 0) {
+                    } else if (failed == batch.tools.size) {
                         Icon(
                             imageVector = Icons.Default.ErrorOutline,
                             contentDescription = "Failed",
@@ -198,9 +200,21 @@ internal fun ToolBatchRow(
                             modifier = Modifier.size(16.dp),
                         )
                         Text(
-                            text = "Agent Loop Halted",
+                            text = "Steps Interrupted",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                             color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (failed > 0) {
+                        Icon(
+                            imageVector = Icons.Default.WarningAmber,
+                            contentDescription = "Recovered",
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "Steps Retried & Resolved",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                            color = Color(0xFFF59E0B),
                         )
                     } else {
                         Icon(
@@ -210,7 +224,7 @@ internal fun ToolBatchRow(
                             modifier = Modifier.size(16.dp),
                         )
                         Text(
-                            text = "Agent Loop Completed",
+                            text = "Agent Steps Executed",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                             color = MaterialTheme.colorScheme.onSurface,
                         )

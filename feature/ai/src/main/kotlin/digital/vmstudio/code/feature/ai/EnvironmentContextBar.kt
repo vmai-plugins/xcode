@@ -21,9 +21,11 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -118,13 +120,30 @@ fun EnvironmentContextBar(
                 onClick = onOpenProjectPicker,
             )
 
-            // Context Pill 2: VPS Server Target
+            // Context Pill 2: Environment Server Target
             val vpsLabel = serverName?.ifBlank { null } ?: "Local / Cloud AI"
+            val isLaptopOrPc = serverName != null && (
+                serverName.contains("Laptop", ignoreCase = true) ||
+                serverName.contains("PC", ignoreCase = true) ||
+                serverName.contains("MSI", ignoreCase = true) ||
+                serverName.contains("Mac", ignoreCase = true) ||
+                serverName.contains("Workstation", ignoreCase = true)
+            )
+            val isPhone = serverName != null && (
+                serverName.contains("Phone", ignoreCase = true) ||
+                serverName.contains("Local", ignoreCase = true)
+            )
+            val (serverTag, serverColor, serverIcon) = when {
+                serverName == null -> Triple("CLOUD", Color(0xFF8B5CF6), Icons.Default.Cloud)
+                isPhone -> Triple("PHONE", Color(0xFF06B6D4), Icons.Default.Smartphone)
+                isLaptopOrPc -> Triple("PC/LAN", Color(0xFFF59E0B), Icons.Default.Computer)
+                else -> Triple("VPS", Color(0xFF10B981), Icons.Default.Dns)
+            }
             ContextPill(
-                icon = Icons.Default.Dns,
+                icon = serverIcon,
                 label = vpsLabel,
-                tag = if (serverName != null) "VPS" else "CLOUD",
-                accentColor = if (serverName != null) Color(0xFF10B981) else Color(0xFF8B5CF6),
+                tag = serverTag,
+                accentColor = serverColor,
                 onClick = onOpenServerPicker,
             )
 
