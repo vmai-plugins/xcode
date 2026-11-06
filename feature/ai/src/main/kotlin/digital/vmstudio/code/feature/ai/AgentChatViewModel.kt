@@ -1119,15 +1119,34 @@ class AgentChatViewModel @Inject constructor(
 
         val resolvedServerId = when {
             project == null -> null
+            isLinuxPath -> {
+                val projServer = _uiState.value.availableServers.firstOrNull { it.id == project.serverId }
+                val isWindowsOrLan = projServer != null && (
+                    projServer.host.startsWith("192.168.") ||
+                    projServer.name.contains("Laptop", ignoreCase = true) ||
+                    projServer.name.contains("PC", ignoreCase = true) ||
+                    projServer.name.contains("MSI", ignoreCase = true)
+                )
+                if (isWindowsOrLan || project.serverId == null || RemoteFileSystem.isLocalServer(project.serverId)) {
+                    sovereignVpsServerId ?: project.serverId ?: currentServer
+                } else {
+                    project.serverId
+                }
+            }
             project.serverId != null && !RemoteFileSystem.isLocalServer(project.serverId) -> project.serverId
-            isLinuxPath -> sovereignVpsServerId ?: project.serverId ?: currentServer
             project.remotePath.startsWith("/github/") -> null
             else -> currentServer ?: RemoteFileSystem.LOCAL_SERVER_ID
         }
 
-        if (project != null && (project.serverId == null || RemoteFileSystem.isLocalServer(project.serverId)) && isLinuxPath && sovereignVpsServerId != null) {
-            viewModelScope.launch {
-                projectRepository.update(project.copy(serverId = sovereignVpsServerId))
+        if (project != null && isLinuxPath && sovereignVpsServerId != null) {
+            val projServer = _uiState.value.availableServers.firstOrNull { it.id == project.serverId }
+            val isMisconfigured = project.serverId == null ||
+                RemoteFileSystem.isLocalServer(project.serverId) ||
+                (projServer != null && (projServer.name.contains("Laptop", ignoreCase = true) || projServer.host.startsWith("192.168.")))
+            if (isMisconfigured && project.serverId != sovereignVpsServerId) {
+                viewModelScope.launch {
+                    projectRepository.update(project.copy(serverId = sovereignVpsServerId))
+                }
             }
         }
 

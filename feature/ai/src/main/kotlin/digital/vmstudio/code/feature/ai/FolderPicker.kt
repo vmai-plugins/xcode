@@ -119,8 +119,8 @@ class FolderPickerViewModel @Inject constructor(
 
             _state.update { it.copy(path = target) }
 
-            // 1. Try SFTP directly
-            val listOutcome = withTimeoutOrNull(5_000L) {
+            // 1. Try SFTP directly with extended 8s timeout for mobile networks
+            val listOutcome = withTimeoutOrNull(8_000L) {
                 remoteFileSystem.list(
                     effectiveServerId,
                     target,
@@ -144,14 +144,12 @@ class FolderPickerViewModel @Inject constructor(
             if (isLinux || target == "/" || target.startsWith("/root") || target.startsWith("/home") || target.startsWith("/var")) {
                 when (val restOutcome = projectHubClient.listWorkspace(target)) {
                     is VmResult.Success -> {
-                        if (restOutcome.value.isNotEmpty()) {
-                            _state.value = FolderPickerState(
-                                path = target,
-                                folders = restOutcome.value,
-                                isLoading = false,
-                            )
-                            return@launch
-                        }
+                        _state.value = FolderPickerState(
+                            path = target,
+                            folders = restOutcome.value,
+                            isLoading = false,
+                        )
+                        return@launch
                     }
                     is VmResult.Failure -> {
                         // proceed to timeout/error state below
@@ -275,6 +273,12 @@ internal fun FolderPickerDialog(
             }
 
             // Quick Shortcut Chips for instant 1-tap navigation
+            val isWindowsHost = state.path.contains(":") || state.path.startsWith("D:/", ignoreCase = true) || state.path.startsWith("C:/", ignoreCase = true)
+            val quickDirs = if (isWindowsHost) {
+                listOf("D:/Dev", "C:/Users", "D:/", "C:/")
+            } else {
+                listOf("/home", "/var/www", "/root", "/tmp", "/etc")
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -282,7 +286,7 @@ internal fun FolderPickerDialog(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                listOf("/root", "/home", "/var/www", "/tmp", "/etc").forEach { quickDir ->
+                quickDirs.forEach { quickDir ->
                     AssistChip(
                         onClick = {
                             viewModel.open(serverId, quickDir)

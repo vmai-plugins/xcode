@@ -1474,7 +1474,8 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
-        return when (val result = remoteFileSystem.readText(serverId, resolved, MAX_READ_BYTES)) {
+        val targetServerId = effectiveServerIdForPath(serverId, resolved)
+        return when (val result = remoteFileSystem.readText(targetServerId, resolved, MAX_READ_BYTES)) {
             is VmResult.Success -> ToolOutcome(result.value, isError = false)
             is VmResult.Failure -> {
                 if (resolved.startsWith("/home/") || resolved.startsWith("/var/") || resolved.startsWith("/opt/")) {
@@ -1516,7 +1517,8 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
-        return when (val result = remoteFileSystem.list(serverId, resolved)) {
+        val targetServerId = effectiveServerIdForPath(serverId, resolved)
+        return when (val result = remoteFileSystem.list(targetServerId, resolved)) {
             is VmResult.Success -> {
                 val listing = result.value.joinToString("\n") { entry ->
                     val kind = if (entry.isDirectory) "d" else "-"
@@ -1601,9 +1603,10 @@ class OmniRouteAgentLoop @Inject constructor(
             caseSensitive = caseSensitive,
         )
 
+        val targetServerId = effectiveServerIdForPath(serverId, resolved)
         return when (
             val result = commandGuard.run(
-                serverId,
+                targetServerId,
                 command,
                 requestedByAgent = true,
                 projectRoot = workingDirectory,
@@ -1790,17 +1793,18 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
+        val targetServerId = effectiveServerIdForPath(serverId, resolved)
         val server = when {
-            RemoteFileSystem.isLocalServer(serverId) ||
+            RemoteFileSystem.isLocalServer(targetServerId) ||
                 resolved.startsWith("/vmhub/") ||
                 resolved.startsWith("content://") -> null
-            else -> when (val result = serverRepository.get(serverId)) {
+            else -> when (val result = serverRepository.get(targetServerId)) {
                 is VmResult.Success -> result.value
                 is VmResult.Failure -> null
             }
         }
 
-        val existingContent = when (val result = remoteFileSystem.readText(serverId, resolved)) {
+        val existingContent = when (val result = remoteFileSystem.readText(targetServerId, resolved)) {
             is VmResult.Success -> result.value
             is VmResult.Failure -> return ToolOutcome(
                 "Failed to read file before edit: ${result.error.summaryWithReason()}",
@@ -1845,7 +1849,7 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
-        return when (val result = remoteFileSystem.writeText(serverId, resolved, newContent)) {
+        return when (val result = remoteFileSystem.writeText(targetServerId, resolved, newContent)) {
             is VmResult.Success -> ToolOutcome("Successfully edited $resolved.", isError = false)
             is VmResult.Failure -> {
                 if (resolved.startsWith("/home/") || resolved.startsWith("/var/") || resolved.startsWith("/opt/")) {
@@ -1915,11 +1919,12 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
+        val targetServerId = effectiveServerIdForPath(serverId, resolved)
         val server = when {
-            RemoteFileSystem.isLocalServer(serverId) ||
+            RemoteFileSystem.isLocalServer(targetServerId) ||
                 resolved.startsWith("/vmhub/") ||
                 resolved.startsWith("content://") -> null
-            else -> when (val result = serverRepository.get(serverId)) {
+            else -> when (val result = serverRepository.get(targetServerId)) {
                 is VmResult.Success -> result.value
                 is VmResult.Failure -> null
             }
@@ -1940,12 +1945,12 @@ class OmniRouteAgentLoop @Inject constructor(
             // Existence is checked directly rather than inferred from whether the
             // content could be read: a file that exists but is too large to preview
             // is still an overwrite, not a creation, and must not be shown as one.
-            val fileExists = when (val result = remoteFileSystem.exists(serverId, resolved)) {
+            val fileExists = when (val result = remoteFileSystem.exists(targetServerId, resolved)) {
                 is VmResult.Success -> result.value
                 is VmResult.Failure -> return ToolOutcome(result.error.summaryWithReason(), isError = true)
             }
             val existingContent = if (fileExists) {
-                when (val result = remoteFileSystem.readText(serverId, resolved)) {
+                when (val result = remoteFileSystem.readText(targetServerId, resolved)) {
                     is VmResult.Success -> result.value
                     is VmResult.Failure -> return ToolOutcome(
                         "Failed to read file before write approval: ${result.error.summaryWithReason()}",
@@ -1962,7 +1967,7 @@ class OmniRouteAgentLoop @Inject constructor(
                     isNewFile = !fileExists,
                     oldContent = existingContent,
                     newContent = content,
-                    serverId = server?.id ?: serverId,
+                    serverId = server?.id ?: targetServerId,
                     serverName = server?.name ?: "Phone folder",
                     environment = server?.environment ?: ServerEnvironment.LOCAL,
                 ),
@@ -1972,7 +1977,7 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
-        return when (val result = remoteFileSystem.writeText(serverId, resolved, content)) {
+        return when (val result = remoteFileSystem.writeText(targetServerId, resolved, content)) {
             is VmResult.Success ->
                 ToolOutcome("Wrote ${content.length} characters to $resolved.", isError = false)
             is VmResult.Failure -> {
@@ -2172,6 +2177,17 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
+
+    private fun effectiveServerIdForPath(requestedServerId: String, path: String): String {
+        val vpsId = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+        val isLinuxPath = path.startsWith("/home/") || path.startsWith("/var/") || path.startsWith("/opt/") || path.startsWith("/etc/") || path.startsWith("/root/")
+        val isWindowsPath = path.contains(":") || path.startsWith("D:/", ignoreCase = true) || path.startsWith("C:/", ignoreCase = true)
+        return when {
+            isLinuxPath && (requestedServerId == "laptop-msi" || requestedServerId.contains("laptop", ignoreCase = true) || requestedServerId.contains("pc", ignoreCase = true)) -> vpsId
+            isWindowsPath && requestedServerId == vpsId -> "laptop-msi"
+            else -> requestedServerId
+        }
+    }
 
     /** Confines paths to [workingDirectory] to prevent escaping the project root. */
     private fun resolvePath(workingDirectory: String, path: String): String {
