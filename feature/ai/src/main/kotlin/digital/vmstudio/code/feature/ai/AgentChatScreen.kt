@@ -595,12 +595,19 @@ fun AgentChatScreen(
                 ) {
                     EmptyChatHero(
                         workingDirectory = state.workingDirectory,
+                        currentServerId = state.serverId,
                         onSuggestionClick = { prompt ->
                             composerText = prompt
+                        },
+                        onSelectTargetServer = { srvId ->
+                            viewModel.switchTargetServer(srvId)
                         },
                         onSelectProjectClick = {
                             viewModel.loadGithubRepositories()
                             requestOpenProjects = true
+                        },
+                        onOpenServerPicker = {
+                            showServerPickerDialog = true
                         },
                         onOpenChatHistory = onOpenChatHistory,
                     )

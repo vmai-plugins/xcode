@@ -223,6 +223,10 @@ private fun OmniRouteTool.parametersSchema(): JsonObject = when (this) {
                 put("type", "string")
                 put("description", "A shell command, run from the project's working directory.")
             }
+            putJsonObject("target") {
+                put("type", "string")
+                put("description", "Optional execution target machine: 'laptop' (MSI Orchestrator) or 'vps' (Sovereign Cloud VPS). Defaults to active server.")
+            }
         }
         putJsonArray("required") { add("command") }
     }

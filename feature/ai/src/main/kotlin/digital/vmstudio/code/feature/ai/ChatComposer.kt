@@ -39,12 +39,14 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Source
@@ -344,6 +346,27 @@ internal fun ModernComposer(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Cluster machine & asset targets
+                val clusterTargets = listOf(
+                    Triple("@laptop", "Laptop 1 (MSI Orchestrator)", Icons.Default.Laptop),
+                    Triple("@vps", "Sovereign Cloud VPS", Icons.Default.Dns),
+                    Triple("@phone", "Local Phone Storage", Icons.Default.PhoneAndroid),
+                ).filter { (tag, name, _) ->
+                    query.isBlank() || tag.removePrefix("@").contains(query, ignoreCase = true) || name.contains(query, ignoreCase = true)
+                }
+
+                clusterTargets.forEach { (tag, _, icon) ->
+                    MentionChip(
+                        label = tag,
+                        icon = icon,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val beforeAt = text.substring(0, text.lastIndexOf('@'))
+                            onTextChange("$beforeAt$tag ")
+                        },
+                    )
+                }
+
                 matchingProjects.forEach { project ->
                     val insertText = if (project.name.contains(" ")) "@\"${project.name}\" " else "@${project.name} "
                     MentionChip(

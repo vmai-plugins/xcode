@@ -101,20 +101,28 @@ internal fun EditDirectoryDialog(
     }
 }
 
-/** Empty state: a greeting and a few quiet starting points. */
+/** Empty state: a greeting, cluster asset toggles, and starting points. */
 @Composable
 internal fun EmptyChatHero(
     workingDirectory: String,
+    currentServerId: String? = null,
     onSuggestionClick: (String) -> Unit,
     onSelectProjectClick: () -> Unit = {},
+    onSelectTargetServer: ((String) -> Unit)? = null,
+    onOpenServerPicker: (() -> Unit)? = null,
     onOpenChatHistory: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val spacing = VmTheme.spacing
     val isGeneral = workingDirectory.isBlank()
+    val vpsId = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+    val isMsiActive = currentServerId == "laptop-msi"
+    val isGpuActive = currentServerId == "laptop-gpu"
+    val isVpsActive = currentServerId == vpsId
+
     val dirName = remember(workingDirectory) {
         workingDirectory.trimEnd('/').substringAfterLast('/', "")
-            .ifBlank { "General chat · pick a project above to work on code" }
+            .ifBlank { "General workspace" }
     }
     val greeting = remember {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
@@ -162,81 +170,159 @@ internal fun EmptyChatHero(
             modifier = Modifier.padding(top = 16.dp),
         )
 
-        // Cluster Telemetry Live Status Strip
+        // Cluster Telemetry Live Status Strip (Interactive 1-Tap Target Selectors)
         Row(
-            modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+            modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // MSI Laptop Target
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF10B981).copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+                color = if (isMsiActive) Color(0xFF10B981).copy(alpha = 0.28f) else Color(0xFF10B981).copy(alpha = 0.12f),
+                border = BorderStroke(
+                    width = if (isMsiActive) 2.dp else 1.dp,
+                    color = if (isMsiActive) Color(0xFF10B981) else Color(0xFF10B981).copy(alpha = 0.35f),
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = onSelectTargetServer != null) {
+                        onSelectTargetServer?.invoke("laptop-msi")
+                    },
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF10B981)))
                     Text(
-                        text = "MSI: 0ms",
-                        style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                        text = if (isMsiActive) "✓ MSI: Active" else "MSI: 0ms",
+                        style = VmTheme.code.mono.copy(
+                            fontSize = 11.sp,
+                            fontWeight = if (isMsiActive) FontWeight.Bold else FontWeight.SemiBold,
+                        ),
                         color = Color(0xFF10B981),
                     )
                 }
             }
 
+            // GPU Compute Node
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF38BDF8).copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.35f)),
+                color = if (isGpuActive) Color(0xFF38BDF8).copy(alpha = 0.28f) else Color(0xFF38BDF8).copy(alpha = 0.12f),
+                border = BorderStroke(
+                    width = if (isGpuActive) 2.dp else 1.dp,
+                    color = if (isGpuActive) Color(0xFF38BDF8) else Color(0xFF38BDF8).copy(alpha = 0.35f),
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = onSelectTargetServer != null) {
+                        onSelectTargetServer?.invoke("laptop-gpu")
+                    },
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF38BDF8)))
                     Text(
-                        text = "GPU Siv: 5ms",
-                        style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                        text = if (isGpuActive) "✓ GPU: Active" else "GPU Slv: 5ms",
+                        style = VmTheme.code.mono.copy(
+                            fontSize = 11.sp,
+                            fontWeight = if (isGpuActive) FontWeight.Bold else FontWeight.SemiBold,
+                        ),
                         color = Color(0xFF38BDF8),
                     )
                 }
             }
 
+            // VPS Hub Target
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFA855F7).copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, Color(0xFFA855F7).copy(alpha = 0.35f)),
+                color = if (isVpsActive) Color(0xFFA855F7).copy(alpha = 0.28f) else Color(0xFFA855F7).copy(alpha = 0.12f),
+                border = BorderStroke(
+                    width = if (isVpsActive) 2.dp else 1.dp,
+                    color = if (isVpsActive) Color(0xFFA855F7) else Color(0xFFA855F7).copy(alpha = 0.35f),
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = onSelectTargetServer != null) {
+                        onSelectTargetServer?.invoke(vpsId)
+                    },
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFA855F7)))
                     Text(
-                        text = "VPS Hub: Live",
-                        style = VmTheme.code.mono.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                        text = if (isVpsActive) "✓ VPS Hub: Active" else "VPS Hub: Live",
+                        style = VmTheme.code.mono.copy(
+                            fontSize = 11.sp,
+                            fontWeight = if (isVpsActive) FontWeight.Bold else FontWeight.SemiBold,
+                        ),
                         color = Color(0xFFA855F7),
                     )
                 }
             }
         }
 
+        val activeTargetLabel = when {
+            isMsiActive -> "MSI Laptop Orchestrator"
+            isGpuActive -> "Laptop 2 (GPU Compute)"
+            isVpsActive -> "Sovereign Cloud VPS"
+            else -> "This Phone (Local Storage)"
+        }
+
         Text(
-            text = if (isGeneral) "General workspace · No project pinned" else "Active folder: $dirName",
+            text = if (isGeneral) "Target: $activeTargetLabel · Tap pills above to talk to Laptop or VPS" else "Target: $activeTargetLabel · $dirName",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp, bottom = 14.dp),
+            modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
         )
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Server / Asset Mixer Trigger
+            if (onOpenServerPicker != null) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable(onClick = onOpenServerPicker)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Dns,
+                            contentDescription = null,
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = when {
+                                isMsiActive -> "Laptop 1"
+                                isVpsActive -> "Cloud VPS"
+                                else -> "Assets"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+
             // Prominent interactive project switcher in empty chat
             Surface(
                 shape = RoundedCornerShape(20.dp),

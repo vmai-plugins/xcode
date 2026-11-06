@@ -971,6 +971,25 @@ class AgentChatViewModel @Inject constructor(
         }
     }
 
+    fun switchTargetServer(serverId: String, path: String? = null) {
+        if (_uiState.value.isRunning) return
+        val vpsId = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+        val targetPath = path ?: when {
+            serverId == vpsId -> "/home"
+            serverId.contains("laptop", ignoreCase = true) -> "D:/Dev"
+            else -> ""
+        }
+        val convId = _uiState.value.conversationId
+        if (convId != null) {
+            viewModelScope.launch {
+                conversations.updateEnvironment(convId, serverId, targetPath)
+                _uiState.update { it.copy(serverId = serverId, workingDirectory = targetPath) }
+            }
+        } else {
+            setServerWorkingDirectory(serverId, targetPath)
+        }
+    }
+
     private fun setServerWorkingDirectory(serverId: String, path: String) {
         _uiState.update {
             it.copy(

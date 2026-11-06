@@ -411,7 +411,7 @@ class OmniRouteAgentLoop @Inject constructor(
             add(OmniRouteTool.WORDPRESS_FILE_WRITE)
             add(OmniRouteTool.KAGGLE_DISPATCH)
             add(OmniRouteTool.MCP_CALL)
-            if (!config.restricted && !isLocalWorkspace && !isGitHubWorkspace) {
+            if (!config.restricted) {
                 add(OmniRouteTool.RUN_COMMAND)
                 add(OmniRouteTool.RUN_BUILD)
             }
@@ -608,6 +608,7 @@ class OmniRouteAgentLoop @Inject constructor(
                             allowedTools = allowedTools,
                             driveToken = config.googleDriveToken,
                             sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
+                            prompt = config.prompt,
                         )
                     }
                 }
@@ -622,6 +623,7 @@ class OmniRouteAgentLoop @Inject constructor(
                         allowedTools = allowedTools,
                         driveToken = config.googleDriveToken,
                         sheetsToken = config.googleSheetsToken ?: config.googleDriveToken,
+                        prompt = config.prompt,
                     )
                 }
             }
@@ -798,6 +800,7 @@ class OmniRouteAgentLoop @Inject constructor(
         allowedTools: Set<OmniRouteTool>,
         driveToken: String? = null,
         sheetsToken: String? = null,
+        prompt: String? = null,
     ): ToolOutcome {
         if (tool == null) {
             return ToolOutcome("Unknown tool \"${call.name}\".", isError = true)
@@ -842,7 +845,7 @@ class OmniRouteAgentLoop @Inject constructor(
                 writeFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
             OmniRouteTool.EDIT_FILE ->
                 editFile(call, serverId, workingDirectory, autonomyLevel, permissionMode)
-            OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId, workingDirectory)
+            OmniRouteTool.RUN_COMMAND -> runCommand(call, serverId, workingDirectory, prompt)
             OmniRouteTool.RUN_BUILD -> runBuild(call, serverId, workingDirectory)
             OmniRouteTool.LIST_APKS -> listApks(call, serverId, workingDirectory)
             OmniRouteTool.WEB_FETCH -> webFetch(call)
@@ -1995,29 +1998,51 @@ class OmniRouteAgentLoop @Inject constructor(
         call: OmniRouteToolCall,
         serverId: String,
         workingDirectory: String,
+        prompt: String? = null,
     ): ToolOutcome {
         val requested = argument(call.argumentsJson, "command")
             ?: return ToolOutcome("Missing required argument \"command\".", isError = true)
-        if (RemoteFileSystem.isLocalServer(serverId) ||
-            workingDirectory.startsWith("/github/") ||
-            workingDirectory.startsWith("/vmhub/") ||
-            workingDirectory.startsWith("content://")
-        ) {
+
+        val targetArg = argument(call.argumentsJson, "target") ?: argument(call.argumentsJson, "server")
+        val vpsId = digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+        val effectiveServerId = when {
+            targetArg?.contains("laptop", ignoreCase = true) == true || targetArg?.contains("msi", ignoreCase = true) == true -> "laptop-msi"
+            targetArg?.contains("vps", ignoreCase = true) == true || targetArg?.contains("hub", ignoreCase = true) == true -> vpsId
+            prompt?.contains("@laptop", ignoreCase = true) == true || prompt?.contains("on laptop", ignoreCase = true) == true || prompt?.contains("on my laptop", ignoreCase = true) == true -> "laptop-msi"
+            prompt?.contains("@vps", ignoreCase = true) == true || prompt?.contains("on vps", ignoreCase = true) == true -> vpsId
+            !RemoteFileSystem.isLocalServer(serverId) -> serverId
+            else -> {
+                val remotes = serverRepository.servers.first().filter { !RemoteFileSystem.isLocalServer(it.id) }
+                remotes.firstOrNull { it.id == vpsId }?.id
+                    ?: remotes.firstOrNull()?.id
+                    ?: serverId
+            }
+        }
+
+        val effectiveWorkingDirectory = when {
+            workingDirectory.startsWith("/github/") || workingDirectory.startsWith("/vmhub/") || workingDirectory.startsWith("content://") -> ""
+            effectiveServerId == "laptop-msi" && (workingDirectory.startsWith("/home/") || workingDirectory.isBlank()) -> "D:/Dev"
+            effectiveServerId == vpsId && (workingDirectory.contains(":") || workingDirectory.isBlank()) -> "/home"
+            else -> workingDirectory
+        }
+
+        if (RemoteFileSystem.isLocalServer(effectiveServerId)) {
             return ToolOutcome(
-                "Terminal commands are not supported in local or virtual workspaces. Running commands requires an active SSH VPS server.",
+                "Terminal commands require a connected cluster server (e.g. Laptop 1 or Sovereign VPS). Connect a server or specify target='laptop' or target='vps' in run_command.",
                 isError = true,
             )
         }
+
         // The model is told it works in the project, so its commands run there, not
         // in the SSH login directory; builds and tests get time to finish.
-        val command = if (workingDirectory.isBlank()) requested else "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(workingDirectory)} && $requested"
+        val command = if (effectiveWorkingDirectory.isBlank()) requested else "cd ${digital.vmstudio.code.core.ssh.command.shellQuotePath(effectiveWorkingDirectory)} && $requested"
 
         val result = commandGuard.run(
-            serverId,
+            effectiveServerId,
             command,
             AGENT_COMMAND_LIMITS,
             requestedByAgent = true,
-            projectRoot = workingDirectory,
+            projectRoot = effectiveWorkingDirectory.ifBlank { null },
         )
         return when (result) {
             is VmResult.Failure -> ToolOutcome(result.error.summaryWithReason(), isError = true)
@@ -2296,7 +2321,9 @@ class OmniRouteAgentLoop @Inject constructor(
         if (OmniRouteTool.RUN_COMMAND in allowedTools) {
             append(
                 "Use run_command to run build, test, git, and lint commands, inspect outputs, " +
-                    "and self-correct any errors. Use run_build for Gradle builds and " +
+                    "and self-correct any errors. In run_command you can target specific cluster machines by passing " +
+                    "target='laptop' (MSI Orchestrator) or target='vps' (Sovereign Cloud VPS), or when the user mentions @laptop or @vps. " +
+                    "Use run_build for Gradle builds and " +
                     "list_apks to find built APKs. ",
             )
         }
