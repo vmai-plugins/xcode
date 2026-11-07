@@ -1431,10 +1431,18 @@ class OmniRouteAgentLoop @Inject constructor(
         }
     }
 
+    private val projectRulesCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+    private val noRulesSentinel = Pair("", "")
+
     private suspend fun loadProjectRules(
         serverId: String,
         workingDirectory: String,
     ): Pair<String, String>? {
+        val cacheKey = "$serverId:$workingDirectory"
+        val cached = projectRulesCache[cacheKey]
+        if (cached != null) {
+            return if (cached == noRulesSentinel) null else cached
+        }
         val candidates = listOf(
             ".xcodes/rules.md",
             ".xcodes/rules",
@@ -1449,9 +1457,12 @@ class OmniRouteAgentLoop @Inject constructor(
             if (!content.isNullOrBlank()) {
                 val header = "=== Project Workspace Rules & Guidelines (from $candidate) ==="
                 val text = "$header\n${content.trim()}\n=================================================="
-                return candidate to text
+                val found = candidate to text
+                projectRulesCache[cacheKey] = found
+                return found
             }
         }
+        projectRulesCache[cacheKey] = noRulesSentinel
         return null
     }
 
@@ -1590,11 +1601,14 @@ class OmniRouteAgentLoop @Inject constructor(
             }
         }
 
+        val isWindowsPath = resolved.contains(":") || resolved.matches(Regex("^[a-zA-Z]:.*"))
         if (digital.vmstudio.code.core.sftp.fs.RemoteFileSystem.isLocalServer(serverId) ||
             resolved.startsWith("/vmhub/") ||
-            resolved.startsWith("content://")
+            resolved.startsWith("content://") ||
+            isWindowsPath
         ) {
-            return localGrep(serverId, resolved, query, caseSensitive)
+            val targetServerId = effectiveServerIdForPath(serverId, resolved)
+            return localGrep(targetServerId, resolved, query, caseSensitive)
         }
 
         val command = grepCommand(
@@ -1708,7 +1722,9 @@ class OmniRouteAgentLoop @Inject constructor(
     /** Why [target] cannot be replaced in [content], or null when it occurs exactly once. */
     private fun uniqueMatchProblem(content: String, target: String, resolved: String): String? {
         if (findMatchingTarget(content, target) != null) return null
-        val occurrences = content.split(target).size - 1
+        val normContent = content.replace("\r\n", "\n")
+        val normTarget = target.replace("\r\n", "\n")
+        val occurrences = normContent.split(normTarget).size - 1
         return when {
             occurrences == 0 ->
                 "Could not find the target_content in \"$resolved\". " +

@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
@@ -248,6 +249,7 @@ class AgentChatViewModel @Inject constructor(
     private val detachedJobs = java.util.Collections.synchronizedSet(mutableSetOf<Job>())
     private var healthJob: Job? = null
     private var gitDiscoveryJob: Job? = null
+    private val projectRulesCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private val deltas = DeltaBatcher(viewModelScope) { text ->
         _uiState.update { it.copy(transcript = it.transcript.appendDelta(text, STREAMING_ID, ::nextId)) }
@@ -366,7 +368,7 @@ class AgentChatViewModel @Inject constructor(
                     // failure is not fatal; the user can pick a folder.
                     val remembered = preferences.preferences.first().lastFolders[server]
                     val folder = remembered
-                        ?: (remoteFileSystem.homeDirectory(server) as? VmResult.Success)?.value
+                        ?: withTimeoutOrNull(4_000L) { (remoteFileSystem.homeDirectory(server) as? VmResult.Success)?.value }
                     if (folder != null) {
                         _uiState.update {
                             if (it.workingDirectory.isBlank()) it.copy(workingDirectory = folder) else it
@@ -1113,7 +1115,9 @@ class AgentChatViewModel @Inject constructor(
         val currentServer = _uiState.value.serverId
         val sovereignVpsServerId = _uiState.value.availableServers.firstOrNull {
             it.host == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_HOST ||
+                it.host == "100.92.2.104" ||
                 it.host.contains("vmstudio", ignoreCase = true) ||
+                it.name.contains("VPS", ignoreCase = true) ||
                 it.id == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
         }?.id
 
@@ -1626,10 +1630,10 @@ class AgentChatViewModel @Inject constructor(
                             if (!p.packageManager.isNullOrBlank()) append("   - Package Manager: ${p.packageManager}\n")
                             if (p.isLocal) {
                                 try {
-                                    val dir = java.io.File(p.remotePath)
-                                    if (dir.exists() && dir.isDirectory) {
-                                        val files = dir.listFiles()?.take(20)?.map { if (it.isDirectory) "${it.name}/" else it.name }
-                                        if (!files.isNullOrEmpty()) {
+                                    val listRes = remoteFileSystem.list(RemoteFileSystem.LOCAL_SERVER_ID, p.remotePath)
+                                    if (listRes is VmResult.Success) {
+                                        val files = listRes.value.take(20).map { if (it.isDirectory) "${it.name}/" else it.name }
+                                        if (files.isNotEmpty()) {
                                             append("   - Files: " + files.joinToString(", ") + "\n")
                                         }
                                     }
@@ -1674,37 +1678,46 @@ class AgentChatViewModel @Inject constructor(
                     }
 
                     // Discover and inject hierarchical project rules (AGENTS.md / GEMINI.md)
-                    val discoveredRules = when {
-                        workDir.startsWith("/github/") -> {
-                            val clean = workDir.removePrefix("/github/").trim('/')
-                            val parts = clean.split('/').filter { it.isNotEmpty() }
-                            if (parts.size >= 2) {
-                                val repo = "${parts[0]}/${parts[1]}"
-                                (githubRepositoryClient.getFileContent(repo, "AGENTS.md") as? VmResult.Success)?.value
-                                    ?: (githubRepositoryClient.getFileContent(repo, "GEMINI.md") as? VmResult.Success)?.value
-                                    ?: (githubRepositoryClient.getFileContent(repo, ".agents/rules.md") as? VmResult.Success)?.value
-                            } else null
-                        }
-                        server.isNotBlank() && workDir.isNotBlank() -> {
-                            val basePath = workDir.trimEnd('/')
-                            (remoteFileSystem.readText(server, "$basePath/AGENTS.md") as? VmResult.Success)?.value
-                                ?: (remoteFileSystem.readText(server, "$basePath/GEMINI.md") as? VmResult.Success)?.value
-                                ?: (remoteFileSystem.readText(server, "$basePath/.agents/rules.md") as? VmResult.Success)?.value
-                        }
-                        workDir.isNotBlank() -> {
-                            try {
-                                val f1 = java.io.File(workDir, "AGENTS.md")
-                                val f2 = java.io.File(workDir, "GEMINI.md")
-                                val f3 = java.io.File(workDir, ".agents/rules.md")
-                                when {
-                                    f1.exists() && f1.isFile -> f1.readText()
-                                    f2.exists() && f2.isFile -> f2.readText()
-                                    f3.exists() && f3.isFile -> f3.readText()
-                                    else -> null
+                    val ruleKey = "$server:$workDir"
+                    val discoveredRules = if (projectRulesCache.containsKey(ruleKey)) {
+                        projectRulesCache[ruleKey]?.takeIf { it.isNotBlank() }
+                    } else {
+                        withTimeoutOrNull(2_500L) {
+                            when {
+                                workDir.startsWith("/github/") -> {
+                                    val clean = workDir.removePrefix("/github/").trim('/')
+                                    val parts = clean.split('/').filter { it.isNotEmpty() }
+                                    if (parts.size >= 2) {
+                                        val repo = "${parts[0]}/${parts[1]}"
+                                        (githubRepositoryClient.getFileContent(repo, "AGENTS.md") as? VmResult.Success)?.value
+                                            ?: (githubRepositoryClient.getFileContent(repo, "GEMINI.md") as? VmResult.Success)?.value
+                                            ?: (githubRepositoryClient.getFileContent(repo, ".agents/rules.md") as? VmResult.Success)?.value
+                                    } else null
                                 }
-                            } catch (_: Exception) { null }
+                                server.isNotBlank() && workDir.isNotBlank() -> {
+                                    val basePath = workDir.trimEnd('/')
+                                    (remoteFileSystem.readText(server, "$basePath/AGENTS.md") as? VmResult.Success)?.value
+                                        ?: (remoteFileSystem.readText(server, "$basePath/GEMINI.md") as? VmResult.Success)?.value
+                                        ?: (remoteFileSystem.readText(server, "$basePath/.agents/rules.md") as? VmResult.Success)?.value
+                                }
+                                workDir.isNotBlank() -> {
+                                    try {
+                                        val f1 = java.io.File(workDir, "AGENTS.md")
+                                        val f2 = java.io.File(workDir, "GEMINI.md")
+                                        val f3 = java.io.File(workDir, ".agents/rules.md")
+                                        when {
+                                            f1.exists() && f1.isFile -> f1.readText()
+                                            f2.exists() && f2.isFile -> f2.readText()
+                                            f3.exists() && f3.isFile -> f3.readText()
+                                            else -> null
+                                        }
+                                    } catch (_: Exception) { null }
+                                }
+                                else -> null
+                            }
+                        }.also { rules ->
+                            projectRulesCache[ruleKey] = rules ?: ""
                         }
-                        else -> null
                     }
                     if (!discoveredRules.isNullOrBlank()) {
                         append("\n\n[Project Rules & Guidelines (AGENTS.md)]\n")

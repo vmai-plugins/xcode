@@ -637,8 +637,11 @@ class SftpRemoteFileSystem @Inject constructor(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (throwable: Throwable) {
-                    cachedClients.remove(serverId)
-                    runCatching { sftp.close() }
+                    val isOpen = runCatching { sftp.sftpEngine.subsystem.isOpen }.getOrDefault(false)
+                    if (!isOpen || throwable !is SFTPException) {
+                        cachedClients.remove(serverId)
+                        runCatching { sftp.close() }
+                    }
                     VmResult.Failure(mapSftpError(throwable, path))
                 }
             }

@@ -104,8 +104,13 @@ class FolderPickerViewModel @Inject constructor(
                 currentSrv.host.startsWith("172.")
             )
             val effectiveServerId = if (isLinux && (isSrvLan || RemoteFileSystem.isLocalServer(serverId))) {
-                activeServers.firstOrNull { it.host == "200.234.41.231" || it.host.contains("vmstudio", ignoreCase = true) }?.id
-                    ?: serverId
+                activeServers.firstOrNull {
+                    it.host == "200.234.41.231" ||
+                        it.host == "100.92.2.104" ||
+                        it.host.contains("vmstudio", ignoreCase = true) ||
+                        it.name.contains("VPS", ignoreCase = true) ||
+                        it.id == digital.vmstudio.code.core.common.preferences.UserPreferences.SOVEREIGN_VPS_ID
+                }?.id ?: serverId
             } else {
                 serverId
             }
