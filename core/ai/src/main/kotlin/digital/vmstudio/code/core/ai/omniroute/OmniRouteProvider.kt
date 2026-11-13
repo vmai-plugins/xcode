@@ -631,11 +631,14 @@ class OmniRouteProvider @Inject constructor(
             }
         }
 
-        val dialectsToProbe = if (probeModel.contains("claude", ignoreCase = true) ||
-            probeModel.contains("anthropic", ignoreCase = true)
+        val dialectsToProbe = if (preferredModel != null &&
+            (preferredModel.contains("claude", ignoreCase = true) ||
+             preferredModel.contains("anthropic", ignoreCase = true))
         ) {
+            // If the user's model hints at Anthropic, probe that dialect first
             listOf(OmniRouteDialect.ANTHROPIC_MESSAGES, OmniRouteDialect.OPENAI_CHAT)
         } else {
+            // Default: probe OpenAI first (more common)
             listOf(OmniRouteDialect.OPENAI_CHAT, OmniRouteDialect.ANTHROPIC_MESSAGES)
         }
 
