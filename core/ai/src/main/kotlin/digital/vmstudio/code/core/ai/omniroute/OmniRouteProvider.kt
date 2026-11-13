@@ -597,7 +597,12 @@ class OmniRouteProvider @Inject constructor(
         key: Secret,
         preferredModel: String? = null,
     ): OmniRouteDialect {
-        val probeModel = preferredModel?.takeIf { it.isNotBlank() } ?: "probe"
+        // Use a generic probe model for dialect detection. The purpose of this
+        // probe is only to determine which API dialect the gateway speaks (OpenAI
+        // vs Anthropic), not to validate a specific model. Using the user's
+        // selected model here would fail if that model isn't in the gateway's
+        // catalog (e.g., "mistral/codestral-latest" not found).
+        val probeModel = "probe"
         suspend fun probe(dialect: OmniRouteDialect): Boolean {
             val body = buildJsonObject {
                 put("model", probeModel)
